@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<jpackage-state version="21.0.9" platform="linux">
+  <app-version>1.0</app-version>
+  <main-launcher>ManagementSYS</main-launcher>
+  <main-class>eu.hansolo.fx.countries.Main</main-class>
+  <signed>false</signed>
+  <app-store>false</app-store></jpackage-state>

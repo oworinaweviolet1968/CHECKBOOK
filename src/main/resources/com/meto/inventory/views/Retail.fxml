@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<AnchorPane xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.meto.inventory.controllers.SalesController">
+
+    <VBox spacing="10" AnchorPane.topAnchor="10" AnchorPane.leftAnchor="10" AnchorPane.rightAnchor="10">
+        <Label text="SALES SECTION" style="-fx-font-size:18px; -fx-text-fill:#9c9c9c; -fx-font-weight:bold;"/>
+
+        <GridPane hgap="10" vgap="8">
+            <columnConstraints>
+                <ColumnConstraints halignment="RIGHT" minWidth="140"/>
+                <ColumnConstraints/>
+            </columnConstraints>
+
+            <children>
+                <Label text="CUSTOMER NAME:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                <TextField fx:id="customerNameField" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                <Label text="ITEMS:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                <ComboBox fx:id="itemsComboBox" GridPane.rowIndex="1" GridPane.columnIndex="1" prefWidth="200"/>
+
+                <Label text="SIZE:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                <ComboBox fx:id="qtyComboBox" GridPane.rowIndex="2" GridPane.columnIndex="1" prefWidth="150"
+                          promptText="Select size"/>
+
+                <Label text="QUANTITY:" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
+                <VBox spacing="2" GridPane.rowIndex="3" GridPane.columnIndex="1">
+                    <HBox spacing="5">
+                        <TextField fx:id="unitField" HBox.hgrow="ALWAYS" promptText="e.g., 10 pcs"/>
+                    </HBox>
+                    <Label fx:id="unitErrorLabel" text="* you forgot to put units (kg, ml)"
+                           style="-fx-text-fill: red; -fx-font-size: 10px;"
+                           visible="false" managed="false"/>
+                    <HBox spacing="5" style="-fx-padding: 5 0 0 0;">
+                        <Button fx:id="quarterKgBtn" text="1/4 kg" styleClass="pill"/>
+                        <Button fx:id="halfKgBtn" text="1/2 kg" styleClass="pill" />
+                        <Button fx:id="kgBtn" text="Kg" styleClass="pill"/>
+                        <Button fx:id="pcsBtn" text="pcs" styleClass="pill"/>
+                        <Button fx:id="halfDozenBtn" text="half doz" styleClass="pill"/>
+                        <Button fx:id="cartonBtn" text="carton" styleClass="pill"/>
+                        <Button fx:id="dozenBtn" text="dozen" styleClass="pill"/>
+                        <Button fx:id="boxBtn" text="box" styleClass="pill"/>
+                    </HBox>
+                </VBox>
+
+                <Label text="PRICE:" GridPane.rowIndex="4" GridPane.columnIndex="0"/>
+                <TextField fx:id="priceField" GridPane.rowIndex="4" GridPane.columnIndex="1"/>
+
+                <HBox spacing="8" GridPane.rowIndex="5" GridPane.columnIndex="1">
+                    <Button fx:id="addButton" text="Add" styleClass="btn-green"/>
+                    <Button fx:id="saveButton" text="Save" styleClass="btn-green"/>
+                </HBox>
+            </children>
+        </GridPane>
+
+        <TableView fx:id="salesTable" prefHeight="240">
+            <columns>
+                <TableColumn fx:id="itemCol" text="ITEMS" prefWidth="150"/>
+                <TableColumn fx:id="qtyCol" text="SIZE" prefWidth="80"/>
+                <TableColumn fx:id="unitCol" text="UNIT" prefWidth="100"/>
+                <TableColumn fx:id="priceCol" text="PRICE" prefWidth="100"/>
+                <TableColumn fx:id="amountCol" text="AMOUNT" prefWidth="120"/>
+                <TableColumn fx:id="deleteCol" text="ACTION" prefWidth="80"/>
+            </columns>
+        </TableView>
+        <Label fx:id="totalAmountLabel" text="TOTAL AMOUNT :"/>
+    </VBox>
+</AnchorPane>

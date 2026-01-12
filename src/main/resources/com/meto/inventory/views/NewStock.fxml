@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.Font?>
+
+<?import javafx.scene.control.cell.PropertyValueFactory?>
+<?import javafx.util.Callback?>
+<AnchorPane xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.meto.inventory.controllers.NewStockController"
+            prefWidth="900" prefHeight="640">
+
+    <children>
+        <VBox layoutX="10" layoutY="10" spacing="12" AnchorPane.leftAnchor="10" AnchorPane.rightAnchor="10" AnchorPane.topAnchor="10" AnchorPane.bottomAnchor="10">
+            <children>
+                <Label text="NEW STOCK" style="-fx-font-size:20px; -fx-text-fill:#9c9c9c; -fx-font-weight:bold;"/>
+                <BorderPane>
+                    <top>
+                        <VBox spacing="12" style="-fx-padding:10 10 10 10;">
+                            <!-- The grid form -->
+                            <GridPane hgap="10" vgap="8">
+                                <columnConstraints>
+                                    <ColumnConstraints halignment="RIGHT" minWidth="130"/>
+                                    <ColumnConstraints/>
+                                    <ColumnConstraints minWidth="150"/>
+                                </columnConstraints>
+
+                                <rowConstraints>
+                                    <RowConstraints minHeight="28"/>
+                                </rowConstraints>
+
+                                <children>
+                                    <Label text="SUPPLIER NAME :" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                                    <VBox GridPane.rowIndex="0" GridPane.columnIndex="1">
+                                        <TextField fx:id="supplierNameField" promptText="Enter Supplier Name"/>
+                                        <Label fx:id="supplierErrorLabel" text="* Please enter a supplier name" visible="false" managed="false" style="-fx-text-fill: red; -fx-font-size: 10px;"/>
+                                    </VBox>
+
+                                    <Label text="ITEMS :" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                                    <VBox GridPane.rowIndex="1" GridPane.columnIndex="1">
+                                        <ComboBox fx:id="itemsComboBox" editable="true" prefWidth="200" promptText="Select or type item"/>
+                                        <Label fx:id="itemErrorLabel" text="* Please select or enter item" visible="false" managed="false" style="-fx-text-fill: red; -fx-font-size: 10px;"/>
+                                    </VBox>
+
+                                    <Label text="QTY (Size) :" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                                    <VBox GridPane.rowIndex="2" GridPane.columnIndex="1">
+                                        <ComboBox fx:id="qtyComboBox" editable="true" prefWidth="200" promptText="Select or type size (e.g. 500ml)"/>
+                                        <Label fx:id="qtyErrorLabel" text="* Missing size unit" visible="false" managed="false" style="-fx-text-fill: red; -fx-font-size: 10px;"/>
+                                        <HBox fx:id="qtyButtonsBox" spacing="6" style="-fx-padding:4 0 0 0;"/>
+                                    </VBox>
+
+                                    <Label text="UNIT :" GridPane.rowIndex="4" GridPane.columnIndex="0"/>
+                                    <VBox GridPane.rowIndex="4" GridPane.columnIndex="1">
+                                        <TextField fx:id="unitField" promptText="100 dozen ..Eg"/>
+                                        <Label fx:id="unitErrorLabel" text="* Please enter quantity and unit (e.g., 10 pcs)" visible="false" managed="false" style="-fx-text-fill: red; -fx-font-size: 10px;"/>
+                                        <HBox fx:id="unitButtonsBox" spacing="6" style="-fx-padding:4 0 0 0;"/>
+                                    </VBox>
+
+                                    <Label text="PRICE(per) :" GridPane.rowIndex="6" GridPane.columnIndex="0"/>
+                                    <VBox GridPane.rowIndex="6" GridPane.columnIndex="1">
+                                        <TextField fx:id="priceField" promptText="5000 ..Eg"/>
+                                        <Label fx:id="priceErrorLabel" text="* Please enter a valid price" visible="false" managed="false" style="-fx-text-fill: red; -fx-font-size: 10px;"/>
+                                    </VBox>
+
+                                    <HBox spacing="8" GridPane.rowIndex="7" GridPane.columnIndex="1">
+                                        <Button fx:id="addButton" text="Add" styleClass="btn-green"/>
+                                        <Button fx:id="saveButton" text="Save" styleClass="btn-green"/>
+                                    </HBox>
+                                </children>
+                            </GridPane>
+                        </VBox>
+                    </top>
+
+                    <bottom>
+                        <VBox spacing="6" style="-fx-padding:10;">
+                            <TableView fx:id="newStockTable" prefHeight="320" prefWidth="600">
+                                <columns>
+                                    <TableColumn text="ITEMS" prefWidth="180">
+                                        <cellValueFactory>
+                                            <PropertyValueFactory property="items"/>
+                                        </cellValueFactory>
+                                    </TableColumn>
+                                    <TableColumn text="QTY" prefWidth="80">
+                                        <cellValueFactory>
+                                            <PropertyValueFactory property="qty"/>
+                                        </cellValueFactory>
+                                    </TableColumn>
+                                    <TableColumn text="UNIT" prefWidth="120">
+                                        <cellValueFactory>
+                                            <PropertyValueFactory property="unit"/>
+                                        </cellValueFactory>
+                                    </TableColumn>
+                                    <TableColumn text="PRICE(per) " prefWidth="100">
+                                        <cellValueFactory>
+                                            <PropertyValueFactory property="price"/>
+                                        </cellValueFactory>
+                                    </TableColumn>
+                                    <TableColumn text="AMOUNT" prefWidth="120">
+                                        <cellValueFactory>
+                                            <PropertyValueFactory property="amount"/>
+                                        </cellValueFactory>
+                                    </TableColumn>
+                                    <TableColumn fx:id="actionColumn" text="ACTION" prefWidth="80"/>
+                                </columns>
+                            </TableView>
+
+                            <Label fx:id="totalAmountLabel" text="TOTAL AMOUNT : " style="-fx-font-weight:bold;"/>
+                        </VBox>
+                    </bottom>
+                </BorderPane>
+            </children>
+        </VBox>
+    </children>
+</AnchorPane>

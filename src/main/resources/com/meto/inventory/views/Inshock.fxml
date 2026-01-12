@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<AnchorPane xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.meto.inventory.controllers.InStockController">
+
+    <children>
+        <VBox spacing="15" AnchorPane.topAnchor="10" AnchorPane.leftAnchor="10" AnchorPane.rightAnchor="10">
+            <padding>
+                <Insets top="10" right="10" bottom="10" left="10"/>
+            </padding>
+
+            <children>
+                <Label text="IN STOCK INVENTORY (All items in pieces)" style="-fx-font-size:18px; -fx-text-fill:#9c9c9c; -fx-font-weight:bold;"/>
+
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Current Available Stock:" style="-fx-font-weight:bold;"/>
+                    <Button fx:id="refreshBtn" text="Refresh" styleClass="btn-green"/>
+                </HBox>
+
+                <TableView fx:id="inStockTable" prefHeight="200">
+                    <columns>
+                        <TableColumn fx:id="itemCol" text="ITEM" prefWidth="200"/>
+                        <TableColumn fx:id="qtyCol" text="SIZE" prefWidth="100"/>
+                        <TableColumn fx:id="unitCol" text="AVAILABLE" prefWidth="120"/>
+                        <TableColumn fx:id="priceCol" text="Price / Piece"/>
+                        <TableColumn fx:id="totalValueCol" text="Total Value"/>
+
+                    </columns>
+                </TableView>
+                <Label fx:id="stockTotalLabel" text="Total Stock Value: UGX 0"/>
+                <Label fx:id="yearlyProfitLabel" text="Yearly Profit: UGX 0" />
+
+
+                <!-- Daily Sales Section -->
+                <Label text="TODAY'S SALES" style="-fx-font-size:16px; -fx-text-fill:#9c9c9c; -fx-font-weight:bold;"/>
+
+                <TableView fx:id="dailySalesTable" prefHeight="200">
+                    <columns>
+                        <TableColumn fx:id="salesItemCol" text="ITEM" prefWidth="150"/>
+                        <TableColumn fx:id="salesQtyCol" text="QTY" prefWidth="80"/>
+                        <TableColumn fx:id="salesUnitCol" text="UNIT" prefWidth="80"/>
+                        <TableColumn fx:id="salesCustomerCol" text="CUSTOMER" prefWidth="120"/>
+                        <TableColumn fx:id="salesAmountCol" text="Amount Paid" prefWidth="100"/>
+                        <TableColumn fx:id="salesProfitCol" text="Profit" prefWidth="100.0" />
+                    </columns>
+                </TableView>
+
+                <HBox spacing="20" alignment="CENTER_RIGHT">
+                    <Label fx:id="dailyTotalLabel" text="Today's Total: UGX 0"
+                           style="-fx-font-size:14px; -fx-font-weight:bold; -fx-text-fill:#2E8B57;"/>
+                    <Label fx:id="dailySaleLabel" text="Today's Total: UGX 0"
+                           style="-fx-font-size:14px; -fx-font-weight:bold; -fx-text-fill:#FF0000;"/>
+                </HBox>
+            </children>
+        </VBox>
+    </children>
+</AnchorPane>

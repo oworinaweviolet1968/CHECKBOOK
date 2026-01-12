@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="com.meto.inventory.controllers.MainController"
+            stylesheets="@styles/style.css">
+
+    <!-- Left navigation -->
+    <left>
+        <VBox fx:id="leftNav" spacing="12" styleClass="sidebar" BorderPane.alignment="CENTER_LEFT">
+            <children>
+                <Label text=" " style="-fx-pref-height:18;" />
+                <Button fx:id="navNewStock" text="NEW STOCK" styleClass="nav-button"/>
+                <Button fx:id="navRetail" text="SALES" styleClass="nav-button"/>
+                <Button fx:id="navHistory" text="HISTORY" styleClass="nav-button"/>
+                <Button fx:id="navInshock" text="INSTOCK" styleClass="nav-button"/>
+            </children>
+            <padding>
+                <Insets top="20" right="10" bottom="20" left="10"/>
+            </padding>
+        </VBox>
+    </left>
+
+    <!-- Center content will be swapped by controller -->
+    <center>
+        <StackPane fx:id="contentPane" style="-fx-background-color: #fff;">
+            <!-- views will be loaded here -->
+        </StackPane>
+    </center>
+
+</BorderPane>
