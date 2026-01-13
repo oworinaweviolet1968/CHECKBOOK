@@ -1,57 +1,9 @@
-/* Basic layout */
+/* 1. Global & Root Styles */
 .root {
     -fx-font-family: "Segoe UI", Arial, sans-serif;
-    -fx-background-color: #222; /* dark background to match your screenshot preview */
+    -fx-background-color: #222;
 }
 
-/* Sidebar */
-.sidebar {
-    -fx-background-color: #f1f1f1;
-    -fx-padding: 12;
-    -fx-pref-width: 140;
-    -fx-border-color: #e0e0e0;
-}
-
-/* navigation buttons */
-.nav-button {
-    -fx-pref-width: 120;
-    -fx-background-radius: 8;
-    -fx-background-color: #e0e0e0;
-    -fx-text-fill: #333;
-    -fx-font-weight: bold;
-    -fx-padding: 8 12;
-}
-
-.nav-button.active {
-    -fx-background-color: #bfeeff;
-}
-
-/* green buttons */
-.btn-green {
-    -fx-background-color: #90EE90;
-    -fx-background-radius: 8;
-    -fx-padding: 6 12;
-    -fx-font-weight: bold;
-}
-
-/* pill quick buttons */
-.pill {
-    -fx-background-radius: 10;
-    -fx-background-color: #dff3ff;
-    -fx-padding: 6 10;
-}
-
-/* Table */
-.table-view {
-    -fx-background-color: #f4f4f4;
-}
-
-/* small helpers */
-.label-muted {
-    -fx-text-fill: #9c9c9c;
-}
-
-/* Adjust top-level VBox child backgrounds for better contrast in preview */
 .anchor-pane, .vbox {
     -fx-background-color: white;
     -fx-padding: 8;
@@ -59,20 +11,94 @@
     -fx-background-radius: 4;
 }
 
-/* make delete button stand out (applied in code) */
-.delete-button {
-    -fx-background-color: #ff7a7a;
+/* 2. Base Component Styles (General) */
+.label {
+    -fx-font-size: 13px;
+    -fx-text-fill: #555;
+}
+
+.button {
+    -fx-cursor: hand;
+    -fx-background-radius: 6;
+}
+
+/* 3. Navigation & Sidebar */
+.sidebar {
+    -fx-background-color: #f1f1f1;
+    -fx-padding: 12;
+    -fx-pref-width: 140;
+    -fx-border-color: #e0e0e0;
+}
+
+/* Base style for nav buttons - initially transparent */
+.nav-button {
+    -fx-pref-width: 120;
+    -fx-background-color: transparent;
+    -fx-text-fill: #9c9c9c;
+    -fx-font-weight: bold;
+    -fx-padding: 8 12;
+}
+
+.nav-button:hover {
+    -fx-background-color: #3d3d3d;
     -fx-text-fill: white;
+}
+
+/* This is the class your MainController adds */
+.nav-active {
+    -fx-background-color: #2ecc71 !important;
+    -fx-text-fill: white !important;
+    -fx-font-weight: bold;
+}
+
+/* 4. Special Button Types (The overrides) */
+
+/* Green buttons - using !important to stop general .button from overriding it */
+.btn-green {
+    -fx-background-color: #7CFF8A !important;
+    -fx-text-fill: #000 !important;
+    -fx-font-weight: bold;
+    -fx-background-radius: 6;
+    -fx-padding: 6 20;
+}
+
+.btn-green:hover {
+    -fx-background-color: #5eff70 !important;
+}
+
+/* Pill quick buttons */
+.pill {
+    -fx-background-radius: 10;
+    -fx-background-color: #dff3ff;
+    -fx-text-fill: #000;
+    -fx-padding: 6 10;
+}
+
+.pill:hover {
+    -fx-background-color: #bfeeff;
+}
+
+/* Delete Button */
+.delete-button, .btn-red {
+    -fx-background-color: #ff7a7a !important;
+    -fx-text-fill: white !important;
     -fx-background-radius: 6;
     -fx-padding: 4 8;
 }
-.btn-green {
-    -fx-background-color: #7CFF8A;
-    -fx-text-fill: #000;
-    -fx-font-weight: bold;
-    -fx-background-radius: 6;
-    -fx-cursor: hand;
-    -fx-padding: 6 20;
+
+/* 5. Tables and Other Widgets */
+.table-view {
+    -fx-background-color: #f4f4f4;
+    -fx-border-color: #ccc;
+    -fx-border-radius: 4;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: #e0e0e0;
+}
+
+.label-muted {
+    -fx-text-fill: #9c9c9c;
 }
 
 .tag-btn {
@@ -82,18 +108,3 @@
     -fx-font-size: 11px;
     -fx-padding: 4 10;
 }
-
-.table-view .column-header-background {
-    -fx-background-color: #e0e0e0;
-}
-
-.table-view {
-    -fx-border-color: #ccc;
-    -fx-border-radius: 4;
-}
-
-.label {
-    -fx-font-size: 13px;
-    -fx-text-fill: #555;
-}
-

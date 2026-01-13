@@ -11,39 +11,44 @@ import java.io.IOException;
 
 public class MainController {
 
-    @FXML private VBox leftNav;
-    @FXML private Button navNewStock;
-    @FXML private Button navRetail;
-    @FXML private Button navHistory;
-    @FXML private Button navInshock;
-
+    @FXML private Button navNewStock, navRetail, navHistory, navInshock;
     @FXML private StackPane contentPane;
 
-    private Node newStockView;
-    private Node retailView;
-    private Node historyView;
-    private Node inShockView;
+    private Node newStockView, retailView, historyView, inShockView;
 
     @FXML
     public void initialize() throws IOException {
-        // load views (separate FXML per section)
+        // Load views
         newStockView = FXMLLoader.load(getClass().getResource("/com/meto/inventory/views/NewStock.fxml"));
         retailView = FXMLLoader.load(getClass().getResource("/com/meto/inventory/views/Retail.fxml"));
         historyView = FXMLLoader.load(getClass().getResource("/com/meto/inventory/views/History.fxml"));
         inShockView = FXMLLoader.load(getClass().getResource("/com/meto/inventory/views/Inshock.fxml"));
 
-        // set default view
-        contentPane.getChildren().add(newStockView);
+        // Set default view and default active button style
+        setView(newStockView, navNewStock);
 
-        // wire nav actions
-        navNewStock.setOnAction(e -> setView(newStockView));
-        navRetail.setOnAction(e -> setView(retailView));
-        navHistory.setOnAction(e -> setView(historyView));
-        navInshock.setOnAction(e -> setView(inShockView));
+        // Wire nav actions
+        navNewStock.setOnAction(e -> setView(newStockView, navNewStock));
+        navRetail.setOnAction(e -> setView(retailView, navRetail));
+        navHistory.setOnAction(e -> setView(historyView, navHistory));
+        navInshock.setOnAction(e -> setView(inShockView, navInshock));
     }
 
-    private void setView(Node node) {
+    private void setView(Node node, Button activeBtn) {
         contentPane.getChildren().clear();
         contentPane.getChildren().add(node);
+        updateNavStyles(activeBtn);
+    }
+
+    private void updateNavStyles(Button selectedBtn) {
+        // List of all your nav buttons
+        Button[] navButtons = {navNewStock, navRetail, navHistory, navInshock};
+
+        for (Button btn : navButtons) {
+            // Remove the active class from everyone
+            btn.getStyleClass().remove("nav-active");
+        }
+        // Add the active class to the selected one
+        selectedBtn.getStyleClass().add("nav-active");
     }
 }

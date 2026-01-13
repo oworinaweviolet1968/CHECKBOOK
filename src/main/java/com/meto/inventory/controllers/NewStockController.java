@@ -11,6 +11,7 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.HBox;
 
 import java.time.LocalDate;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -138,11 +139,33 @@ public class NewStockController {
     }
 
     private void createUnitQuickButtons() {
-        String[] quick = {"pcs / sack", "half doz", "carton", "dozen", "box"};
-        for (String u : quick) {
-            Button b = new Button(u);
+        // 1. Create the data using Map.of (supports up to 10 pairs)
+        Map<String, Integer> unitData = Map.of(
+                "pc",1,
+                "half doz", 6,
+                "carton", 24,
+                "dozen", 12,
+                "box", 20,
+                "crate", 25
+        );
+
+        // 2. If order matters (left-to-right), sort them or use a List of names
+        String[] order = {"pc","half doz", "dozen", "carton", "box", "crate"};
+
+        for (String unitName : order) {
+            Integer val = unitData.get(unitName);
+
+            // Create the "Red Label" for the number
+            Label valLabel = new Label("*" + val );
+            valLabel.setStyle("-fx-text-fill: red; -fx-font-weight: bold; -fx-padding: 0 0 0 5;");
+
+            // Create the button
+            Button b = new Button(unitName);
+            b.setGraphic(valLabel);
+            b.setContentDisplay(ContentDisplay.RIGHT);
             b.getStyleClass().add("pill");
-            b.setOnAction(evt -> appendUnit(u));
+
+            b.setOnAction(evt -> appendUnit(unitName));
             unitButtonsBox.getChildren().add(b);
         }
     }
@@ -251,8 +274,8 @@ public class NewStockController {
         // 2. Define allowed patterns
         // Matches numbers followed by g, kg, ml, or l (e.g., 500ml, 1.5l)
         String sizePattern = ".*\\d+(g|kg|ml|l)$";
-        // Matches numbers followed by pcs, doz, carton, box, or sack
-        String countPattern = ".*\\d+.*(pcs|doz|carton|box|sack|dozen).*";
+        // Added "crate" to the regex pattern
+        String countPattern = ".*\\d+.*(pcs|doz|carton|box|sack|dozen|crate).*";
 
         boolean hasError = false;
 

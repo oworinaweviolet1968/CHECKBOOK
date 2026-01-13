@@ -25,7 +25,7 @@ public class SalesController implements DataManager.DataChangeListener {
     @FXML private Label unitErrorLabel;
 
     // Unit buttons
-    @FXML private Button pcsBtn, halfDozenBtn, cartonBtn, dozenBtn, boxBtn;
+    @FXML private Button pcsBtn, halfDozenBtn, cartonBtn, dozenBtn, boxBtn,crateBtn;
 
     @FXML private TableView<SaleItem> salesTable;
     @FXML private TableColumn<SaleItem, String> itemCol, qtyCol, unitCol, priceCol, amountCol;
@@ -155,6 +155,7 @@ public class SalesController implements DataManager.DataChangeListener {
         cartonBtn.setOnAction(e -> appendToUnit("carton"));
         dozenBtn.setOnAction(e -> appendToUnit("dozen"));
         boxBtn.setOnAction(e -> appendToUnit("box"));
+        crateBtn.setOnAction(event -> appendToUnit("crate"));
     }
 
     private void appendToUnit(String unit) {
@@ -180,6 +181,7 @@ public class SalesController implements DataManager.DataChangeListener {
             case "carton": return "1";
             case "dozen": return "1";
             case "box": return "1";
+            case "crate": return "1"; // Added consistency
             default: return "1";
         }
     }
@@ -195,7 +197,8 @@ public class SalesController implements DataManager.DataChangeListener {
 
         String countUnit = unitField.getText().trim().toLowerCase();
         // Allow fractions (1/4, 1/2) or whole numbers + standard units
-        String countPattern = ".*(\\d|/)+(.*)(pcs|doz|carton|box|sack|dozen|kg|ml|l).*";
+        // Added "crate" to this pattern as well
+        String countPattern = ".*(\\d|/)+(.*)(pcs|doz|carton|box|sack|dozen|kg|ml|l|crate).*";
 
         if (countUnit.isEmpty() || !countUnit.matches(countPattern)) {
             unitErrorLabel.setVisible(true);
@@ -341,7 +344,8 @@ public class SalesController implements DataManager.DataChangeListener {
         for (SaleItem item : items) {
             String unit = item.getUnit().toLowerCase();
             if (unit.contains("half doz") || unit.contains("carton") ||
-                    unit.contains("dozen") || unit.contains("box")) {
+                    unit.contains("dozen") || unit.contains("box") ||
+                    unit.contains("crate")) { // Added crate here
                 return "WHOLESALE";
             }
         }

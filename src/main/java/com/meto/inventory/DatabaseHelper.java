@@ -81,7 +81,8 @@ public class DatabaseHelper {
         if (cleanUnit.contains("dozen") || cleanUnit.contains("doz")) return 12.0;
         if (cleanUnit.contains("half doz")) return 6.0;
         if (cleanUnit.contains("carton")) return 24.0;
-        if (cleanUnit.contains("box")) return 10.0; // adjust to your actual box size
+        if (cleanUnit.contains("crate")) return 25.0; // Added Crate - 25pcs
+        if (cleanUnit.contains("box")) return 20.0;   // Updated Box from 10 to 20
         return 1.0;
     }
 
@@ -462,7 +463,8 @@ public class DatabaseHelper {
         return switch (type) {
             case "dozen" -> 12.0;
             case "carton" -> 24.0;
-            case "box" -> 10.0;
+            case "crate" -> 25.0;  // Added Crate - 25pcs
+            case "box" -> 20.0;    // Updated Box from 10 to 20
             case "half doz" -> 6.0;
             default -> 1.0;
         };

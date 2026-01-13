@@ -43,6 +43,7 @@
                         <Button fx:id="cartonBtn" text="carton" styleClass="pill"/>
                         <Button fx:id="dozenBtn" text="dozen" styleClass="pill"/>
                         <Button fx:id="boxBtn" text="box" styleClass="pill"/>
+                        <Button fx:id="crateBtn" text="crate" styleClass="pill"/>
                     </HBox>
                 </VBox>
 
