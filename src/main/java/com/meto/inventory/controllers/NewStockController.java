@@ -121,8 +121,73 @@ public class NewStockController {
                 setGraphic(empty ? null : deleteButton);
             }
         });
+        setupAutoPriceCalculation();
     }
 
+    // Inside NewStockController.java
+    private void setupAutoPriceCalculation() {
+        unitField.textProperty().addListener((obs, oldVal, newVal) -> {
+            String item = itemsComboBox.getValue();
+            String size = qtyComboBox.getValue();
+
+            if (item != null && size != null && !newVal.isEmpty()) {
+                double costPerPiece = dataManager.getDbHelper().getExistingPrice(item, size);
+                double multiplier = dataManager.getDbHelper().getUnitMultiplier(newVal, size);
+                double count = extractNumericValue(newVal); // Get the "4" from "4 sacks"
+
+                if (costPerPiece > 0) {
+                    double totalAmount = count * multiplier * costPerPiece;
+                    priceField.setText(String.format("%.0f", totalAmount));
+                }
+            }
+        });
+    }
+
+    private double extractNumericValue(String text) {
+        if (text == null || text.isEmpty()) return 1.0;
+        try {
+            // This regex finds the first number in the string (e.g. "4 sacks" -> 4)
+            Pattern p = Pattern.compile("(\\d+(\\.\\d+)?)");
+            Matcher m = p.matcher(text);
+            if (m.find()) {
+                return Double.parseDouble(m.group(1));
+            }
+        } catch (Exception e) {
+            return 1.0;
+        }
+        return 1.0;
+    }
+
+    private void calculateRestockPrice() {
+        String item = itemsComboBox.getValue();
+        String size = qtyComboBox.getValue(); // e.g., "50kg"
+        String unit = unitField.getText();    // e.g., "4 sacks"
+
+        if (item == null || size == null || unit.isEmpty()) return;
+
+        // 1. Get the cost per KG from DB
+        double costPerKg = dataManager.getDbHelper().getExistingPrice(item, size);
+
+        if (costPerKg > 0) {
+            // 2. Get the multiplier (e.g., "sack" = 50)
+            double multiplier = dataManager.getDbHelper().getUnitMultiplier(unit, size);
+
+            // 3. Get the count (e.g., "4")
+            double count = 1.0;
+            String numOnly = unit.replaceAll("[^0-9.]", "");
+            if (!numOnly.isEmpty()) count = Double.parseDouble(numOnly);
+
+            // 4. Calculate Total Cost for this entry
+            // 4 (sacks) * 50 (kg) * 3,000 (cost) = 600,000
+            double totalRestockPrice = count * multiplier * costPerKg;
+
+            // 5. Update the price field automatically
+            priceField.setText(String.format("%.0f", totalRestockPrice));
+
+            // Visual cue that this is an auto-calculated price
+            priceField.setStyle("-fx-control-inner-background: #e1f5fe;");
+        }
+    }
     private void refreshDropdowns() {
         ObservableList<String> availableItems = dataManager.getDbHelper().getAvailableItems();
         itemsComboBox.setItems(availableItems);
@@ -141,7 +206,8 @@ public class NewStockController {
     private void createUnitQuickButtons() {
         // 1. Create the data using Map.of (supports up to 10 pairs)
         Map<String, Integer> unitData = Map.of(
-                "pc",1,
+                "pcs",1,
+                "sack", 1,
                 "half doz", 6,
                 "carton", 24,
                 "dozen", 12,
@@ -150,21 +216,24 @@ public class NewStockController {
         );
 
         // 2. If order matters (left-to-right), sort them or use a List of names
-        String[] order = {"pc","half doz", "dozen", "carton", "box", "crate"};
+        // Inside createUnitQuickButtons
+        String[] order = {"pcs", "sack", "half doz", "dozen", "box", "carton", "crate"};
 
         for (String unitName : order) {
             Integer val = unitData.get(unitName);
-
-            // Create the "Red Label" for the number
-            Label valLabel = new Label("*" + val );
-            valLabel.setStyle("-fx-text-fill: red; -fx-font-weight: bold; -fx-padding: 0 0 0 5;");
-
-            // Create the button
             Button b = new Button(unitName);
-            b.setGraphic(valLabel);
-            b.setContentDisplay(ContentDisplay.RIGHT);
-            b.getStyleClass().add("pill");
 
+            // Special styling for "sack" to stand out as a bulk item
+            if (unitName.equals("sack")) {
+                b.setStyle("-fx-background-color: #2196F3; -fx-text-fill: white;");
+            } else {
+                Label valLabel = new Label("*" + val);
+                valLabel.setStyle("-fx-text-fill: red; -fx-font-weight: bold; -fx-padding: 0 0 0 5;");
+                b.setGraphic(valLabel);
+                b.setContentDisplay(ContentDisplay.RIGHT);
+            }
+
+            b.getStyleClass().add("pill");
             b.setOnAction(evt -> appendUnit(unitName));
             unitButtonsBox.getChildren().add(b);
         }
@@ -174,48 +243,29 @@ public class NewStockController {
         String selectedItem = itemsComboBox.getEditor().getText();
         String selectedSize = qtyComboBox.getEditor().getText();
 
-        // 1. Keep the number currently typed (e.g., "5")
+        if (selectedItem.isEmpty() || selectedSize.isEmpty()) {
+            unitErrorLabel.setText("* Select Item and Size first");
+            unitErrorLabel.setVisible(true);
+            return;
+        }
+
         String currentText = unitField.getText().trim();
         String numberPart = currentText.replaceAll("[^0-9.]", "");
         if (numberPart.isEmpty()) numberPart = "1";
 
-        // 2. Fetch the recorded piece price from DB
-        java.util.Map<String, Object> stockInfo = dataManager.getDbHelper().getStockPriceInfo(selectedItem, selectedSize);
+        unitField.setText(numberPart + " " + unit);
 
-        if (stockInfo.isEmpty()) {
-            unitField.setText(numberPart + " " + unit);
-            return;
-        }
+        // 1. Get the price of 1 base unit (e.g., 1kg of Posho = 4,444)
+        double basePrice = dataManager.getDbHelper().getExistingPrice(selectedItem, selectedSize);
 
-        // Your DB now stores the 'Price Per Piece' (e.g., 2083)
-        double pricePerPiece = (double) stockInfo.get("price");
-        String clickedUnit = unit.toLowerCase().trim();
+        if (basePrice > 0) {
+            // 2. Get the multiplier (e.g., Sack = 45)
+            double multiplier = dataManager.getDbHelper().getUnitMultiplier(unit, selectedSize);
 
-        // 3. AUTO-FILL LOGIC
-
-        if (clickedUnit.contains("pcs")) {
-            // If clicking PCS: Show the price exactly as it is in the DB
-            unitField.setText(numberPart + " pcs");
-            priceField.setText(String.format("%.0f", pricePerPiece));
+            // 3. Fill the price field with the price of ONE UNIT (e.g., 1 Sack = 200,000)
+            double unitPrice = basePrice * multiplier;
+            priceField.setText(String.format("%.0f", unitPrice));
             unitErrorLabel.setVisible(false);
-        }
-        else {
-            // If clicking DOZEN / BOX / CARTON:
-            // Multiply the piece price by the multiplier (e.g., 2083 * 12 = 25000)
-            double multiplier = dataManager.getDbHelper().convertToBaseUnit(clickedUnit);
-
-            if (multiplier > 1) {
-                double bulkPrice = pricePerPiece * multiplier;
-                unitField.setText(numberPart + " " + unit);
-                priceField.setText(String.format("%.0f", bulkPrice));
-                unitErrorLabel.setVisible(false);
-            } else {
-                // If the multiplier is 1 but it's not "pcs", it's an unrecognized unit
-                unitField.setText(numberPart + " " + unit);
-                priceField.clear();
-                unitErrorLabel.setText("* Unrecognized unit for auto-pricing.");
-                unitErrorLabel.setVisible(true);
-            }
         }
     }
 
@@ -275,7 +325,8 @@ public class NewStockController {
         // Matches numbers followed by g, kg, ml, or l (e.g., 500ml, 1.5l)
         String sizePattern = ".*\\d+(g|kg|ml|l)$";
         // Added "crate" to the regex pattern
-        String countPattern = ".*\\d+.*(pcs|doz|carton|box|sack|dozen|crate).*";
+        // Update the regex to accept 'pc' (without the s)
+        String countPattern = ".*\\d+.*(pc|pcs|doz|carton|box|sack|dozen|crate).*";
 
         boolean hasError = false;
 
@@ -307,87 +358,84 @@ public class NewStockController {
 
         if (hasError) return;
 
-        double price;
+        double inputPrice;
         try {
-            price = Double.parseDouble(priceRaw);
+            inputPrice = Double.parseDouble(priceRaw);
         } catch (NumberFormatException ex) {
             showAlert("Invalid price.");
             return;
         }
 
-        // Parse the unit quantity - this is what should be multiplied with price
-        double unitQty = 1.0;
-        try {
-            // Try to parse the unit field as a number
-            String unitNum = unitText.replaceAll("[^0-9.]", "");
-            if (!unitNum.isEmpty()) {
-                unitQty = Double.parseDouble(unitNum);
-            }
-        } catch (NumberFormatException ex) {
-            // If unit field doesn't contain a number, default to 1
-            unitQty = 1.0;
-        }
+        // 1. Get the count (e.g., the "2" from "2 sacks")
+        double count = extractNumericValue(unitText);
 
-        // Calculate amount: unit quantity * price
-        double amount = unitQty * price;
-        String amountStr = String.format("%,.0f", amount);
-        String priceStr = String.format("%,.0f", price);
+        // 2. THE CALCULATION
+        // If you enter 2 sacks at 200,000 per sack, total is 400,000.
+        // This assumes the price you type in the box is the price for the unit shown (pc, sack, box, etc.)
+        double totalAmount = count * inputPrice;
+
+        String amountStr = String.format("%,.0f", totalAmount);
+        String priceStr = String.format("%,.0f", inputPrice);
 
         StockItem si = new StockItem(itemName, qtyRaw, unitText, priceStr, amountStr);
         items.add(si);
 
-        // clear fields (keep supplier)
+        // clear fields
         itemsComboBox.getEditor().clear();
         qtyComboBox.getEditor().clear();
         unitField.clear();
         priceField.clear();
     }
 
+    @FXML
     private void onSave() {
         String supplier = supplierNameField.getText().trim();
         if (supplier.isEmpty()) {
             supplierErrorLabel.setVisible(true);
             supplierErrorLabel.setManaged(true);
             return;
-        } else {
-            supplierErrorLabel.setVisible(false);
-            supplierErrorLabel.setManaged(false);
         }
 
         if (items.isEmpty()) {
-            // You might still want an alert here just to say "No items in table"
             showAlert("Please Fill in item to continue!");
             return;
         }
 
-        // Check for existing items and merge quantities
-        for (StockItem s : newStockTable.getItems()) {
+        for (StockItem s : items) { // Iterating through the table items
             String item = s.getItems();
             String qty = s.getQty();
             String unit = s.getUnit();
-            double price = 0.0;
-            try {
-                price = Double.parseDouble(s.getPrice().replaceAll("[^0-9.]", ""));
-            } catch (Exception ex) { /* ignore */ }
+            double price = Double.parseDouble(s.getPrice().replaceAll("[^0-9.]", ""));
 
-            // Check if this item with same size already exists
             if (dataManager.getDbHelper().itemExists(item, qty)) {
-                // Merge with existing stock
-                dataManager.getDbHelper().mergeStock(item, qty, unit, price, supplier);
+                // 1. Try to merge normally (forceSave = false)
+                boolean success = dataManager.getDbHelper().mergeStock(item, qty, unit, price, supplier, false);
+
+                if (!success) {
+                    // 2. If it fails, show the Alert
+                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                    alert.setTitle("Price Variance Warning");
+                    alert.setHeaderText("Price mismatch for " + item + " (" + qty + ")");
+                    alert.setContentText("The price for " + unit + " makes the unit price very different from current stock.\n\n" +
+                            "Do you want to save this anyway?");
+
+                    if (alert.showAndWait().get() == ButtonType.OK) {
+                        // 3. If user says OK, merge with forceSave = true
+                        dataManager.getDbHelper().mergeStock(item, qty, unit, price, supplier, true);
+                    } else {
+                        continue; // Skip this item and move to next, or 'return' to stop everything
+                    }
+                }
             } else {
-                // Add as new stock
                 dataManager.getDbHelper().addStock(supplier, item, qty, unit, price, LocalDate.now().toString());
             }
 
-            // RIGHT: Use the logic that handles profit columns correctly
             dataManager.getDbHelper().addSaleWithProfit(supplier, item, qty, unit, price, "NEW STOCK");
         }
 
         showAlert("Stock saved successfully!");
-        newStockTable.getItems().clear();
+        items.clear(); // Clear the ObservableList
         supplierNameField.clear();
-
-        // Notify all listeners that data has changed - INCLUDING ITEMS
         dataManager.notifyDataChanged();
     }
 

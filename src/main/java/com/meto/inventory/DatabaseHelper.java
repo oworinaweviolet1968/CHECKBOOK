@@ -78,21 +78,26 @@ public class DatabaseHelper {
     public double convertToBaseUnit(String unit) {
         if (unit == null) return 1.0;
         String cleanUnit = unit.toLowerCase().trim();
-        if (cleanUnit.contains("dozen") || cleanUnit.contains("doz")) return 12.0;
+
+        // SPECIFIC FIRST
         if (cleanUnit.contains("half doz")) return 6.0;
+
+        // GENERAL SECOND
+        if (cleanUnit.contains("dozen") || cleanUnit.contains("doz")) return 12.0;
         if (cleanUnit.contains("carton")) return 24.0;
-        if (cleanUnit.contains("crate")) return 25.0; // Added Crate - 25pcs
-        if (cleanUnit.contains("box")) return 20.0;   // Updated Box from 10 to 20
+        if (cleanUnit.contains("crate")) return 25.0;
+        if (cleanUnit.contains("box")) return 20.0;
+
         return 1.0;
     }
 
     private double calculateTotalBaseStock(String unitCount, String size) {
         double count = extractNumericValue(unitCount);
-        if (size.toLowerCase().contains("kg")) {
-            double kgPerSack = extractNumericValue(size);
-            return count * (kgPerSack > 0 ? kgPerSack : 1);
-        }
-        return convertToBaseUnit(unitCount);
+//        if (size.toLowerCase().contains("kg")) {
+//            double kgPerSack = extractNumericValue(size);
+//            return count * (kgPerSack > 0 ? kgPerSack : 1);
+//        }
+        return count * getUnitMultiplier(unitCount, size);
     }
 
     private String formatStockForDisplay(double totalBase, String size) {
@@ -121,8 +126,7 @@ public class DatabaseHelper {
         return false;
     }
 
-    public void mergeStock(String itemName, String size, String newUnit, double newPrice, String supplier) {
-        // 1. Check existing stock
+    public boolean mergeStock(String itemName, String size, String newUnit, double newPrice, String supplier, boolean forceSave) {
         String selectSql = "SELECT id, available_pieces, price FROM stock WHERE item = ? AND quantity = ?";
         try (PreparedStatement selectStmt = connection.prepareStatement(selectSql)) {
             selectStmt.setString(1, itemName);
@@ -134,30 +138,34 @@ public class DatabaseHelper {
                 double existingPieces = rs.getDouble("available_pieces");
                 double existingCostPerPiece = rs.getDouble("price");
 
-                // 2. Calculate NEW incoming pieces
-                double quantityNumber = extractNumericValue(newUnit); // e.g., 15
-                double multiplier = getUnitMultiplier(newUnit);      // e.g., 12
-                double incomingPieces = quantityNumber * multiplier; // Result: 180
-
+                double quantityNumber = extractNumericValue(newUnit);
+                double multiplier = getUnitMultiplier(newUnit, size);
+                double incomingPieces = quantityNumber * multiplier;
                 double newCostPerPiece = newPrice / (multiplier > 0 ? multiplier : 1);
 
-                // 3. Weighted Average calculation
-                double totalPieces = existingPieces + incomingPieces;
-                double weightedAverageCost = ((existingPieces * existingCostPerPiece) + (incomingPieces * newCostPerPiece)) / totalPieces;
+                // --- VALIDATION GATE ---
+                if (!forceSave && existingCostPerPiece > 0) {
+                    double diff = Math.abs(newCostPerPiece - existingCostPerPiece);
+                    if ((diff / existingCostPerPiece) > 0.20) {
+                        return false; // Tell the controller to show an alert
+                    }
+                }
 
-                // 4. Update Database (Updating available_pieces column!)
+                // Logic Fix: Setting all 6 parameters for the UPDATE
                 String updateSql = "UPDATE stock SET available_pieces = ?, price = ?, supplier = ?, date = ?, unit = ? WHERE id = ?";
                 try (PreparedStatement updateStmt = connection.prepareStatement(updateSql)) {
-                    updateStmt.setDouble(1, totalPieces);
-                    updateStmt.setDouble(2, weightedAverageCost);
+                    updateStmt.setDouble(1, existingPieces + incomingPieces);
+                    updateStmt.setDouble(2, ((existingPieces * existingCostPerPiece) + (incomingPieces * newCostPerPiece)) / (existingPieces + incomingPieces));
                     updateStmt.setString(3, supplier);
                     updateStmt.setString(4, LocalDate.now().toString());
-                    updateStmt.setString(5, newUnit); // Keep the last unit name for reference
-                    updateStmt.setInt(6, id);
+                    updateStmt.setString(5, newUnit);
+                    updateStmt.setInt(6, id); // Set the 6th parameter!
                     updateStmt.executeUpdate();
+                    return true;
                 }
             }
         } catch (SQLException e) { e.printStackTrace(); }
+        return false;
     }
 
     public void updateStockQuantity(String itemName, String soldSize, String soldUnit) {
@@ -171,7 +179,7 @@ public class DatabaseHelper {
             if (rs.next()) {
                 int id = rs.getInt("id");
                 double currentPieces = rs.getDouble("available_pieces");
-                double soldPieces = extractNumericValue(soldUnit) * getUnitMultiplier(soldUnit);
+                double soldPieces = extractNumericValue(soldUnit) * getUnitMultiplier(soldUnit, soldSize);
                 double remaining = currentPieces - soldPieces;
 
                 if (remaining >= 0) {
@@ -212,12 +220,14 @@ public class DatabaseHelper {
     }
 
     public boolean hasEnoughStock(String itemName, String size, String soldUnit) {
-        try (PreparedStatement pstmt = connection.prepareStatement("SELECT unit, quantity FROM stock WHERE item = ? AND quantity = ?")) {
+        try (PreparedStatement pstmt = connection.prepareStatement("SELECT available_pieces FROM stock WHERE item = ? AND quantity = ?")) {
             pstmt.setString(1, itemName);
             pstmt.setString(2, size);
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
-                return calculateTotalBaseStock(rs.getString("unit"), rs.getString("quantity")) >= convertToBaseUnit(soldUnit);
+                double stockAvailable = rs.getDouble("available_pieces");
+                double amountTryingToSell = extractNumericValue(soldUnit) * getUnitMultiplier(soldUnit, size);
+                return stockAvailable >= amountTryingToSell;
             }
         } catch (SQLException e) { e.printStackTrace(); }
         return false;
@@ -353,7 +363,7 @@ public class DatabaseHelper {
         double unitCount = extractNumericValue(unit);
 
         // 2. Get the multiplier (e.g., 12 for dozen) to find total pieces for stock deduction
-        double multiplier = getUnitMultiplier(unit);
+        double multiplier = getUnitMultiplier(unit, size);
         double baseQty = unitCount * multiplier;
 
         // 3. FIX: Total Amount should be (Count * Price)
@@ -416,7 +426,7 @@ public class DatabaseHelper {
 
     // --- DATA HELPERS ---
 
-    private double extractNumericValue(String text) {
+    public double extractNumericValue(String text) {
         if (text == null || text.isEmpty()) return 0.0;
 
         String lowercaseText = text.toLowerCase().trim();
@@ -436,19 +446,15 @@ public class DatabaseHelper {
         if (!numbersOnly.isEmpty()) {
             try {
                 double wholeNumber = Double.parseDouble(numbersOnly);
-
-                // LOGIC FIX: If there is a fraction present, we MULTIPLY.
-                // Example: "2 1/2" becomes 2 * 0.5 = 1.0kg
+                // FIX: Add the fraction to the whole number, don't multiply!
                 if (fractionValue > 0) {
-                    return wholeNumber * fractionValue;
+                    return wholeNumber + fractionValue; // 2 + 0.5 = 2.5
                 }
-                return wholeNumber; // Just a regular number like "5 kg"
-
+                return wholeNumber;
             } catch (NumberFormatException e) {
-                return fractionValue; // Fallback to just the fraction if no whole number
+                return fractionValue;
             }
         }
-
         return fractionValue; // Return 0.25 or 0.5 if no leading number exists
     }
 
@@ -458,21 +464,48 @@ public class DatabaseHelper {
         return type.isEmpty() ? "pcs" : type;
     }
 
-    private double getUnitMultiplier(String unitText) {
-        String type = extractUnitType(unitText); // gets "dozen", "carton", etc.
-        return switch (type) {
-            case "dozen" -> 12.0;
-            case "carton" -> 24.0;
-            case "crate" -> 25.0;  // Added Crate - 25pcs
-            case "box" -> 20.0;    // Updated Box from 10 to 20
-            case "half doz" -> 6.0;
-            default -> 1.0;
-        };
+    public double getExistingPrice(String item, String size) {
+        String sql = "SELECT price FROM stock WHERE item = ? AND quantity = ? LIMIT 1";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, item);
+            pstmt.setString(2, size);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getDouble("price"); // This is the price per 1 KG (e.g., 3000)
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return 0.0;
+    }
+
+    public double getUnitMultiplier(String unitText, String size) {
+        if (unitText == null) return 1.0;
+        String type = unitText.toLowerCase().trim();
+        String sizeLower = size.toLowerCase().trim();
+
+        // 1. Check for the LONGEST/MOST SPECIFIC strings first
+        // If it's a sack, use the KG number from the size (e.g., "50kg" -> 50)
+        // ONLY treat "pc" as a "Sack" if the size is 10kg or more (Bulk)
+        // This protects small 1kg or 2kg packs from the sack logic
+        double sizeNum = extractNumericValue(sizeLower);
+        boolean isBulkSack = sizeLower.contains("kg") && sizeNum >= 10.0;
+
+        if (type.contains("sack") || (isBulkSack && type.contains("pc"))) {
+            return sizeNum;
+        }
+        if (type.contains("half doz")) return 6.0;
+
+        // 2. Check for the shorter/general strings last
+        if (type.contains("dozen") || type.contains("doz")) return 12.0;
+        if (type.contains("carton")) return 24.0;
+        if (type.contains("crate")) return 25.0;
+        if (type.contains("box")) return 20.0;
+
+        return 1.0;
     }
 
     public void addStock(String s, String i, String q, String u, double p, String d) {
         double unitCount = extractNumericValue(u);
-        double multiplier = getUnitMultiplier(u);
+        double multiplier = getUnitMultiplier(u, q);
         double totalPieces = unitCount * multiplier;
 
         // Use double for precision. If p is 25000 and multiplier is 12,

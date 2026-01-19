@@ -6,6 +6,7 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.scene.layout.HBox;
 
 import java.time.LocalDate;
 
@@ -22,7 +23,10 @@ public class SalesController implements DataManager.DataChangeListener {
     @FXML private Button quarterKgBtn;
     @FXML private Button halfKgBtn;
     @FXML private Button kgBtn;
+    @FXML private Button sackBtn;
     @FXML private Label unitErrorLabel;
+    @FXML private HBox weightButtonsBox;
+    @FXML private HBox unitButtonsBox;
 
     // Unit buttons
     @FXML private Button pcsBtn, halfDozenBtn, cartonBtn, dozenBtn, boxBtn,crateBtn;
@@ -55,6 +59,50 @@ public class SalesController implements DataManager.DataChangeListener {
         customerNameField.textProperty().addListener((obs, oldVal, newVal) -> {
             // If you add a customer error label later, hide it here
         });
+        // Create a listener for when the Size (qtyComboBox) changes
+        qtyComboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
+            updateButtonVisibility(newVal);
+        });
+
+        // Call it once to hide everything until an item is picked
+        // IMPORTANT: Only call this if the boxes aren't null
+        if (weightButtonsBox != null && unitButtonsBox != null) {
+            updateButtonVisibility(null);
+        }
+    }
+
+    private void updateButtonVisibility(String selectedSize) {
+        if (selectedSize == null) {
+            // If nothing is selected, hide both to keep it clean
+            setBoxVisible(weightButtonsBox, false);
+            setBoxVisible(unitButtonsBox, false);
+            return;
+        }
+
+        double sizeNum = dataManager.getDbHelper().extractNumericValue(selectedSize);
+        boolean isBulkWeight = selectedSize.toLowerCase().contains("kg") && sizeNum >= 10.0;
+
+        if (isBulkWeight) {
+            // It's a sack (e.g., 50kg sugar) -> Show kg buttons
+            setBoxVisible(weightButtonsBox, true);
+            setBoxVisible(unitButtonsBox, false);
+        } else {
+            // It's a pack or piece (e.g., 1kg pack or Soda) -> Show unit buttons
+            setBoxVisible(weightButtonsBox, false);
+            setBoxVisible(unitButtonsBox, true);
+        }
+    }
+
+    // Helper to handle both Visibility and Managed state (removing the gap)
+    private void setBoxVisible(HBox box, boolean visible) {
+        // Add this null check to prevent the crash
+        if (box != null) {
+            box.setVisible(visible);
+            box.setManaged(visible);
+        } else {
+            // This will print to your console so you know which one is missing
+            System.out.println("Warning: A Button Box is null. Check fx:id in FXML.");
+        }
     }
 
     @FXML
@@ -148,6 +196,13 @@ public class SalesController implements DataManager.DataChangeListener {
         kgBtn.setOnAction(e -> {
             String current = unitField.getText().replaceAll("[^0-9.]", "");
             unitField.setText(current.isEmpty() ? "1 kg" : current + " kg");
+        });
+        // New Sack Button Logic
+        sackBtn.setOnAction(e -> {
+            // Just set the text to "1 sack"
+            // DatabaseHelper.getUnitMultiplier already knows that "sack"
+            // for a 50kg item equals 50.
+            unitField.setText("1 sack");
         });
         // UNIT buttons (packaging units)
         pcsBtn.setOnAction(e -> appendToUnit("pcs"));
@@ -269,6 +324,7 @@ public class SalesController implements DataManager.DataChangeListener {
         if (text.toLowerCase().contains("1/4") || text.contains("0.25")) return 0.25;
         if (text.toLowerCase().contains("1/2") || text.contains("0.5")) return 0.5;
 
+        if (text.toLowerCase().contains("sack")) return 1.0;
         String numbers = text.replaceAll("[^0-9.]", "");
         return numbers.isEmpty() ? 1.0 : Double.parseDouble(numbers);
     }

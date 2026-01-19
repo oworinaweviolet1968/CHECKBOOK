@@ -34,16 +34,21 @@
                     <Label fx:id="unitErrorLabel" text="* you forgot to put units (kg, ml)"
                            style="-fx-text-fill: red; -fx-font-size: 10px;"
                            visible="false" managed="false"/>
-                    <HBox spacing="5" style="-fx-padding: 5 0 0 0;">
+
+                    <HBox fx:id="weightButtonsBox" spacing="5" style="-fx-padding: 5 0 0 0;">
                         <Button fx:id="quarterKgBtn" text="1/4 kg" styleClass="pill"/>
                         <Button fx:id="halfKgBtn" text="1/2 kg" styleClass="pill" />
                         <Button fx:id="kgBtn" text="Kg" styleClass="pill"/>
-                        <Button fx:id="pcsBtn" text="pcs" styleClass="pill"/>
-                        <Button fx:id="halfDozenBtn" text="half doz" styleClass="pill"/>
-                        <Button fx:id="cartonBtn" text="carton" styleClass="pill"/>
-                        <Button fx:id="dozenBtn" text="dozen" styleClass="pill"/>
-                        <Button fx:id="boxBtn" text="box" styleClass="pill"/>
-                        <Button fx:id="crateBtn" text="crate" styleClass="pill"/>
+                        <Button fx:id="sackBtn" text="sack" styleClass="pill"/>
+                    </HBox>
+
+                    <HBox fx:id="unitButtonsBox" spacing="5" style="-fx-padding: 5 0 0 0;">
+                        <Button fx:id="pcsBtn" text="pc * 1" styleClass="pill" />
+                        <Button fx:id="halfDozenBtn" text="half doz * 6" styleClass="pill"/>
+                        <Button fx:id="dozenBtn" text="dozen * 12" styleClass="pill"/>
+                        <Button fx:id="boxBtn" text="box * 20" styleClass="pill"/>
+                        <Button fx:id="cartonBtn" text="carton * 24" styleClass="pill"/>
+                        <Button fx:id="crateBtn" text="crate * 25" styleClass="pill"/>
                     </HBox>
                 </VBox>
 
