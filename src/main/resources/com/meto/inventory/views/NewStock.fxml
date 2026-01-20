@@ -57,7 +57,7 @@
                                         <HBox fx:id="unitButtonsBox" spacing="6" style="-fx-padding:4 0 0 0;"/>
                                     </VBox>
 
-                                    <Label text="PRICE(per) :" GridPane.rowIndex="6" GridPane.columnIndex="0"/>
+                                    <Label text="PRICE(per Unit) :" GridPane.rowIndex="6" GridPane.columnIndex="0"/>
                                     <VBox GridPane.rowIndex="6" GridPane.columnIndex="1">
                                         <TextField fx:id="priceField" promptText="5000 ..Eg"/>
                                         <Label fx:id="priceErrorLabel" text="* Please enter a valid price" visible="false" managed="false" style="-fx-text-fill: red; -fx-font-size: 10px;"/>

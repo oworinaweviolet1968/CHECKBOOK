@@ -33,87 +33,172 @@ public class NewStockController {
 
     private final ObservableList<StockItem> items = FXCollections.observableArrayList();
     private final DataManager dataManager = DataManager.getInstance();
+    private final java.util.Map<String, Button> unitButtonsMap = new java.util.HashMap<>();
 
     @FXML
     public void initialize() {
         refreshDropdowns();
+        createQtyQuickButtons();
+        createUnitQuickButtons();
+        // Force numbers only while typing, but allow the buttons to append the text
+        unitField.addEventFilter(KeyEvent.KEY_TYPED, event -> {
+            if (!event.getCharacter().matches("[0-9]")) {
+                // If it's not a number, we block the keyboard input
+                // This stops them from typing "ten" instead of "10"
+                event.consume();
+            }
+        });
 
-        // When an item is selected, load its existing sizes (e.g., 330ml, 500ml)
-        itemsComboBox.setOnAction(e -> {
-            String selectedItem = itemsComboBox.getValue();
-            if (selectedItem != null) {
-                ObservableList<String> sizes = dataManager.getDbHelper().getItemSizes(selectedItem);
+        // --- STEP 0: START LOCKED ---
+        setFlowLevel(0);
+
+        // --- STEP 1: ITEM SELECTION ---
+        itemsComboBox.getEditor().textProperty().addListener((obs, old, newVal) -> {
+            // If the item changes even by one letter, clear EVERYTHING below it
+            qtyComboBox.getEditor().clear();
+            unitField.clear();
+            priceField.clear();
+            setFlowLevel(0); // Lock it down
+
+            if (newVal != null && !newVal.trim().isEmpty()) {
+                setFlowLevel(1);
+                ObservableList<String> sizes = dataManager.getDbHelper().getItemSizes(newVal);
                 qtyComboBox.setItems(sizes);
             }
         });
 
-        // AUTO-FILL PRICE: When size is selected, find the last recorded price
-        qtyComboBox.setOnAction(e -> {
-            String item = itemsComboBox.getValue();
-            String size = qtyComboBox.getValue();
-            if (item != null && size != null) {
-                double lastPrice = dataManager.getDbHelper().getLastRecordedPrice(item, size);
-                if (lastPrice > 0) {
-                    priceField.setText(String.format("%.0f", lastPrice));
-                    // We keep this price constant; the 'per' logic will handle the math
-                }
+// --- STEP 2: QTY VALIDATION ---
+        qtyComboBox.getEditor().textProperty().addListener((obs, old, newVal) -> {
+            // If Qty changes, clear Unit and Price
+            unitField.clear();
+            priceField.clear();
+
+            String sizePattern = ".*\\d+(g|kg|ml|l)$";
+            if (newVal.toLowerCase().matches(sizePattern)) {
+                filterUnitButtons(newVal);
+                setFlowLevel(2);
+            } else {
+                setFlowLevel(1); // Drop back to level 1
             }
         });
 
-        priceField.textProperty().addListener((obs, oldVal, newVal) -> {
-            // If the user manually fixes the price, hide the error
-            unitErrorLabel.setVisible(false);
-            unitErrorLabel.setManaged(false);
+// --- STEP 3: UNIT VALIDATION ---
+        unitField.textProperty().addListener((obs, old, newVal) -> {
+            // If Unit changes manually or via button, clear Price to force recalculation
+            // Note: We don't clear if newVal is empty to avoid infinite loops
+            if (old != null && !old.isEmpty() && !newVal.equals(old)) {
+                priceField.clear();
+            }
+
+            String countPattern = ".*\\d+.*(pc|pcs|doz|carton|box|sack|dozen|crate).*";
+            if (newVal.toLowerCase().matches(countPattern)) {
+                setFlowLevel(3);
+            } else {
+                addButton.setDisable(true);
+            }
         });
 
-        // configure table columns in FXML (already defined there)
+        priceField.textProperty().addListener((observable, oldValue, newValue) -> {
+            if (newValue == null || newValue.isEmpty()) return;
+
+            // 1. Remove all non-digits (including existing commas)
+            String cleanString = newValue.replaceAll("[^0-9]", "");
+
+            if (cleanString.isEmpty()) {
+                priceField.setText("");
+                return;
+            }
+
+            try {
+                // 2. Format the number with commas
+                long parsed = Long.parseLong(cleanString);
+                String formatted = String.format("%,d", parsed);
+
+                // 3. Update the field ONLY if the value actually changed
+                // (This prevents an infinite loop of listeners)
+                if (!newValue.equals(formatted)) {
+                    priceField.setText(formatted);
+                    // Move cursor to the end so typing isn't interrupted
+                    priceField.positionCaret(formatted.length());
+                }
+            } catch (NumberFormatException e) {
+                priceField.setText(oldValue);
+            }
+        });
+
+        // PRICE field: allow digits and a single dot only
+        priceField.addEventFilter(KeyEvent.KEY_TYPED, event -> {
+            String character = event.getCharacter();
+            // Allow digits and only allow one decimal point
+            if (!character.matches("[0-9]") && !(character.equals(".") && !priceField.getText().contains("."))) {
+                event.consume(); // Block the key press if it's a letter or second dot
+            }
+        });
+
+        // PRICE LOCK LOGIC
+        qtyComboBox.setOnAction(e -> handleQtySelection());
+
+        // CONFIGURE TABLE
         newStockTable.setItems(items);
-
-//        // sample data
-//        items.add(new StockItem("Lugazi sugar", "1kg", "6 boxes", "50,000", "300,000"));
-
-        // qty field: prevent typing letters manually; allow digits and dot only
-        qtyComboBox.addEventFilter(KeyEvent.KEY_TYPED, this::filterQtyInput);
-        // When user starts typing, hide the error labels
-        qtyComboBox.getEditor().textProperty().addListener((obs, oldVal, newVal) -> {
-            qtyErrorLabel.setVisible(false);
-            qtyErrorLabel.setManaged(false);
-        });
-
-        unitField.textProperty().addListener((obs, oldVal, newVal) -> {
-            unitErrorLabel.setVisible(false);
-            unitErrorLabel.setManaged(false);
-        });
-
-        // create quick unit buttons (kg, ml, l)
-        createQtyQuickButtons();
-
-        // create unit quick buttons (pcs, half doz, carton, dozen, box)
-        createUnitQuickButtons();
+        setupTableColumns();
+        setupAutoPriceCalculation();
 
         addButton.setOnAction(e -> onAdd());
         saveButton.setOnAction(e -> onSave());
 
-        // bind total
+        // BIND TOTAL LABEL
         totalAmountLabel.textProperty().bind(Bindings.createStringBinding(() -> {
             double sum = items.stream().mapToDouble(s -> {
                 String amtStr = s.getAmount().replaceAll("[^0-9.]", "");
-                if (amtStr.isEmpty()) return 0.0;
-                try { return Double.parseDouble(amtStr); } catch (NumberFormatException ex) { return 0.0; }
+                return amtStr.isEmpty() ? 0.0 : Double.parseDouble(amtStr);
             }).sum();
-            if (sum == 0) return "TOTAL AMOUNT : ";
-            return String.format("TOTAL AMOUNT : UGX %,d", Math.round(sum));
+            return sum == 0 ? "TOTAL AMOUNT : " : String.format("TOTAL AMOUNT : UGX %,d", Math.round(sum));
         }, items));
 
+        // QTY INPUT FILTER (Numbers only)
+        qtyComboBox.addEventFilter(KeyEvent.KEY_TYPED, this::filterQtyInput);
+    }
+
+    // --- HELPER FOR FLOW CONTROL ---
+    private void setFlowLevel(int level) {
+        // level 0: Supplier/Item only
+        // level 1: Item picked -> Enable Qty
+        // level 2: Qty picked -> Enable Unit
+        // level 3: Unit picked -> Enable Price/Add
+
+        qtyComboBox.setDisable(level < 1);
+        qtyButtonsBox.setDisable(level < 1);
+
+        unitField.setDisable(level < 2);
+        unitButtonsBox.setDisable(level < 2);
+
+        priceField.setDisable(level < 3);
+        addButton.setDisable(level < 3);
+    }
+
+    private void handleQtySelection() {
+        String item = itemsComboBox.getValue();
+        String size = qtyComboBox.getValue();
+        if (item != null && size != null) {
+            double lastPrice = dataManager.getDbHelper().getLastRecordedPrice(item, size);
+            if (lastPrice > 0) {
+                priceField.setText(String.format("%.0f", lastPrice));
+                priceField.setEditable(false);
+                priceField.setStyle("-fx-background-color: #f4f4f4; -fx-text-fill: #757575; -fx-border-color: #ddd;");
+            } else {
+                priceField.setEditable(true);
+                priceField.setStyle("");
+                priceField.clear();
+            }
+        }
+    }
+
+    private void setupTableColumns() {
         actionColumn.setCellFactory(col -> new TableCell<>() {
             private final Button deleteButton = new Button("Delete");
             {
                 deleteButton.getStyleClass().add("btn-red");
-                deleteButton.setOnAction(e -> {
-                    StockItem item = getTableView().getItems().get(getIndex());
-                    // delete or edit logic here
-                    items.remove(item);
-                });
+                deleteButton.setOnAction(e -> items.remove(getTableView().getItems().get(getIndex())));
             }
             @Override
             protected void updateItem(Void item, boolean empty) {
@@ -121,7 +206,6 @@ public class NewStockController {
                 setGraphic(empty ? null : deleteButton);
             }
         });
-        setupAutoPriceCalculation();
     }
 
     // Inside NewStockController.java
@@ -191,6 +275,8 @@ public class NewStockController {
     private void refreshDropdowns() {
         ObservableList<String> availableItems = dataManager.getDbHelper().getAvailableItems();
         itemsComboBox.setItems(availableItems);
+        // Optional: If you use a filtered list or search, reset the editor
+        itemsComboBox.getEditor().clear();
     }
 
     private void createQtyQuickButtons() {
@@ -204,26 +290,17 @@ public class NewStockController {
     }
 
     private void createUnitQuickButtons() {
-        // 1. Create the data using Map.of (supports up to 10 pairs)
         Map<String, Integer> unitData = Map.of(
-                "pcs",1,
-                "sack", 1,
-                "half doz", 6,
-                "carton", 24,
-                "dozen", 12,
-                "box", 20,
-                "crate", 25
+                "pcs", 1, "sack", 1, "half doz", 6,
+                "carton", 24, "dozen", 12, "box", 20, "crate", 25
         );
 
-        // 2. If order matters (left-to-right), sort them or use a List of names
-        // Inside createUnitQuickButtons
         String[] order = {"pcs", "sack", "half doz", "dozen", "box", "carton", "crate"};
 
         for (String unitName : order) {
             Integer val = unitData.get(unitName);
             Button b = new Button(unitName);
 
-            // Special styling for "sack" to stand out as a bulk item
             if (unitName.equals("sack")) {
                 b.setStyle("-fx-background-color: #2196F3; -fx-text-fill: white;");
             } else {
@@ -235,7 +312,48 @@ public class NewStockController {
 
             b.getStyleClass().add("pill");
             b.setOnAction(evt -> appendUnit(unitName));
+
+            // STORE REFERENCE and add to box
+            unitButtonsMap.put(unitName, b);
             unitButtonsBox.getChildren().add(b);
+        }
+    }
+
+    private void filterUnitButtons(String size) {
+        if (size == null || size.isEmpty()) return;
+        String s = size.toLowerCase();
+
+        // First, hide all buttons
+        unitButtonsMap.values().forEach(btn -> {
+            btn.setVisible(false);
+            btn.setManaged(false);
+        });
+
+        // 2. APPLY STRICT LOGIC
+        if (s.contains("kg")) {
+            // WEIGHT-BASED: Only allow 'sack'
+            // This prevents "pcs" math errors for bulk goods
+            showButton("sack");
+        } else if (s.contains("ml") || s.contains("l")|| s.contains("g")) {
+            // VOLUME-BASED: Soda, Beer, etc.
+            showButton("pcs");
+            showButton("half doz");
+            showButton("dozen");
+            showButton("box");
+            showButton("carton");
+            showButton("crate");
+        } else {
+            // DEFAULT/OTHER: Show pcs and standard units
+            showButton("pcs");
+            showButton("dozen");
+        }
+    }
+
+    private void showButton(String key) {
+        Button b = unitButtonsMap.get(key);
+        if (b != null) {
+            b.setVisible(true);
+            b.setManaged(true);
         }
     }
 
@@ -320,6 +438,27 @@ public class NewStockController {
         String qtyRaw = qtyComboBox.getEditor().getText().trim().toLowerCase();
         String unitText = unitField.getText().trim().toLowerCase();
         String priceRaw = priceField.getText().trim().replaceAll("[^0-9.]", "");
+
+        // CHECK FOR NEW QTY: Check if the typed size exists in the dropdown list
+        boolean sizeExists = qtyComboBox.getItems().contains(qtyRaw);
+
+        if (!sizeExists && !qtyRaw.isEmpty()) {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
+            confirm.setTitle("New Quantity Size Detected");
+            confirm.setHeaderText("New Size: " + qtyRaw);
+            confirm.setContentText("This size is not in your current stock records for " + itemName + ".\n\n" +
+                    "Are you sure you want to add this as a NEW product category?");
+
+            // If they don't click OK, stop the process
+            if (confirm.showAndWait().get() != ButtonType.OK) {
+                return;
+            }
+        }
+        // inside onAdd()
+        if (!itemsComboBox.getItems().contains(itemName)) {
+            itemsComboBox.getItems().add(itemName);
+            FXCollections.sort(itemsComboBox.getItems()); // Keep it alphabetical
+        }
 
         // 2. Define allowed patterns
         // Matches numbers followed by g, kg, ml, or l (e.g., 500ml, 1.5l)
@@ -437,6 +576,8 @@ public class NewStockController {
         items.clear(); // Clear the ObservableList
         supplierNameField.clear();
         dataManager.notifyDataChanged();
+        // --- refreshDropdown to show added item ---
+        refreshDropdowns();
     }
 
     private void showAlert(String text) {
