@@ -25,49 +25,50 @@ public class DatabaseHelper {
 
     private void createTables() {
         String createStockTable = """
-            CREATE TABLE IF NOT EXISTS stock (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                supplier TEXT NOT NULL,
-                item TEXT NOT NULL,
-                quantity TEXT NOT NULL,
-                unit TEXT NOT NULL,
-                price REAL NOT NULL,
-                available_pieces REAL DEFAULT 0,
-                date TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """;
+                    CREATE TABLE IF NOT EXISTS stock (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        supplier TEXT NOT NULL,
+                        item TEXT NOT NULL,
+                        quantity TEXT NOT NULL,
+                        unit TEXT NOT NULL,
+                        price REAL NOT NULL,
+                        available_pieces REAL DEFAULT 0,
+                        date TEXT NOT NULL,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """;
 
         String createSalesTable = """
-            CREATE TABLE IF NOT EXISTS sales (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                customer TEXT NOT NULL,
-                item TEXT NOT NULL,
-                quantity TEXT NOT NULL,
-                unit TEXT NOT NULL,
-                price REAL NOT NULL,
-                cost_price REAL NOT NULL,
-                base_quantity REAL NOT NULL,
-                amount REAL NOT NULL,
-                type TEXT NOT NULL,
-                date TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        """;
+                    CREATE TABLE IF NOT EXISTS sales (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        customer TEXT NOT NULL,
+                        item TEXT NOT NULL,
+                        quantity TEXT NOT NULL,
+                        unit TEXT NOT NULL,
+                        price REAL NOT NULL,
+                        cost_price REAL NOT NULL,
+                        base_quantity REAL NOT NULL,
+                        amount REAL NOT NULL,
+                        type TEXT NOT NULL,
+                        date TEXT NOT NULL,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """;
 
         // New table to "Store" the year's total before resetting
         String createSummaryTable = """
-        CREATE TABLE IF NOT EXISTS yearly_summaries (
-            year INTEGER PRIMARY KEY,
-            total_profit REAL,
-            total_sales REAL,
-            closed_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """;
+                    CREATE TABLE IF NOT EXISTS yearly_summaries (
+                        year INTEGER PRIMARY KEY,
+                        total_profit REAL,
+                        total_sales REAL,
+                        closed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """;
 
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(createStockTable);
             stmt.execute(createSalesTable);
+            stmt.execute(createSummaryTable);
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -76,41 +77,55 @@ public class DatabaseHelper {
     // --- LOGIC ENGINE: CONVERSIONS ---
 
     public double convertToBaseUnit(String unit) {
-        if (unit == null) return 1.0;
+        if (unit == null)
+            return 1.0;
         String cleanUnit = unit.toLowerCase().trim();
 
         // SPECIFIC FIRST
-        if (cleanUnit.contains("half doz")) return 6.0;
+        if (cleanUnit.contains("half doz"))
+            return 6.0;
 
         // GENERAL SECOND
-        if (cleanUnit.contains("dozen") || cleanUnit.contains("doz")) return 12.0;
-        if (cleanUnit.contains("carton")) return 24.0;
-        if (cleanUnit.contains("crate")) return 25.0;
-        if (cleanUnit.contains("box")) return 20.0;
+        if (cleanUnit.contains("dozen") || cleanUnit.contains("doz"))
+            return 12.0;
+        if (cleanUnit.contains("carton"))
+            return 24.0;
+        if (cleanUnit.contains("crate"))
+            return 25.0;
+        if (cleanUnit.contains("box"))
+            return 20.0;
 
         return 1.0;
     }
 
     private double calculateTotalBaseStock(String unitCount, String size) {
         double count = extractNumericValue(unitCount);
-//        if (size.toLowerCase().contains("kg")) {
-//            double kgPerSack = extractNumericValue(size);
-//            return count * (kgPerSack > 0 ? kgPerSack : 1);
-//        }
+        // if (size.toLowerCase().contains("kg")) {
+        // double kgPerSack = extractNumericValue(size);
+        // return count * (kgPerSack > 0 ? kgPerSack : 1);
+        // }
         return count * getUnitMultiplier(unitCount, size);
     }
 
     private String formatStockForDisplay(double totalBase, String size) {
         if (size.toLowerCase().contains("kg")) {
             double kgPerSack = extractNumericValue(size);
-            if (kgPerSack <= 0) return String.format("%.2f kg", totalBase);
+            if (kgPerSack <= 0)
+                return String.format("%.2f kg", totalBase);
             int sacks = (int) (totalBase / kgPerSack);
             double remainingKg = totalBase % kgPerSack;
-            if (sacks > 0 && remainingKg > 0) return String.format("%d Sacks, %.2f kg", sacks, remainingKg);
-            if (sacks > 0) return String.format("%d Sacks", sacks);
+            if (sacks > 0 && remainingKg > 0)
+                return String.format("%d Sacks, %.2f kg", sacks, remainingKg);
+            if (sacks > 0)
+                return String.format("%d Sacks", sacks);
             return String.format("%.2f kg", remainingKg);
         }
-        return String.format("%,.0f pcs", totalBase);
+        // Use decimals for pieces if not a whole number
+        if (totalBase % 1 == 0) {
+            return String.format("%,.0f pcs", totalBase);
+        } else {
+            return String.format("%,.2f pcs", totalBase);
+        }
     }
 
     // --- STOCK OPERATIONS ---
@@ -121,12 +136,16 @@ public class DatabaseHelper {
             pstmt.setString(1, itemName);
             pstmt.setString(2, size);
             ResultSet rs = pstmt.executeQuery();
-            if (rs.next()) return rs.getInt(1) > 0;
-        } catch (SQLException e) { e.printStackTrace(); }
+            if (rs.next())
+                return rs.getInt(1) > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return false;
     }
 
-    public boolean mergeStock(String itemName, String size, String newUnit, double newPrice, String supplier, boolean forceSave) {
+    public boolean mergeStock(String itemName, String size, String newUnit, double newPrice, String supplier,
+            boolean forceSave) {
         String selectSql = "SELECT id, available_pieces, price FROM stock WHERE item = ? AND quantity = ?";
         try (PreparedStatement selectStmt = connection.prepareStatement(selectSql)) {
             selectStmt.setString(1, itemName);
@@ -155,7 +174,9 @@ public class DatabaseHelper {
                 String updateSql = "UPDATE stock SET available_pieces = ?, price = ?, supplier = ?, date = ?, unit = ? WHERE id = ?";
                 try (PreparedStatement updateStmt = connection.prepareStatement(updateSql)) {
                     updateStmt.setDouble(1, existingPieces + incomingPieces);
-                    updateStmt.setDouble(2, ((existingPieces * existingCostPerPiece) + (incomingPieces * newCostPerPiece)) / (existingPieces + incomingPieces));
+                    updateStmt.setDouble(2,
+                            ((existingPieces * existingCostPerPiece) + (incomingPieces * newCostPerPiece))
+                                    / (existingPieces + incomingPieces));
                     updateStmt.setString(3, supplier);
                     updateStmt.setString(4, LocalDate.now().toString());
                     updateStmt.setString(5, newUnit);
@@ -164,7 +185,9 @@ public class DatabaseHelper {
                     return true;
                 }
             }
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return false;
     }
 
@@ -190,7 +213,9 @@ public class DatabaseHelper {
                     updatePstmt.executeUpdate();
                 }
             }
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     public ObservableList<StockItem> getInStock() {
@@ -199,7 +224,7 @@ public class DatabaseHelper {
         String sql = "SELECT item, quantity, available_pieces, price, supplier, date FROM stock ORDER BY item";
 
         try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+                ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
                 double totalPieces = rs.getDouble("available_pieces");
                 double costPerPiece = rs.getDouble("price");
@@ -208,19 +233,21 @@ public class DatabaseHelper {
                 stockList.add(new StockItem(
                         rs.getString("item"),
                         itemSize,
-                        formatStockForDisplay(totalPieces, itemSize), // This will now show "180 pcs"
-                        String.format("%,.0f", costPerPiece),
-                        String.format("%,.0f", totalPieces * costPerPiece),
+                        formatStockForDisplay(totalPieces, itemSize), // This will now show "180 pcs" or "180.50 pcs"
+                        String.format("%,.2f", costPerPiece),
+                        String.format("%,.2f", totalPieces * costPerPiece),
                         rs.getString("supplier"),
-                        rs.getString("date")
-                ));
+                        rs.getString("date")));
             }
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return stockList;
     }
 
     public boolean hasEnoughStock(String itemName, String size, String soldUnit) {
-        try (PreparedStatement pstmt = connection.prepareStatement("SELECT available_pieces FROM stock WHERE item = ? AND quantity = ?")) {
+        try (PreparedStatement pstmt = connection
+                .prepareStatement("SELECT available_pieces FROM stock WHERE item = ? AND quantity = ?")) {
             pstmt.setString(1, itemName);
             pstmt.setString(2, size);
             ResultSet rs = pstmt.executeQuery();
@@ -229,12 +256,15 @@ public class DatabaseHelper {
                 double amountTryingToSell = extractNumericValue(soldUnit) * getUnitMultiplier(soldUnit, size);
                 return stockAvailable >= amountTryingToSell;
             }
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return false;
     }
 
     public String getAvailableStock(String itemName, String size) {
-        try (PreparedStatement pstmt = connection.prepareStatement("SELECT unit, quantity FROM stock WHERE item = ? AND quantity = ?")) {
+        try (PreparedStatement pstmt = connection
+                .prepareStatement("SELECT unit, quantity FROM stock WHERE item = ? AND quantity = ?")) {
             pstmt.setString(1, itemName);
             pstmt.setString(2, size);
             ResultSet rs = pstmt.executeQuery();
@@ -242,7 +272,9 @@ public class DatabaseHelper {
                 double total = calculateTotalBaseStock(rs.getString("unit"), rs.getString("quantity"));
                 return formatStockForDisplay(total, rs.getString("quantity"));
             }
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return "0 pcs";
     }
 
@@ -258,12 +290,15 @@ public class DatabaseHelper {
                 data.put("price", rs.getDouble("price"));
                 data.put("unit", rs.getString("unit").toLowerCase());
             }
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return data;
     }
     // --- SALES & HISTORY ---
 
-    public void addSale(String customer, String item, String quantity, String unit, double price, double amount, String type, String date) {
+    public void addSale(String customer, String item, String quantity, String unit, double price, double amount,
+            String type, String date) {
         // Added cost_price and base_quantity with default 0.0 for stock entries
         String sql = "INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
@@ -272,8 +307,8 @@ public class DatabaseHelper {
             pstmt.setString(3, quantity);
             pstmt.setString(4, unit);
             pstmt.setDouble(5, price);
-            pstmt.setDouble(6, 0.0);    // Default cost_price for 'NEW STOCK'
-            pstmt.setDouble(7, 0.0);    // Default base_quantity for 'NEW STOCK'
+            pstmt.setDouble(6, 0.0); // Default cost_price for 'NEW STOCK'
+            pstmt.setDouble(7, 0.0); // Default base_quantity for 'NEW STOCK'
             pstmt.setDouble(8, amount);
             pstmt.setString(9, type);
             pstmt.setString(10, date);
@@ -289,19 +324,21 @@ public class DatabaseHelper {
         // 1. Updated SQL to include cost_price and base_quantity
         String sql = "SELECT customer, item, type, quantity, unit, price, cost_price, base_quantity, amount, date FROM sales WHERE 1=1";
 
-        if (filter != null && !filter.isEmpty() && !"ALL".equals(filter)) sql += " AND type = ?";
+        if (filter != null && !filter.isEmpty() && !"ALL".equals(filter))
+            sql += " AND type = ?";
         sql += " ORDER BY date DESC, created_at DESC";
 
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            if (filter != null && !filter.isEmpty() && !"ALL".equals(filter)) pstmt.setString(1, filter);
+            if (filter != null && !filter.isEmpty() && !"ALL".equals(filter))
+                pstmt.setString(1, filter);
             ResultSet rs = pstmt.executeQuery();
 
             while (rs.next()) {
-                double amount = rs.getDouble("amount");        // e.g., 52,000.0
-                double cost = rs.getDouble("cost_price");      // e.g., 2,083.3333
+                double amount = rs.getDouble("amount"); // e.g., 52,000.0
+                double cost = rs.getDouble("cost_price"); // e.g., 2,083.3333
                 double baseQty = rs.getDouble("base_quantity"); // e.g., 24.0
 
-// Precision math: 52000 - (2083.3333 * 24) = 2000.0
+                // Precision math: 52000 - (2083.3333 * 24) = 2000.0
                 long profitVal = Math.round(amount - (cost * baseQty));
 
                 history.add(new HistoryItem(
@@ -313,8 +350,7 @@ public class DatabaseHelper {
                         String.format("%,.0f", rs.getDouble("price")),
                         String.format("%,.0f", amount),
                         String.format("%,d", profitVal), // Displays exactly 2,000
-                        rs.getString("date")
-                ));
+                        rs.getString("date")));
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -325,19 +361,20 @@ public class DatabaseHelper {
     public ObservableList<HistoryItem> getTodaysSales() {
         ObservableList<HistoryItem> history = FXCollections.observableArrayList();
         String today = LocalDate.now().toString();
-        String sql = "SELECT customer, item, type, quantity, unit, price, amount, cost_price, base_quantity, date FROM sales " +
+        String sql = "SELECT customer, item, type, quantity, unit, price, amount, cost_price, base_quantity, date FROM sales "
+                +
                 "WHERE date = ? AND type != 'NEW STOCK' ORDER BY created_at DESC";
 
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, today);
             ResultSet rs = pstmt.executeQuery();
             while (rs.next()) {
-                double amount = rs.getDouble("amount");        // e.g., 52,000.0
-                double cost = rs.getDouble("cost_price");      // e.g., 2,083.3333
+                double amount = rs.getDouble("amount"); // e.g., 52,000.0
+                double cost = rs.getDouble("cost_price"); // e.g., 2,083.3333
                 double baseQty = rs.getDouble("base_quantity"); // e.g., 24.0
 
-// Precision math: 52000 - (2083.3333 * 24) = 2000.0
-                long profitVal = Math.round(amount - (cost * baseQty));
+                // Precision math: 52000 - (2083.3333 * 24) = 2000.0
+                double profitVal = amount - (cost * baseQty);
 
                 history.add(new HistoryItem(
                         rs.getString("customer"),
@@ -345,24 +382,27 @@ public class DatabaseHelper {
                         rs.getString("type"),
                         rs.getString("quantity"),
                         rs.getString("unit"),
-                        String.format("%,.0f", rs.getDouble("price")),
-                        String.format("%,.0f", amount),
-                        String.format("%,d", profitVal), // Displays exactly 2,000
-                        rs.getString("date")
-                ));
+                        String.format("%,.2f", rs.getDouble("price")),
+                        String.format("%,.2f", amount),
+                        String.format("%,.2f", profitVal), // Displays exactly 2,000.00
+                        rs.getString("date")));
             }
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return history;
     }
 
-    public void addSaleWithProfit(String customer, String item, String size, String unit, double sellingPrice, String type) {
+    public void addSaleWithProfit(String customer, String item, String size, String unit, double sellingPrice,
+            String type) {
         // Remove Math.floor here if you added it earlier!
         double costPrice = getLastRecordedPrice(item, size);
 
         // 1. Get the raw number (e.g., "2" from "2 dozen")
         double unitCount = extractNumericValue(unit);
 
-        // 2. Get the multiplier (e.g., 12 for dozen) to find total pieces for stock deduction
+        // 2. Get the multiplier (e.g., 12 for dozen) to find total pieces for stock
+        // deduction
         double multiplier = getUnitMultiplier(unit, size);
         double baseQty = unitCount * multiplier;
 
@@ -378,12 +418,14 @@ public class DatabaseHelper {
             pstmt.setString(4, unit);
             pstmt.setDouble(5, sellingPrice);
             pstmt.setDouble(6, costPrice);
-            pstmt.setDouble(7, baseQty);       // Keep this as 24 for profit math (pieces * cost_per_piece)
-            pstmt.setDouble(8, totalAmount);   // This will now be 52,000
+            pstmt.setDouble(7, baseQty); // Keep this as 24 for profit math (pieces * cost_per_piece)
+            pstmt.setDouble(8, totalAmount); // This will now be 52,000
             pstmt.setString(9, type);
             pstmt.setString(10, LocalDate.now().toString());
             pstmt.executeUpdate();
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     public double getCurrentYearProfit() {
@@ -393,8 +435,11 @@ public class DatabaseHelper {
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, yearPrefix);
             ResultSet rs = pstmt.executeQuery();
-            if (rs.next()) return rs.getDouble(1);
-        } catch (SQLException e) { e.printStackTrace(); }
+            if (rs.next())
+                return rs.getDouble(1);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return 0.0;
     }
 
@@ -407,7 +452,9 @@ public class DatabaseHelper {
             pstmt.setInt(1, year);
             pstmt.setDouble(2, totalProfit);
             pstmt.executeUpdate();
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     public double getLastRecordedPrice(String item, String size) {
@@ -420,21 +467,26 @@ public class DatabaseHelper {
             if (rs.next()) {
                 return rs.getDouble("price");
             }
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return 0.0;
     }
 
     // --- DATA HELPERS ---
 
     public double extractNumericValue(String text) {
-        if (text == null || text.isEmpty()) return 0.0;
+        if (text == null || text.isEmpty())
+            return 0.0;
 
         String lowercaseText = text.toLowerCase().trim();
         double fractionValue = 0.0;
 
         // 1. Identify the fraction value
-        if (lowercaseText.contains("1/4")) fractionValue = 0.25;
-        else if (lowercaseText.contains("1/2")) fractionValue = 0.5;
+        if (lowercaseText.contains("1/4"))
+            fractionValue = 0.25;
+        else if (lowercaseText.contains("1/2"))
+            fractionValue = 0.5;
 
         // 2. Extract the whole number (the "2" in "2 1/2 kg")
         String numbersOnly = lowercaseText
@@ -458,12 +510,6 @@ public class DatabaseHelper {
         return fractionValue; // Return 0.25 or 0.5 if no leading number exists
     }
 
-    private String extractUnitType(String text) {
-        if (text == null) return "pcs";
-        String type = text.replaceAll("[0-9.]", "").trim().toLowerCase();
-        return type.isEmpty() ? "pcs" : type;
-    }
-
     public double getExistingPrice(String item, String size) {
         String sql = "SELECT price FROM stock WHERE item = ? AND quantity = ? LIMIT 1";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
@@ -473,12 +519,15 @@ public class DatabaseHelper {
             if (rs.next()) {
                 return rs.getDouble("price"); // This is the price per 1 KG (e.g., 3000)
             }
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return 0.0;
     }
 
     public double getUnitMultiplier(String unitText, String size) {
-        if (unitText == null) return 1.0;
+        if (unitText == null)
+            return 1.0;
         String type = unitText.toLowerCase().trim();
         String sizeLower = size.toLowerCase().trim();
 
@@ -492,13 +541,18 @@ public class DatabaseHelper {
         if (type.contains("sack") || (isBulkSack && type.contains("pc"))) {
             return sizeNum;
         }
-        if (type.contains("half doz")) return 6.0;
+        if (type.contains("half doz"))
+            return 6.0;
 
         // 2. Check for the shorter/general strings last
-        if (type.contains("dozen") || type.contains("doz")) return 12.0;
-        if (type.contains("carton")) return 24.0;
-        if (type.contains("crate")) return 25.0;
-        if (type.contains("box")) return 20.0;
+        if (type.contains("dozen") || type.contains("doz"))
+            return 12.0;
+        if (type.contains("carton"))
+            return 24.0;
+        if (type.contains("crate"))
+            return 25.0;
+        if (type.contains("box"))
+            return 20.0;
 
         return 1.0;
     }
@@ -523,29 +577,43 @@ public class DatabaseHelper {
             pstmt.setDouble(6, totalPieces);
             pstmt.setString(7, d);
             pstmt.executeUpdate();
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     public ObservableList<String> getAvailableItems() {
         ObservableList<String> items = FXCollections.observableArrayList();
         try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery("SELECT DISTINCT item FROM stock ORDER BY item")) {
-            while (rs.next()) items.add(rs.getString("item"));
-        } catch (SQLException e) { e.printStackTrace(); }
+                ResultSet rs = stmt.executeQuery("SELECT DISTINCT item FROM stock ORDER BY item")) {
+            while (rs.next())
+                items.add(rs.getString("item"));
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return items;
     }
 
     public ObservableList<String> getItemSizes(String itemName) {
         ObservableList<String> sizes = FXCollections.observableArrayList();
-        try (PreparedStatement pstmt = connection.prepareStatement("SELECT DISTINCT quantity FROM stock WHERE item = ?")) {
+        try (PreparedStatement pstmt = connection
+                .prepareStatement("SELECT DISTINCT quantity FROM stock WHERE item = ?")) {
             pstmt.setString(1, itemName);
             ResultSet rs = pstmt.executeQuery();
-            while (rs.next()) sizes.add(rs.getString("quantity"));
-        } catch (SQLException e) { e.printStackTrace(); }
+            while (rs.next())
+                sizes.add(rs.getString("quantity"));
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return sizes;
     }
 
     public void close() {
-        try { if (connection != null) connection.close(); } catch (SQLException e) { e.printStackTrace(); }
+        try {
+            if (connection != null)
+                connection.close();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 }

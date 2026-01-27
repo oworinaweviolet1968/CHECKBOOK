@@ -9,33 +9,54 @@ import javafx.scene.control.*;
 import javafx.scene.layout.HBox;
 
 import java.time.LocalDate;
+import java.util.function.UnaryOperator;
 
 public class SalesController implements DataManager.DataChangeListener {
 
-    @FXML private TextField customerNameField;
-    @FXML private ComboBox<String> itemsComboBox;
-    @FXML private ComboBox<String> qtyComboBox;
-    @FXML private TextField unitField;
-    @FXML private TextField qtyField;
-    @FXML private TextField priceField;
-    @FXML private Button addButton;
-    @FXML private Button saveButton;
-    @FXML private Button quarterKgBtn;
-    @FXML private Button halfKgBtn;
-    @FXML private Button kgBtn;
-    @FXML private Button sackBtn;
-    @FXML private Label unitErrorLabel;
-    @FXML private HBox weightButtonsBox;
-    @FXML private HBox unitButtonsBox;
+    @FXML
+    private TextField customerNameField;
+    @FXML
+    private ComboBox<String> itemsComboBox;
+    @FXML
+    private ComboBox<String> qtyComboBox;
+    @FXML
+    private TextField unitField;
+    @FXML
+    private TextField qtyField;
+    @FXML
+    private TextField priceField;
+    @FXML
+    private Button addButton;
+    @FXML
+    private Button saveButton;
+    @FXML
+    private Button quarterKgBtn;
+    @FXML
+    private Button halfKgBtn;
+    @FXML
+    private Button kgBtn;
+    @FXML
+    private Button sackBtn;
+    @FXML
+    private Label unitErrorLabel;
+    @FXML
+    private HBox weightButtonsBox;
+    @FXML
+    private HBox unitButtonsBox;
 
     // Unit buttons
-    @FXML private Button pcsBtn, halfDozenBtn, cartonBtn, dozenBtn, boxBtn,crateBtn;
+    @FXML
+    private Button pcsBtn, halfDozenBtn, cartonBtn, dozenBtn, boxBtn, crateBtn;
 
-    @FXML private TableView<SaleItem> salesTable;
-    @FXML private TableColumn<SaleItem, String> itemCol, qtyCol, unitCol, priceCol, amountCol;
-    @FXML private TableColumn<SaleItem, Void> deleteCol;
+    @FXML
+    private TableView<SaleItem> salesTable;
+    @FXML
+    private TableColumn<SaleItem, String> itemCol, qtyCol, unitCol, priceCol, amountCol;
+    @FXML
+    private TableColumn<SaleItem, Void> deleteCol;
 
-    @FXML private Label totalAmountLabel;
+    @FXML
+    private Label totalAmountLabel;
 
     private final ObservableList<SaleItem> items = FXCollections.observableArrayList();
     private final DataManager dataManager = DataManager.getInstance();
@@ -49,23 +70,107 @@ public class SalesController implements DataManager.DataChangeListener {
         setupDropdowns();
         updateTotal();
 
-        // Hide error label immediately when the unit field text changes
+        // --- SECURITY: BLOCK FORBIDDEN CHARACTERS & LIMIT LENGTH ---
+        UnaryOperator<TextFormatter.Change> filter = change -> {
+            String newText = change.getControlNewText();
+
+            // 1. Length Limit (45 chars)
+            if (newText.length() > 45)
+                return null;
+
+            // 2. Block forbidden patterns in the FULL text (e.g., // or ..)
+            if (newText.contains("//") || newText.contains("..") || newText.contains(";;") || newText.contains("@@")) {
+                return null;
+            }
+
+            // 3. Allow only specific characters in the CHANGED text (typing)
+            // Allow A-Z, 0-9, space, dot, dash, comma, slash
+            String text = change.getText();
+            if (text.matches("[a-zA-Z0-9 .\\-,/]*")) {
+                return change;
+            }
+            return null; // Block otherwise
+        };
+        customerNameField.setTextFormatter(new TextFormatter<>(filter));
+        // We also want to protect the unit field slightly, though it needs flexibility
+        unitField.setTextFormatter(new TextFormatter<>(change -> {
+            if (change.getText().matches("[a-zA-Z0-9 .\\-,/]*"))
+                return change;
+            return null;
+        }));
+
+        // --- STEP 0: START LOCKED ---
+        setFlowLevel(0);
+
+        // --- FLOW CONTROL LISTENERS ---
+
+        customerNameField.textProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal.trim().isEmpty()) {
+                setFlowLevel(0);
+                itemsComboBox.setValue(null);
+            } else {
+                setFlowLevel(1);
+            }
+        });
+
+        itemsComboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal == null) {
+                if (!customerNameField.getText().trim().isEmpty())
+                    setFlowLevel(1);
+                qtyComboBox.setValue(null);
+            } else {
+                setFlowLevel(2);
+
+                // NEW: Check if the Size is "None" -> Loop Logic
+                // We need to wait for sizes to load. If the only size is "None", auto-skip.
+                // refreshSizesDropdown handles the selection.
+                // Here we just check if value became None immediately.
+            }
+        });
+
+        qtyComboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
+            updateButtonVisibility(newVal);
+            if (newVal == null) {
+                if (itemsComboBox.getValue() != null)
+                    setFlowLevel(2);
+                unitField.clear();
+            } else {
+                if (newVal.equalsIgnoreCase("None")) {
+                    // Logic for NONE item:
+                    // 1. Advance Flow to Level 3 (Enable Unit)
+                    // 2. Disable this Qty box so they can't mess with it
+                    setFlowLevel(3);
+                    qtyComboBox.setDisable(true); // Visual Block
+                } else {
+                    setFlowLevel(3);
+                }
+            }
+        });
+
         unitField.textProperty().addListener((obs, oldVal, newVal) -> {
             unitErrorLabel.setVisible(false);
             unitErrorLabel.setManaged(false);
+
+            if (newVal.trim().isEmpty()) {
+                if (qtyComboBox.getValue() != null)
+                    setFlowLevel(3);
+                priceField.clear();
+            } else {
+                setFlowLevel(4);
+            }
         });
 
-        // Also hide it when the customer name starts being typed
-        customerNameField.textProperty().addListener((obs, oldVal, newVal) -> {
-            // If you add a customer error label later, hide it here
-        });
-        // Create a listener for when the Size (qtyComboBox) changes
-        qtyComboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
-            updateButtonVisibility(newVal);
+        priceField.textProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal.trim().isEmpty()) {
+                if (!unitField.getText().trim().isEmpty())
+                    setFlowLevel(4);
+                addButton.setDisable(true);
+            } else {
+                setFlowLevel(5);
+            }
         });
 
-        // Call it once to hide everything until an item is picked
-        // IMPORTANT: Only call this if the boxes aren't null
+        // Initialize visibility
         if (weightButtonsBox != null && unitButtonsBox != null) {
             updateButtonVisibility(null);
         }
@@ -93,6 +198,28 @@ public class SalesController implements DataManager.DataChangeListener {
         }
     }
 
+    private void setFlowLevel(int level) {
+        // Level 0: Start (Customer Name only)
+        // Level 1: Customer entered -> Enable Items
+        // Level 2: Item picked -> Enable Size (Qty)
+        // Level 3: Size picked -> Enable Unit (Count)
+        // Level 4: Unit entered -> Enable Price
+        // Level 5: Price entered -> Enable Add Button
+
+        itemsComboBox.setDisable(level < 1);
+        qtyComboBox.setDisable(level < 2);
+
+        boolean unitEnabled = level >= 3;
+        unitField.setDisable(!unitEnabled);
+        if (unitButtonsBox != null)
+            unitButtonsBox.setDisable(!unitEnabled);
+        if (weightButtonsBox != null)
+            weightButtonsBox.setDisable(!unitEnabled);
+
+        priceField.setDisable(level < 4);
+        addButton.setDisable(level < 5);
+    }
+
     // Helper to handle both Visibility and Managed state (removing the gap)
     private void setBoxVisible(HBox box, boolean visible) {
         // Add this null check to prevent the crash
@@ -115,6 +242,7 @@ public class SalesController implements DataManager.DataChangeListener {
     private void handleHalfKg() {
         unitField.setText("1/2 kg");
     }
+
     @Override
     public void onDataChanged() {
         // Refresh dropdowns when new items are added
@@ -149,6 +277,11 @@ public class SalesController implements DataManager.DataChangeListener {
         // Auto-select first size if only one exists
         if (sizes.size() == 1) {
             qtyComboBox.setValue(sizes.get(0));
+        } else if (sizes.contains("None")) {
+            // If there are mixed sizes but one is None? Usually unlikely for same item
+            // name.
+            // But if specific request for "Pens", might just default select None.
+            qtyComboBox.setValue("None");
         }
     }
 
@@ -231,21 +364,29 @@ public class SalesController implements DataManager.DataChangeListener {
 
     private String getUnitValue(String unit) {
         switch (unit.toLowerCase()) {
-            case "pcs": return "1";
-            case "half doz": return "1";
-            case "carton": return "1";
-            case "dozen": return "1";
-            case "box": return "1";
-            case "crate": return "1"; // Added consistency
-            default: return "1";
+            case "pcs":
+                return "1";
+            case "half doz":
+                return "1";
+            case "carton":
+                return "1";
+            case "dozen":
+                return "1";
+            case "box":
+                return "1";
+            case "crate":
+                return "1"; // Added consistency
+            default:
+                return "1";
         }
     }
 
     private void addItem() {
         String item = itemsComboBox.getValue();
         String size = qtyComboBox.getValue();
-        //String countUnit = unitField.getText().trim();
-        String priceText = priceField.getText().replaceAll("[^0-9,]", "").replace(",", "");
+        // String countUnit = unitField.getText().trim();
+        // Allow dot in regex
+        String priceText = priceField.getText().replaceAll("[^0-9,.]", "").replace(",", "");
 
         unitErrorLabel.setVisible(false);
         unitErrorLabel.setManaged(false);
@@ -288,6 +429,26 @@ public class SalesController implements DataManager.DataChangeListener {
             double amount = moneyMultiplier * price;
             // ------------------------------
 
+            // --- PROFIT CHECK ---
+            double costPerPiece = dataManager.getDbHelper().getLastRecordedPrice(item, size);
+            double dbUnitCount = dataManager.getDbHelper().extractNumericValue(countUnit);
+            double dbMultiplier = dataManager.getDbHelper().getUnitMultiplier(countUnit, size);
+            double totalCost = dbUnitCount * dbMultiplier * costPerPiece;
+
+            if (totalCost > 0 && amount < totalCost) {
+                Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                alert.setTitle("Negative Profit Warning");
+                alert.setHeaderText("Selling Below Cost Price!");
+                alert.setContentText(String.format(
+                        "You are selling this item for UGX %,.2f\nBut the cost price is UGX %,.2f\n\nThis will result in a LOSS.\n\nDo you want to proceed?",
+                        amount, totalCost));
+
+                if (alert.showAndWait().get() != ButtonType.OK) {
+                    return; // Cancel addition
+                }
+            }
+            // --------------------
+
             if (!dataManager.getDbHelper().hasEnoughStock(item, size, countUnit)) {
                 showAlert("Not enough stock!\nAvailable: " + dataManager.getDbHelper().getAvailableStock(item, size));
                 return;
@@ -297,9 +458,8 @@ public class SalesController implements DataManager.DataChangeListener {
                     item,
                     size,
                     countUnit,
-                    String.format("%,.0f", price),
-                    String.format("%,.0f", amount)
-            ));
+                    String.format("%,.2f", price),
+                    String.format("%,.2f", amount)));
 
             clearFields();
             updateTotal();
@@ -313,7 +473,8 @@ public class SalesController implements DataManager.DataChangeListener {
         // Looks for a number before the fraction (e.g., "2 1/4 kg" -> 2)
         String firstPart = text.split(" ")[0];
         try {
-            if (firstPart.contains("/")) return 1.0; // It's just the fraction, so count as 1
+            if (firstPart.contains("/"))
+                return 1.0; // It's just the fraction, so count as 1
             return Double.parseDouble(firstPart.replaceAll("[^0-9.]", ""));
         } catch (Exception e) {
             return 1.0;
@@ -321,10 +482,13 @@ public class SalesController implements DataManager.DataChangeListener {
     }
 
     private double extractNumber(String text) {
-        if (text.toLowerCase().contains("1/4") || text.contains("0.25")) return 0.25;
-        if (text.toLowerCase().contains("1/2") || text.contains("0.5")) return 0.5;
+        if (text.toLowerCase().contains("1/4") || text.contains("0.25"))
+            return 0.25;
+        if (text.toLowerCase().contains("1/2") || text.contains("0.5"))
+            return 0.5;
 
-        if (text.toLowerCase().contains("sack")) return 1.0;
+        if (text.toLowerCase().contains("sack"))
+            return 1.0;
         String numbers = text.replaceAll("[^0-9.]", "");
         return numbers.isEmpty() ? 1.0 : Double.parseDouble(numbers);
     }
@@ -418,7 +582,7 @@ public class SalesController implements DataManager.DataChangeListener {
                     }
                 })
                 .sum();
-        totalAmountLabel.setText(String.format("TOTAL AMOUNT: UGX %,.0f", total));
+        totalAmountLabel.setText(String.format("TOTAL AMOUNT: UGX %,.2f", total));
     }
 
     private void showAlert(String message) {

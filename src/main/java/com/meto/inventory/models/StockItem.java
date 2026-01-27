@@ -13,7 +13,8 @@ public class StockItem {
     private final StringProperty supplier = new SimpleStringProperty();
     private final StringProperty date = new SimpleStringProperty();
 
-    public StockItem() {}
+    public StockItem() {
+    }
 
     // Original constructor (5 parameters)
     public StockItem(String items, String qty, String unit, String price, String amount) {
@@ -26,7 +27,7 @@ public class StockItem {
 
     // New constructor with supplier and date (7 parameters)
     public StockItem(String items, String qty, String unit, String price, String amount,
-                     String supplier, String date) {
+            String supplier, String date) {
         this.items.set(items);
         this.qty.set(qty);
         this.unit.set(unit);
@@ -37,33 +38,89 @@ public class StockItem {
     }
 
     // Getters and property methods
-    public String getItems() { return items.get(); }
-    public void setItems(String items) { this.items.set(items); }
-    public StringProperty itemsProperty() { return items; }
+    public String getItems() {
+        return items.get();
+    }
 
-    public String getQty() { return qty.get(); }
-    public void setQty(String qty) { this.qty.set(qty); }
-    public StringProperty qtyProperty() { return qty; }
+    public void setItems(String items) {
+        this.items.set(items);
+    }
 
-    public String getUnit() { return unit.get(); }
-    public void setUnit(String unit) { this.unit.set(unit); }
-    public StringProperty unitProperty() { return unit; }
+    public StringProperty itemsProperty() {
+        return items;
+    }
 
-    public String getPrice() { return price.get(); }
-    public void setPrice(String price) { this.price.set(price); }
-    public StringProperty priceProperty() { return price; }
+    public String getQty() {
+        return qty.get();
+    }
 
-    public String getAmount() { return amount.get(); }
-    public void setAmount(String amount) { this.amount.set(amount); }
-    public StringProperty amountProperty() { return amount; }
+    public void setQty(String qty) {
+        this.qty.set(qty);
+    }
 
-    public String getSupplier() { return supplier.get(); }
-    public void setSupplier(String supplier) { this.supplier.set(supplier); }
-    public StringProperty supplierProperty() { return supplier; }
+    public StringProperty qtyProperty() {
+        return qty;
+    }
 
-    public String getDate() { return date.get(); }
-    public void setDate(String date) { this.date.set(date); }
-    public StringProperty dateProperty() { return date; }
+    public String getUnit() {
+        return unit.get();
+    }
+
+    public void setUnit(String unit) {
+        this.unit.set(unit);
+    }
+
+    public StringProperty unitProperty() {
+        return unit;
+    }
+
+    public String getPrice() {
+        return price.get();
+    }
+
+    public void setPrice(String price) {
+        this.price.set(price);
+    }
+
+    public StringProperty priceProperty() {
+        return price;
+    }
+
+    public String getAmount() {
+        return amount.get();
+    }
+
+    public void setAmount(String amount) {
+        this.amount.set(amount);
+    }
+
+    public StringProperty amountProperty() {
+        return amount;
+    }
+
+    public String getSupplier() {
+        return supplier.get();
+    }
+
+    public void setSupplier(String supplier) {
+        this.supplier.set(supplier);
+    }
+
+    public StringProperty supplierProperty() {
+        return supplier;
+    }
+
+    public String getDate() {
+        return date.get();
+    }
+
+    public void setDate(String date) {
+        this.date.set(date);
+    }
+
+    public StringProperty dateProperty() {
+        return date;
+    }
 
     public javafx.beans.binding.StringBinding computedAmountProperty() {
         return Bindings.createStringBinding(() -> {
@@ -72,12 +129,13 @@ public class StockItem {
                 String qStr = getQty() == null ? "" : getQty().replaceAll("[^0-9.]", "");
                 String pStr = getPrice() == null ? "" : getPrice().replaceAll("[^0-9.]", "");
 
-                if (qStr.isEmpty() || pStr.isEmpty()) return "UGX 0";
+                if (qStr.isEmpty() || pStr.isEmpty())
+                    return "UGX 0";
 
                 double qtyVal = Double.parseDouble(qStr);
                 double priceVal = Double.parseDouble(pStr);
 
-                return String.format("UGX %,.0f", qtyVal * priceVal);
+                return String.format("UGX %,.2f", qtyVal * priceVal);
             } catch (Exception e) {
                 return "UGX 0";
             }

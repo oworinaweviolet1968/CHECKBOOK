@@ -17,19 +17,32 @@ import java.util.regex.Pattern;
 
 public class NewStockController {
 
-    @FXML private TextField supplierNameField;
-    @FXML private TextField unitField;
-    @FXML private TextField priceField;
-    @FXML private Button addButton;
-    @FXML private Button saveButton;
-    @FXML private TableView<StockItem> newStockTable;
-    @FXML private TableColumn<StockItem, Void> actionColumn;
-    @FXML private Label totalAmountLabel;
-    @FXML private HBox qtyButtonsBox;
-    @FXML private HBox unitButtonsBox;
-    @FXML private Label supplierErrorLabel, itemErrorLabel, qtyErrorLabel, unitErrorLabel, priceErrorLabel;
-    @FXML private ComboBox<String> itemsComboBox;
-    @FXML private ComboBox<String> qtyComboBox;
+    @FXML
+    private TextField supplierNameField;
+    @FXML
+    private TextField unitField;
+    @FXML
+    private TextField priceField;
+    @FXML
+    private Button addButton;
+    @FXML
+    private Button saveButton;
+    @FXML
+    private TableView<StockItem> newStockTable;
+    @FXML
+    private TableColumn<StockItem, Void> actionColumn;
+    @FXML
+    private Label totalAmountLabel;
+    @FXML
+    private HBox qtyButtonsBox;
+    @FXML
+    private HBox unitButtonsBox;
+    @FXML
+    private Label supplierErrorLabel, itemErrorLabel, qtyErrorLabel, unitErrorLabel, priceErrorLabel;
+    @FXML
+    private ComboBox<String> itemsComboBox;
+    @FXML
+    private ComboBox<String> qtyComboBox;
 
     private final ObservableList<StockItem> items = FXCollections.observableArrayList();
     private final DataManager dataManager = DataManager.getInstance();
@@ -40,6 +53,30 @@ public class NewStockController {
         refreshDropdowns();
         createQtyQuickButtons();
         createUnitQuickButtons();
+        setupTableColumns();
+        setupAutoPriceCalculation();
+
+        // --- SECURITY: BLOCK FORBIDDEN CHARACTERS & LIMIT LENGTH ---
+        java.util.function.UnaryOperator<TextFormatter.Change> filter = change -> {
+            String newText = change.getControlNewText();
+            // 1. Length Limit (45 chars)
+            if (newText.length() > 45)
+                return null;
+
+            // 2. Block forbidden patterns
+            if (newText.contains("//") || newText.contains("..") || newText.contains(";;") || newText.contains("@@")) {
+                return null;
+            }
+
+            // 3. Allow only specific characters
+            // Same as SalesController: A-Z, 0-9, space, dot, dash, comma, slash
+            if (change.getText().matches("[a-zA-Z0-9 .\\-,/]*")) {
+                return change;
+            }
+            return null;
+        };
+        supplierNameField.setTextFormatter(new TextFormatter<>(filter));
+        itemsComboBox.getEditor().setTextFormatter(new TextFormatter<>(filter));
         // Force numbers only while typing, but allow the buttons to append the text
         unitField.addEventFilter(KeyEvent.KEY_TYPED, event -> {
             if (!event.getCharacter().matches("[0-9]")) {
@@ -67,13 +104,13 @@ public class NewStockController {
             }
         });
 
-// --- STEP 2: QTY VALIDATION ---
+        // --- STEP 2: QTY VALIDATION ---
         qtyComboBox.getEditor().textProperty().addListener((obs, old, newVal) -> {
             // If Qty changes, clear Unit and Price
             unitField.clear();
             priceField.clear();
 
-            String sizePattern = ".*\\d+(g|kg|ml|l)$";
+            String sizePattern = ".*\\d+(g|kg|ml|l)$|^none$";
             if (newVal.toLowerCase().matches(sizePattern)) {
                 filterUnitButtons(newVal);
                 setFlowLevel(2);
@@ -82,7 +119,7 @@ public class NewStockController {
             }
         });
 
-// --- STEP 3: UNIT VALIDATION ---
+        // --- STEP 3: UNIT VALIDATION ---
         unitField.textProperty().addListener((obs, old, newVal) -> {
             // If Unit changes manually or via button, clear Price to force recalculation
             // Note: We don't clear if newVal is empty to avoid infinite loops
@@ -98,32 +135,52 @@ public class NewStockController {
             }
         });
 
-        priceField.textProperty().addListener((observable, oldValue, newValue) -> {
-            if (newValue == null || newValue.isEmpty()) return;
+        // --- PRICE FIELD: COMMA FORMATTING & TEXT BLOCKING ---
+        priceField.addEventFilter(KeyEvent.KEY_TYPED, event -> {
+            if (!event.getCharacter().matches("[0-9.]"))
+                event.consume();
+        });
 
-            // 1. Remove all non-digits (including existing commas)
-            String cleanString = newValue.replaceAll("[^0-9]", "");
-
-            if (cleanString.isEmpty()) {
-                priceField.setText("");
+        priceField.textProperty().addListener((obs, old, newVal) -> {
+            if (newVal == null || newVal.isEmpty())
                 return;
+            // Allow typing just a dot or starting with a dot
+            if (newVal.equals("."))
+                return;
+
+            String clean = newVal.replaceAll("[^0-9.]", "");
+            // Prevent multiple dots
+            if (clean.indexOf('.') != clean.lastIndexOf('.')) {
+                clean = clean.substring(0, clean.lastIndexOf('.'));
             }
 
-            try {
-                // 2. Format the number with commas
-                long parsed = Long.parseLong(cleanString);
-                String formatted = String.format("%,d", parsed);
-
-                // 3. Update the field ONLY if the value actually changed
-                // (This prevents an infinite loop of listeners)
-                if (!newValue.equals(formatted)) {
-                    priceField.setText(formatted);
-                    // Move cursor to the end so typing isn't interrupted
-                    priceField.positionCaret(formatted.length());
+            if (clean.isEmpty())
+                return;
+            // Only format if it doesn't end with a dot (allow user to type decimals)
+            if (!clean.endsWith(".")) {
+                try {
+                    // Check if we have decimal part
+                    if (clean.contains(".")) {
+                        double val = Double.parseDouble(clean);
+                        // Don't enforce format while typing decimals aggressively
+                    } else {
+                        long val = Long.parseLong(clean);
+                        String formatted = String.format("%,d", val);
+                        if (!newVal.equals(formatted)) {
+                            priceField.setText(formatted);
+                            priceField.positionCaret(formatted.length());
+                        }
+                    }
+                } catch (Exception e) {
+                    // Ignore parsing errors while typing
                 }
-            } catch (NumberFormatException e) {
-                priceField.setText(oldValue);
             }
+        });
+
+        priceField.textProperty().addListener((observable, oldValue, newValue) -> {
+            // Simplified listener to just handle comma removal for logic
+            // The previous listener handles the formatting.
+            // We remove the duplicate logic here to avoid conflicts.
         });
 
         // PRICE field: allow digits and a single dot only
@@ -142,7 +199,8 @@ public class NewStockController {
         newStockTable.setItems(items);
         setupTableColumns();
         setupAutoPriceCalculation();
-
+        // EVENT HANDLERS
+        qtyComboBox.setOnAction(e -> handleQtySelection());
         addButton.setOnAction(e -> onAdd());
         saveButton.setOnAction(e -> onSave());
 
@@ -152,7 +210,7 @@ public class NewStockController {
                 String amtStr = s.getAmount().replaceAll("[^0-9.]", "");
                 return amtStr.isEmpty() ? 0.0 : Double.parseDouble(amtStr);
             }).sum();
-            return sum == 0 ? "TOTAL AMOUNT : " : String.format("TOTAL AMOUNT : UGX %,d", Math.round(sum));
+            return sum == 0 ? "TOTAL AMOUNT : " : String.format("TOTAL AMOUNT : UGX %,.2f", sum);
         }, items));
 
         // QTY INPUT FILTER (Numbers only)
@@ -182,7 +240,7 @@ public class NewStockController {
         if (item != null && size != null) {
             double lastPrice = dataManager.getDbHelper().getLastRecordedPrice(item, size);
             if (lastPrice > 0) {
-                priceField.setText(String.format("%.0f", lastPrice));
+                priceField.setText(String.format("%.2f", lastPrice));
                 priceField.setEditable(false);
                 priceField.setStyle("-fx-background-color: #f4f4f4; -fx-text-fill: #757575; -fx-border-color: #ddd;");
             } else {
@@ -200,6 +258,7 @@ public class NewStockController {
                 deleteButton.getStyleClass().add("btn-red");
                 deleteButton.setOnAction(e -> items.remove(getTableView().getItems().get(getIndex())));
             }
+
             @Override
             protected void updateItem(Void item, boolean empty) {
                 super.updateItem(item, empty);
@@ -221,14 +280,15 @@ public class NewStockController {
 
                 if (costPerPiece > 0) {
                     double totalAmount = count * multiplier * costPerPiece;
-                    priceField.setText(String.format("%.0f", totalAmount));
+                    priceField.setText(String.format("%.2f", totalAmount));
                 }
             }
         });
     }
 
     private double extractNumericValue(String text) {
-        if (text == null || text.isEmpty()) return 1.0;
+        if (text == null || text.isEmpty())
+            return 1.0;
         try {
             // This regex finds the first number in the string (e.g. "4 sacks" -> 4)
             Pattern p = Pattern.compile("(\\d+(\\.\\d+)?)");
@@ -245,9 +305,10 @@ public class NewStockController {
     private void calculateRestockPrice() {
         String item = itemsComboBox.getValue();
         String size = qtyComboBox.getValue(); // e.g., "50kg"
-        String unit = unitField.getText();    // e.g., "4 sacks"
+        String unit = unitField.getText(); // e.g., "4 sacks"
 
-        if (item == null || size == null || unit.isEmpty()) return;
+        if (item == null || size == null || unit.isEmpty())
+            return;
 
         // 1. Get the cost per KG from DB
         double costPerKg = dataManager.getDbHelper().getExistingPrice(item, size);
@@ -259,19 +320,21 @@ public class NewStockController {
             // 3. Get the count (e.g., "4")
             double count = 1.0;
             String numOnly = unit.replaceAll("[^0-9.]", "");
-            if (!numOnly.isEmpty()) count = Double.parseDouble(numOnly);
+            if (!numOnly.isEmpty())
+                count = Double.parseDouble(numOnly);
 
             // 4. Calculate Total Cost for this entry
             // 4 (sacks) * 50 (kg) * 3,000 (cost) = 600,000
             double totalRestockPrice = count * multiplier * costPerKg;
 
             // 5. Update the price field automatically
-            priceField.setText(String.format("%.0f", totalRestockPrice));
+            priceField.setText(String.format("%.2f", totalRestockPrice));
 
             // Visual cue that this is an auto-calculated price
             priceField.setStyle("-fx-control-inner-background: #e1f5fe;");
         }
     }
+
     private void refreshDropdowns() {
         ObservableList<String> availableItems = dataManager.getDbHelper().getAvailableItems();
         itemsComboBox.setItems(availableItems);
@@ -280,7 +343,7 @@ public class NewStockController {
     }
 
     private void createQtyQuickButtons() {
-        String[] quick = {"g","kg","ml","l"};
+        String[] quick = { "None", "g", "kg", "ml", "l" };
         for (String q : quick) {
             Button b = new Button(q);
             b.getStyleClass().add("pill");
@@ -292,10 +355,9 @@ public class NewStockController {
     private void createUnitQuickButtons() {
         Map<String, Integer> unitData = Map.of(
                 "pcs", 1, "sack", 1, "half doz", 6,
-                "carton", 24, "dozen", 12, "box", 20, "crate", 25
-        );
+                "carton", 24, "dozen", 12, "box", 20, "crate", 25);
 
-        String[] order = {"pcs", "sack", "half doz", "dozen", "box", "carton", "crate"};
+        String[] order = { "pcs", "sack", "half doz", "dozen", "box", "carton", "crate" };
 
         for (String unitName : order) {
             Integer val = unitData.get(unitName);
@@ -320,7 +382,8 @@ public class NewStockController {
     }
 
     private void filterUnitButtons(String size) {
-        if (size == null || size.isEmpty()) return;
+        if (size == null || size.isEmpty())
+            return;
         String s = size.toLowerCase();
 
         // First, hide all buttons
@@ -334,7 +397,7 @@ public class NewStockController {
             // WEIGHT-BASED: Only allow 'sack'
             // This prevents "pcs" math errors for bulk goods
             showButton("sack");
-        } else if (s.contains("ml") || s.contains("l")|| s.contains("g")) {
+        } else if (s.contains("ml") || s.contains("l") || s.contains("g")) {
             // VOLUME-BASED: Soda, Beer, etc.
             showButton("pcs");
             showButton("half doz");
@@ -369,7 +432,8 @@ public class NewStockController {
 
         String currentText = unitField.getText().trim();
         String numberPart = currentText.replaceAll("[^0-9.]", "");
-        if (numberPart.isEmpty()) numberPart = "1";
+        if (numberPart.isEmpty())
+            numberPart = "1";
 
         unitField.setText(numberPart + " " + unit);
 
@@ -389,12 +453,18 @@ public class NewStockController {
 
     private String getUnitValue(String unit) {
         switch (unit.toLowerCase()) {
-            case "pcs": return "1";
-            case "half doz": return "1";
-            case "carton": return "1";
-            case "dozen": return "1";
-            case "box": return "1";
-            default: return "1";
+            case "pcs":
+                return "1";
+            case "half doz":
+                return "1";
+            case "carton":
+                return "1";
+            case "dozen":
+                return "1";
+            case "box":
+                return "1";
+            default:
+                return "1";
         }
     }
 
@@ -408,9 +478,20 @@ public class NewStockController {
     private void appendUnitToQty(String unit) {
         String currentQty = qtyComboBox.getEditor().getText().trim();
 
+        if (unit.equalsIgnoreCase("None")) {
+            qtyComboBox.getEditor().setText("None");
+            return;
+        }
+
         // If the field is empty, do nothing
         if (currentQty.isEmpty()) {
             return;
+        }
+
+        // If "None" was previously there, clear it before appending new unit
+        if (currentQty.equalsIgnoreCase("None")) {
+            qtyComboBox.getEditor().setText("");
+            return; // Or just let them start over
         }
 
         // Check if the current input already has a unit (kg, ml, or l)
@@ -461,8 +542,8 @@ public class NewStockController {
         }
 
         // 2. Define allowed patterns
-        // Matches numbers followed by g, kg, ml, or l (e.g., 500ml, 1.5l)
-        String sizePattern = ".*\\d+(g|kg|ml|l)$";
+        // Matches numbers followed by g, kg, ml, or l (e.g., 500ml, 1.5l) OR "None"
+        String sizePattern = ".*\\d+(g|kg|ml|l)$|^none$";
         // Added "crate" to the regex pattern
         // Update the regex to accept 'pc' (without the s)
         String countPattern = ".*\\d+.*(pc|pcs|doz|carton|box|sack|dozen|crate).*";
@@ -495,7 +576,8 @@ public class NewStockController {
             hasError = true;
         }
 
-        if (hasError) return;
+        if (hasError)
+            return;
 
         double inputPrice;
         try {
@@ -510,11 +592,12 @@ public class NewStockController {
 
         // 2. THE CALCULATION
         // If you enter 2 sacks at 200,000 per sack, total is 400,000.
-        // This assumes the price you type in the box is the price for the unit shown (pc, sack, box, etc.)
+        // This assumes the price you type in the box is the price for the unit shown
+        // (pc, sack, box, etc.)
         double totalAmount = count * inputPrice;
 
-        String amountStr = String.format("%,.0f", totalAmount);
-        String priceStr = String.format("%,.0f", inputPrice);
+        String amountStr = String.format("%,.2f", totalAmount);
+        String priceStr = String.format("%,.2f", inputPrice);
 
         StockItem si = new StockItem(itemName, qtyRaw, unitText, priceStr, amountStr);
         items.add(si);
@@ -555,8 +638,9 @@ public class NewStockController {
                     Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
                     alert.setTitle("Price Variance Warning");
                     alert.setHeaderText("Price mismatch for " + item + " (" + qty + ")");
-                    alert.setContentText("The price for " + unit + " makes the unit price very different from current stock.\n\n" +
-                            "Do you want to save this anyway?");
+                    alert.setContentText(
+                            "The price for " + unit + " makes the unit price very different from current stock.\n\n" +
+                                    "Do you want to save this anyway?");
 
                     if (alert.showAndWait().get() == ButtonType.OK) {
                         // 3. If user says OK, merge with forceSave = true
