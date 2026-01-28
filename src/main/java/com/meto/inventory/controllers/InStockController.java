@@ -12,17 +12,27 @@ import java.time.LocalDate;
 public class InStockController implements DataManager.DataChangeListener {
 
     // InStock Table
-    @FXML private TableView<StockItem> inStockTable;
-    @FXML private TableColumn<StockItem, String> itemCol, qtyCol, unitCol, priceCol, totalValueCol;
-    @FXML private Label stockTotalLabel;
+    @FXML
+    private TableView<StockItem> inStockTable;
+    @FXML
+    private TableColumn<StockItem, String> itemCol, qtyCol, unitCol, priceCol, totalValueCol;
+    @FXML
+    private Label stockTotalLabel;
     // Daily Sales Table
-    @FXML private TableView<HistoryItem> dailySalesTable;
-    @FXML private TableColumn<HistoryItem, String> salesItemCol, salesQtyCol, salesUnitCol, salesCustomerCol, salesAmountCol;
-    @FXML private TableColumn<HistoryItem, String> salesProfitCol; // Add this FXML link
-    @FXML private Label yearlyProfitLabel; // Add a label in your FXML for this
-    @FXML private Button refreshBtn;
-    @FXML private Label dailyTotalLabel;
-    @FXML private Label dailySaleLabel; // Make sure this matches your fx:id in Scene Builder
+    @FXML
+    private TableView<HistoryItem> dailySalesTable;
+    @FXML
+    private TableColumn<HistoryItem, String> salesItemCol, salesQtyCol, salesUnitCol, salesCustomerCol, salesAmountCol;
+    @FXML
+    private TableColumn<HistoryItem, String> salesProfitCol; // Add this FXML link
+    @FXML
+    private Label yearlyProfitLabel; // Add a label in your FXML for this
+    @FXML
+    private Button refreshBtn;
+    @FXML
+    private Label dailyTotalLabel;
+    @FXML
+    private Label dailySaleLabel; // Make sure this matches your fx:id in Scene Builder
 
     private final DataManager dataManager = DataManager.getInstance();
 
@@ -60,6 +70,32 @@ public class InStockController implements DataManager.DataChangeListener {
         salesAmountCol.setCellValueFactory(data -> data.getValue().amountProperty());
         // Add the Profit Column
         salesProfitCol.setCellValueFactory(data -> data.getValue().profitProperty());
+
+        // Color Code Profit
+        salesProfitCol.setCellFactory(column -> new TableCell<HistoryItem, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("");
+                } else {
+                    setText(item);
+                    try {
+                        double val = Double.parseDouble(item.replaceAll("[^0-9.-]", ""));
+                        if (val < 0) {
+                            setStyle("-fx-text-fill: -fx-red; -fx-font-weight: bold;");
+                        } else if (val > 0) {
+                            setStyle("-fx-text-fill: -fx-primary; -fx-font-weight: bold;");
+                        } else {
+                            setStyle("-fx-text-fill: -fx-text-muted;");
+                        }
+                    } catch (Exception e) {
+                        setStyle("");
+                    }
+                }
+            }
+        });
     }
 
     @Override
@@ -115,7 +151,7 @@ public class InStockController implements DataManager.DataChangeListener {
 
         double ytdProfit = dataManager.getDbHelper().getCurrentYearProfit();
 
-// Use the variable in the string format instead of hardcoded "2026"
+        // Use the variable in the string format instead of hardcoded "2026"
         yearlyProfitLabel.setText(String.format("%d Profit (YTD): UGX %,.0f", currentYear, ytdProfit));
     }
 

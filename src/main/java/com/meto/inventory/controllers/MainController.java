@@ -11,8 +11,10 @@ import java.io.IOException;
 
 public class MainController {
 
-    @FXML private Button navNewStock, navRetail, navHistory, navInshock;
-    @FXML private StackPane contentPane;
+    @FXML
+    private Button navNewStock, navRetail, navHistory, navInshock;
+    @FXML
+    private StackPane contentPane;
 
     private Node newStockView, retailView, historyView, inShockView;
 
@@ -32,6 +34,7 @@ public class MainController {
         navRetail.setOnAction(e -> setView(retailView, navRetail));
         navHistory.setOnAction(e -> setView(historyView, navHistory));
         navInshock.setOnAction(e -> setView(inShockView, navInshock));
+
     }
 
     private void setView(Node node, Button activeBtn) {
@@ -42,7 +45,7 @@ public class MainController {
 
     private void updateNavStyles(Button selectedBtn) {
         // List of all your nav buttons
-        Button[] navButtons = {navNewStock, navRetail, navHistory, navInshock};
+        Button[] navButtons = { navNewStock, navRetail, navHistory, navInshock };
 
         for (Button btn : navButtons) {
             // Remove the active class from everyone

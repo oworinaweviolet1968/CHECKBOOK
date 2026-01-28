@@ -12,9 +12,10 @@ public class Main extends Application {
         FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/meto/inventory/views/Main.fxml"));
         Parent root = loader.load();
         Scene scene = new Scene(root, 1200, 720);
-        scene.getStylesheets().add(getClass().getResource("/com/meto/inventory/views/styles/style.css").toExternalForm());
+        scene.getStylesheets()
+                .add(getClass().getResource("/com/meto/inventory/views/styles/style.css").toExternalForm());
 
-        primaryStage.setTitle("Inventory Management System");
+        primaryStage.setTitle("METO • IMS");
         primaryStage.setScene(scene);
         primaryStage.show();
     }

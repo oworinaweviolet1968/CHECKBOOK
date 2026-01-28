@@ -8,16 +8,26 @@ import javafx.scene.control.*;
 
 public class HistoryController implements DataManager.DataChangeListener {
 
-    @FXML private ComboBox<String> historyFilterCombo;
-    @FXML private TableView<HistoryItem> historyTable;
-    @FXML private TableColumn<HistoryItem, String> nameCol;
-    @FXML private TableColumn<HistoryItem, String> itemCol;
-    @FXML private TableColumn<HistoryItem, String> typeCol;
-    @FXML private TableColumn<HistoryItem, String> qtyCol;
-    @FXML private TableColumn<HistoryItem, String> unitCol;
-    @FXML private TableColumn<HistoryItem, String> priceCol;
-    @FXML private TableColumn<HistoryItem, String> amountCol;
-    @FXML private TableColumn<HistoryItem, String> dateCol;
+    @FXML
+    private ComboBox<String> historyFilterCombo;
+    @FXML
+    private TableView<HistoryItem> historyTable;
+    @FXML
+    private TableColumn<HistoryItem, String> nameCol;
+    @FXML
+    private TableColumn<HistoryItem, String> itemCol;
+    @FXML
+    private TableColumn<HistoryItem, String> typeCol;
+    @FXML
+    private TableColumn<HistoryItem, String> qtyCol;
+    @FXML
+    private TableColumn<HistoryItem, String> unitCol;
+    @FXML
+    private TableColumn<HistoryItem, String> priceCol;
+    @FXML
+    private TableColumn<HistoryItem, String> amountCol;
+    @FXML
+    private TableColumn<HistoryItem, String> dateCol;
 
     private final DataManager dataManager = DataManager.getInstance();
 
@@ -48,6 +58,56 @@ public class HistoryController implements DataManager.DataChangeListener {
         priceCol.setCellValueFactory(data -> data.getValue().priceProperty());
         amountCol.setCellValueFactory(data -> data.getValue().amountProperty());
         dateCol.setCellValueFactory(data -> data.getValue().dateProperty());
+
+        // Center all columns
+        centerColumn(nameCol);
+        centerColumn(itemCol);
+        centerColumn(qtyCol);
+        centerColumn(unitCol);
+        centerColumn(priceCol);
+        centerColumn(amountCol);
+        centerColumn(dateCol);
+
+        // Custom Cell Factory for TYPE column (Badges + Centered)
+        typeCol.setCellFactory(column -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setGraphic(null);
+                    setText(null);
+                } else {
+                    Label badge = new Label(item);
+                    badge.getStyleClass().add("badge"); // Base if needed, or just specific
+
+                    if (item.equalsIgnoreCase("NEW STOCK")) {
+                        badge.getStyleClass().add("badge-stock");
+                    } else if (item.equalsIgnoreCase("WHOLESALE")) {
+                        badge.getStyleClass().add("badge-wholesale");
+                    } else {
+                        badge.getStyleClass().add("badge-retail");
+                    }
+                    setGraphic(badge);
+                    setText(null);
+                    setAlignment(javafx.geometry.Pos.CENTER);
+                }
+            }
+        });
+    }
+
+    private <T> void centerColumn(TableColumn<HistoryItem, T> column) {
+        column.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(T item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    setText(item.toString());
+                    setAlignment(javafx.geometry.Pos.CENTER);
+                }
+            }
+        });
     }
 
     private void loadHistory() {

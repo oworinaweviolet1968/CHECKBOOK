@@ -6,7 +6,9 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
-import javafx.scene.layout.HBox;
+import javafx.scene.control.*;
+import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.Pane;
 
 import java.time.LocalDate;
 import java.util.function.UnaryOperator;
@@ -40,9 +42,9 @@ public class SalesController implements DataManager.DataChangeListener {
     @FXML
     private Label unitErrorLabel;
     @FXML
-    private HBox weightButtonsBox;
+    private FlowPane weightButtonsBox;
     @FXML
-    private HBox unitButtonsBox;
+    private FlowPane unitButtonsBox;
 
     // Unit buttons
     @FXML
@@ -221,7 +223,7 @@ public class SalesController implements DataManager.DataChangeListener {
     }
 
     // Helper to handle both Visibility and Managed state (removing the gap)
-    private void setBoxVisible(HBox box, boolean visible) {
+    private void setBoxVisible(Pane box, boolean visible) {
         // Add this null check to prevent the crash
         if (box != null) {
             box.setVisible(visible);
@@ -297,7 +299,8 @@ public class SalesController implements DataManager.DataChangeListener {
         deleteCol.setCellFactory(param -> new TableCell<>() {
             private final Button deleteBtn = new Button("Delete");
             {
-                deleteBtn.setStyle("-fx-background-color: red; -fx-text-fill: white;");
+                deleteBtn.setStyle(
+                        "-fx-background-color: red; -fx-text-fill: white; -fx-font-size: 10px; -fx-padding: 2 6;");
                 deleteBtn.setOnAction(event -> {
                     SaleItem item = getTableView().getItems().get(getIndex());
                     items.remove(item);
@@ -353,11 +356,14 @@ public class SalesController implements DataManager.DataChangeListener {
         if (text.isEmpty()) {
             unitField.setText(numericValue + " " + unit);
         } else {
+            // Extract the number part from the current text
             String existingNumbers = text.replaceAll("[^0-9.]", "").trim();
             if (existingNumbers.isEmpty()) {
+                // If there was no number (e.g. "pcs"), replace with default number
                 unitField.setText(numericValue + " " + unit);
             } else {
-                unitField.setText(text + " " + unit);
+                // Keep the number, replace the unit
+                unitField.setText(existingNumbers + " " + unit);
             }
         }
     }
@@ -436,14 +442,12 @@ public class SalesController implements DataManager.DataChangeListener {
             double totalCost = dbUnitCount * dbMultiplier * costPerPiece;
 
             if (totalCost > 0 && amount < totalCost) {
-                Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-                alert.setTitle("Negative Profit Warning");
-                alert.setHeaderText("Selling Below Cost Price!");
-                alert.setContentText(String.format(
+                String content = String.format(
                         "You are selling this item for UGX %,.2f\nBut the cost price is UGX %,.2f\n\nThis will result in a LOSS.\n\nDo you want to proceed?",
-                        amount, totalCost));
+                        amount, totalCost);
 
-                if (alert.showAndWait().get() != ButtonType.OK) {
+                if (!com.meto.inventory.utils.DialogHelper.showConfirm("Negative Profit Warning",
+                        "Selling Below Cost Price!", content)) {
                     return; // Cancel addition
                 }
             }
@@ -586,7 +590,7 @@ public class SalesController implements DataManager.DataChangeListener {
     }
 
     private void showAlert(String message) {
-        new Alert(Alert.AlertType.INFORMATION, message, ButtonType.OK).showAndWait();
+        com.meto.inventory.utils.DialogHelper.showAlert(message);
     }
 
     public void destroy() {

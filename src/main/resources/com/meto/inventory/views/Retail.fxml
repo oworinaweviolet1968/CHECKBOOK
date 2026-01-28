@@ -1,77 +1,124 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
+<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
 <AnchorPane xmlns:fx="http://javafx.com/fxml/1"
-            fx:controller="com.meto.inventory.controllers.SalesController">
+            fx:controller="com.meto.inventory.controllers.SalesController"
+            stylesheets="@styles/style.css">
 
-    <VBox spacing="10" AnchorPane.topAnchor="10" AnchorPane.leftAnchor="10" AnchorPane.rightAnchor="10">
-        <Label text="SALES SECTION" style="-fx-font-size:18px; -fx-text-fill:#9c9c9c; -fx-font-weight:bold;"/>
+    <VBox spacing="20" AnchorPane.topAnchor="0" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0" AnchorPane.bottomAnchor="0">
+        <padding>
+            <Insets top="0" right="0" bottom="0" left="0"/>
+        </padding>
+        
+        <!-- Header -->
+        <VBox spacing="4">
+            <Label text="Sales Section" styleClass="header-title">
+                <graphic>
+                    <Region styleClass="icon, icon-cart" style="-fx-background-color: -fx-text-main;"/>
+                </graphic>
+            </Label>
+            <Label text="Create new retail transactions and manage itemized sales lists." styleClass="header-subtitle"/>
+        </VBox>
 
-        <GridPane hgap="10" vgap="8">
-            <columnConstraints>
-                <ColumnConstraints halignment="RIGHT" minWidth="140"/>
-                <ColumnConstraints/>
-            </columnConstraints>
+        <!-- Main Content Card -->
+        <VBox styleClass="card" spacing="24">
+            
+            <!-- Input Form Grid -->
+            <GridPane hgap="24" vgap="16">
+                <columnConstraints>
+                    <ColumnConstraints hgrow="ALWAYS"/>
+                    <ColumnConstraints hgrow="ALWAYS"/>
+                    <ColumnConstraints hgrow="ALWAYS"/>
+                    <ColumnConstraints hgrow="ALWAYS"/>
+                </columnConstraints>
 
-            <children>
-                <Label text="CUSTOMER NAME:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
-                <TextField fx:id="customerNameField" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+                <children>
+                    <!-- Customer Name -->
+                    <VBox spacing="6" GridPane.rowIndex="0" GridPane.columnIndex="0" GridPane.columnSpan="2">
+                        <Label text="Customer Name"/>
+                        <TextField fx:id="customerNameField" promptText="Enter customer name..."/>
+                    </VBox>
 
-                <Label text="ITEMS:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
-                <ComboBox fx:id="itemsComboBox" GridPane.rowIndex="1" GridPane.columnIndex="1" prefWidth="200"/>
+                    <!-- Item Selection -->
+                    <VBox spacing="6" GridPane.rowIndex="0" GridPane.columnIndex="2">
+                        <Label text="Item"/>
+                        <ComboBox fx:id="itemsComboBox" promptText="Select item" maxWidth="Infinity"/>
+                    </VBox>
 
-                <Label text="SIZE:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
-                <ComboBox fx:id="qtyComboBox" GridPane.rowIndex="2" GridPane.columnIndex="1" prefWidth="150"
-                          promptText="Select size"/>
+                    <!-- Size Selection -->
+                    <VBox spacing="6" GridPane.rowIndex="0" GridPane.columnIndex="3">
+                        <Label text="Size"/>
+                        <ComboBox fx:id="qtyComboBox" promptText="Select size" maxWidth="Infinity"/>
+                    </VBox>
 
-                <Label text="QUANTITY:" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
-                <VBox spacing="2" GridPane.rowIndex="3" GridPane.columnIndex="1">
-                    <HBox spacing="5">
-                        <TextField fx:id="unitField" HBox.hgrow="ALWAYS" promptText="e.g., 10 pcs"/>
-                    </HBox>
-                    <Label fx:id="unitErrorLabel" text="* you forgot to put units (kg, ml)"
-                           style="-fx-text-fill: red; -fx-font-size: 10px;"
-                           visible="false" managed="false"/>
+                    <!-- Quantity/Unit Input -->
+                    <VBox spacing="6" GridPane.rowIndex="1" GridPane.columnIndex="0" GridPane.columnSpan="2">
+                        <Label text="Quantity / Unit"/>
+                        <TextField fx:id="unitField" promptText="e.g., 10 pcs"/>
+                        <Label fx:id="unitErrorLabel" text="* Missing units" style="-fx-text-fill: -fx-red; -fx-font-size: 11px;" visible="false" managed="false"/>
+                        
+                        <!-- Quick Buttons Area -->
+                        <VBox spacing="8">
+                            <FlowPane fx:id="weightButtonsBox" hgap="8" vgap="8">
+                                <Button fx:id="quarterKgBtn" text="1/4 kg" styleClass="pill, pill-indigo"/>
+                                <Button fx:id="halfKgBtn" text="1/2 kg" styleClass="pill, pill-indigo"/>
+                                <Button fx:id="kgBtn" text="Kg" styleClass="pill, pill-indigo"/>
+                                <Button fx:id="sackBtn" text="sack" styleClass="pill, pill-purple"/>
+                            </FlowPane>
+                            <FlowPane fx:id="unitButtonsBox" hgap="8" vgap="8">
+                                <Button fx:id="pcsBtn" text="pc" styleClass="pill, pill-blue"/>
+                                <Button fx:id="halfDozenBtn" text="half doz" styleClass="pill, pill-blue"/>
+                                <Button fx:id="dozenBtn" text="dozen" styleClass="pill, pill-blue"/>
+                                <Button fx:id="boxBtn" text="box" styleClass="pill, pill-pink"/>
+                                <Button fx:id="cartonBtn" text="carton" styleClass="pill, pill-pink"/>
+                                <Button fx:id="crateBtn" text="crate" styleClass="pill, pill-orange"/>
+                            </FlowPane>
+                        </VBox>
+                    </VBox>
 
-                    <HBox fx:id="weightButtonsBox" spacing="5" style="-fx-padding: 5 0 0 0;">
-                        <Button fx:id="quarterKgBtn" text="1/4 kg" styleClass="pill"/>
-                        <Button fx:id="halfKgBtn" text="1/2 kg" styleClass="pill" />
-                        <Button fx:id="kgBtn" text="Kg" styleClass="pill"/>
-                        <Button fx:id="sackBtn" text="sack" styleClass="pill"/>
-                    </HBox>
+                    <!-- Price Input -->
+                    <VBox spacing="6" GridPane.rowIndex="1" GridPane.columnIndex="2">
+                        <Label text="Price (UGX)"/>
+                        <TextField fx:id="priceField" promptText="0"/>
+                    </VBox>
+                    
+                    <!-- Add Button -->
+                    <VBox alignment="BOTTOM_RIGHT" spacing="6" GridPane.rowIndex="1" GridPane.columnIndex="3">
+                         <Button fx:id="addButton" text="+ Add to List" styleClass="btn-primary" maxWidth="Infinity"/>
+                    </VBox>
+                </children>
+            </GridPane>
+        </VBox>
 
-                    <HBox fx:id="unitButtonsBox" spacing="5" style="-fx-padding: 5 0 0 0;">
-                        <Button fx:id="pcsBtn" text="pc * 1" styleClass="pill" />
-                        <Button fx:id="halfDozenBtn" text="half doz * 6" styleClass="pill"/>
-                        <Button fx:id="dozenBtn" text="dozen * 12" styleClass="pill"/>
-                        <Button fx:id="boxBtn" text="box * 20" styleClass="pill"/>
-                        <Button fx:id="cartonBtn" text="carton * 24" styleClass="pill"/>
-                        <Button fx:id="crateBtn" text="crate * 25" styleClass="pill"/>
-                    </HBox>
-                </VBox>
+        <!-- Table Card -->
+        <VBox styleClass="card" VBox.vgrow="ALWAYS" spacing="16">
+            <HBox alignment="CENTER_LEFT" spacing="10">
+                <Label text="Current Sale Items" style="-fx-font-weight: 700; -fx-font-size: 12px; -fx-text-fill: -fx-text-muted;"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Label fx:id="totalAmountLabel" text="Total: UGX 0" style="-fx-font-size: 16px; -fx-font-weight: 700; -fx-text-fill: -fx-primary;"/>
+            </HBox>
 
-                <Label text="PRICE:" GridPane.rowIndex="4" GridPane.columnIndex="0"/>
-                <TextField fx:id="priceField" GridPane.rowIndex="4" GridPane.columnIndex="1"/>
+            <TableView fx:id="salesTable" VBox.vgrow="ALWAYS">
+                <columns>
+                    <TableColumn fx:id="itemCol" text="Item Name" prefWidth="200"/>
+                    <TableColumn fx:id="qtyCol" text="Size" prefWidth="100"/>
+                    <TableColumn fx:id="unitCol" text="Unit" prefWidth="100"/>
+                    <TableColumn fx:id="priceCol" text="Price" prefWidth="120"/>
+                    <TableColumn fx:id="amountCol" text="Amount" prefWidth="150"/>
+                    <TableColumn fx:id="deleteCol" text="Action" prefWidth="80"/>
+                </columns>
+                <columnResizePolicy>
+                    <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
+                </columnResizePolicy>
+            </TableView>
 
-                <HBox spacing="8" GridPane.rowIndex="5" GridPane.columnIndex="1">
-                    <Button fx:id="addButton" text="Add" styleClass="btn-green"/>
-                    <Button fx:id="saveButton" text="Save" styleClass="btn-green"/>
-                </HBox>
-            </children>
-        </GridPane>
-
-        <TableView fx:id="salesTable" prefHeight="240">
-            <columns>
-                <TableColumn fx:id="itemCol" text="ITEMS" prefWidth="150"/>
-                <TableColumn fx:id="qtyCol" text="SIZE" prefWidth="80"/>
-                <TableColumn fx:id="unitCol" text="UNIT" prefWidth="100"/>
-                <TableColumn fx:id="priceCol" text="PRICE" prefWidth="100"/>
-                <TableColumn fx:id="amountCol" text="AMOUNT" prefWidth="120"/>
-                <TableColumn fx:id="deleteCol" text="ACTION" prefWidth="80"/>
-            </columns>
-        </TableView>
-        <Label fx:id="totalAmountLabel" text="TOTAL AMOUNT :"/>
+            <HBox alignment="CENTER_RIGHT" spacing="16">
+                <!-- Save Button -->
+                <Button fx:id="saveButton" text="Finalize Sale" styleClass="btn-green" prefHeight="40"/>
+            </HBox>
+        </VBox>
     </VBox>
 </AnchorPane>

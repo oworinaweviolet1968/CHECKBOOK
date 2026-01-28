@@ -256,6 +256,7 @@ public class NewStockController {
             private final Button deleteButton = new Button("Delete");
             {
                 deleteButton.getStyleClass().add("btn-red");
+                deleteButton.setStyle("-fx-font-size: 10px; -fx-padding: 2 6;"); // Ensure consistency
                 deleteButton.setOnAction(e -> items.remove(getTableView().getItems().get(getIndex())));
             }
 
@@ -435,6 +436,7 @@ public class NewStockController {
         if (numberPart.isEmpty())
             numberPart = "1";
 
+        // Smart replace: Keep number, update unit
         unitField.setText(numberPart + " " + unit);
 
         // 1. Get the price of 1 base unit (e.g., 1kg of Posho = 4,444)
@@ -524,14 +526,12 @@ public class NewStockController {
         boolean sizeExists = qtyComboBox.getItems().contains(qtyRaw);
 
         if (!sizeExists && !qtyRaw.isEmpty()) {
-            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION);
-            confirm.setTitle("New Quantity Size Detected");
-            confirm.setHeaderText("New Size: " + qtyRaw);
-            confirm.setContentText("This size is not in your current stock records for " + itemName + ".\n\n" +
-                    "Are you sure you want to add this as a NEW product category?");
+            String content = "This size is not in your current stock records for " + itemName + ".\n\n" +
+                    "Are you sure you want to add this as a NEW product category?";
 
             // If they don't click OK, stop the process
-            if (confirm.showAndWait().get() != ButtonType.OK) {
+            if (!com.meto.inventory.utils.DialogHelper.showConfirm("New Quantity Size Detected", "New Size: " + qtyRaw,
+                    content)) {
                 return;
             }
         }
@@ -635,14 +635,12 @@ public class NewStockController {
 
                 if (!success) {
                     // 2. If it fails, show the Alert
-                    Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-                    alert.setTitle("Price Variance Warning");
-                    alert.setHeaderText("Price mismatch for " + item + " (" + qty + ")");
-                    alert.setContentText(
-                            "The price for " + unit + " makes the unit price very different from current stock.\n\n" +
-                                    "Do you want to save this anyway?");
+                    String content = "The price for " + unit
+                            + " makes the unit price very different from current stock.\n\n" +
+                            "Do you want to save this anyway?";
 
-                    if (alert.showAndWait().get() == ButtonType.OK) {
+                    if (com.meto.inventory.utils.DialogHelper.showConfirm("Price Variance Warning",
+                            "Price mismatch for " + item + " (" + qty + ")", content)) {
                         // 3. If user says OK, merge with forceSave = true
                         dataManager.getDbHelper().mergeStock(item, qty, unit, price, supplier, true);
                     } else {
@@ -665,7 +663,6 @@ public class NewStockController {
     }
 
     private void showAlert(String text) {
-        Alert a = new Alert(Alert.AlertType.INFORMATION, text, ButtonType.OK);
-        a.showAndWait();
+        com.meto.inventory.utils.DialogHelper.showAlert(text);
     }
 }
