@@ -162,6 +162,28 @@ public class SalesController implements DataManager.DataChangeListener {
             }
         });
 
+        // Add this inside initialize()
+        priceField.textProperty().addListener((observable, oldValue, newValue) -> {
+            if (newValue.isEmpty()) return;
+
+            // 1. Remove commas to get the raw number
+            String cleanString = newValue.replaceAll(",", "");
+
+            // 2. Try to format it
+            try {
+                double value = Double.parseDouble(cleanString);
+                String formatted = String.format("%,.0f", value); // No decimals for UGX usually
+
+                // 3. Update field only if it's different to avoid infinite loops
+                if (!newValue.equals(formatted)) {
+                    priceField.setText(formatted);
+                    // Keep cursor at the end
+                    priceField.positionCaret(formatted.length());
+                }
+            } catch (NumberFormatException e) {
+                // Ignore if the user types something non-numeric
+            }
+        });
         priceField.textProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal.trim().isEmpty()) {
                 if (!unitField.getText().trim().isEmpty())
@@ -236,15 +258,15 @@ public class SalesController implements DataManager.DataChangeListener {
 
     @FXML
     private void handleQuarterKg() {
-        unitField.setText("1/4 kg");
-        // Leave priceField alone so the user can type the "Whole Thing" price
+        String existingNumbers = unitField.getText().replaceAll("[^0-9.]", "").trim();
+        unitField.setText(existingNumbers.isEmpty() ? "1/4 kg" : existingNumbers + " 1/4 kg");
     }
 
     @FXML
     private void handleHalfKg() {
-        unitField.setText("1/2 kg");
+        String existingNumbers = unitField.getText().replaceAll("[^0-9.]", "").trim();
+        unitField.setText(existingNumbers.isEmpty() ? "1/2 kg" : existingNumbers + " 1/2 kg");
     }
-
     @Override
     public void onDataChanged() {
         // Refresh dropdowns when new items are added
@@ -320,25 +342,25 @@ public class SalesController implements DataManager.DataChangeListener {
         addButton.setOnAction(e -> addItem());
         saveButton.setOnAction(e -> saveSale());
 
-        // Use "1/4" and "1/2" labels so the money logic knows these are special packets
         quarterKgBtn.setOnAction(e -> {
-            unitField.setText("1/4 kg");
+            String existingNumbers = unitField.getText().replaceAll("[^0-9.]", "").trim();
+            // If there's a number, add a space before the fraction
+            unitField.setText(existingNumbers.isEmpty() ? "1/4 kg" : existingNumbers + " 1/4 kg");
         });
 
         halfKgBtn.setOnAction(e -> {
-            unitField.setText("1/2 kg");
+            String existingNumbers = unitField.getText().replaceAll("[^0-9.]", "").trim();
+            unitField.setText(existingNumbers.isEmpty() ? "1/2 kg" : existingNumbers + " 1/2 kg");
         });
 
         kgBtn.setOnAction(e -> {
-            String current = unitField.getText().replaceAll("[^0-9.]", "");
-            unitField.setText(current.isEmpty() ? "1 kg" : current + " kg");
+            String existingNumbers = unitField.getText().replaceAll("[^0-9.]", "").trim();
+            unitField.setText(existingNumbers.isEmpty() ? "1 kg" : existingNumbers + " kg");
         });
-        // New Sack Button Logic
+
         sackBtn.setOnAction(e -> {
-            // Just set the text to "1 sack"
-            // DatabaseHelper.getUnitMultiplier already knows that "sack"
-            // for a 50kg item equals 50.
-            unitField.setText("1 sack");
+            String existingNumbers = unitField.getText().replaceAll("[^0-9.]", "").trim();
+            unitField.setText(existingNumbers.isEmpty() ? "1 sack" : existingNumbers + " sack");
         });
         // UNIT buttons (packaging units)
         pcsBtn.setOnAction(e -> appendToUnit("pcs"));
@@ -390,70 +412,61 @@ public class SalesController implements DataManager.DataChangeListener {
     private void addItem() {
         String item = itemsComboBox.getValue();
         String size = qtyComboBox.getValue();
-        // String countUnit = unitField.getText().trim();
-        // Allow dot in regex
         String priceText = priceField.getText().replaceAll("[^0-9,.]", "").replace(",", "");
+        String countUnit = unitField.getText().trim().toLowerCase();
 
+        // --- VALIDATION ---
         unitErrorLabel.setVisible(false);
         unitErrorLabel.setManaged(false);
 
-        String countUnit = unitField.getText().trim().toLowerCase();
-        // Allow fractions (1/4, 1/2) or whole numbers + standard units
-        // Added "crate" to this pattern as well
-        String countPattern = ".*(\\d|/)+(.*)(pcs|doz|carton|box|sack|dozen|kg|ml|l|crate).*";
+        String countPattern = ".*(\\d|/)+(.*)(pcs|doz|carton|box|sack|dozen|kg|ml|l|crate|half doz).*";
 
         if (countUnit.isEmpty() || !countUnit.matches(countPattern)) {
             unitErrorLabel.setVisible(true);
             unitErrorLabel.setManaged(true);
             return;
-        } else {
-            unitErrorLabel.setVisible(false);
-            unitErrorLabel.setManaged(false);
         }
-        if (item == null || size == null || countUnit.isEmpty() || priceText.isEmpty()) {
+
+        if (item == null || size == null || priceText.isEmpty()) {
             showAlert("Please fill all fields");
             return;
         }
 
         try {
-            double price = Double.parseDouble(priceText);
+            double unitPrice = Double.parseDouble(priceText);
 
-            // --- NEW CALCULATION LOGIC ---
-            double moneyMultiplier;
+            // 1. MONEY: How many units are being sold?
+            // Example: "2 half doz" -> moneyMultiplier = 2.0
+            double moneyMultiplier = getMoneyMultiplier(countUnit);
+            double totalAmount = moneyMultiplier * unitPrice;
 
-            // If it's a pre-priced packet (1/4 or 1/2), the price is for the "Whole Thing"
-            if (countUnit.contains("1/4") || countUnit.contains("1/2")) {
-                // If user types "2 1/4 kg", extract the '2' as the multiplier.
-                // If they just click the button ("1/4 kg"), multiplier is 1.
-                double leadingNumber = extractLeadingNumber(countUnit);
-                moneyMultiplier = (leadingNumber == 0) ? 1.0 : leadingNumber;
-            } else {
-                // For "5 kg" or "2 dozen", multiply price by the number
-                moneyMultiplier = extractNumber(countUnit);
-            }
-
-            double amount = moneyMultiplier * price;
-            // ------------------------------
-
-            // --- PROFIT CHECK ---
+            // 2. COST CALCULATION (The Fix):
+            // We need: (Number of units) * (Pieces per unit) * (Cost per piece)
             double costPerPiece = dataManager.getDbHelper().getLastRecordedPrice(item, size);
-            double dbUnitCount = dataManager.getDbHelper().extractNumericValue(countUnit);
             double dbMultiplier = dataManager.getDbHelper().getUnitMultiplier(countUnit, size);
-            double totalCost = dbUnitCount * dbMultiplier * costPerPiece;
 
-            if (totalCost > 0 && amount < totalCost) {
+            // This is the correct profit math:
+            // Example: 2 (moneyMultiplier) * 6 (dbMultiplier) * 3000 (cost) = 36,000 total cost
+            double totalCost = moneyMultiplier * dbMultiplier * costPerPiece;
+
+            if (totalCost > 0 && totalAmount < totalCost) {
                 String content = String.format(
-                        "You are selling this item for UGX %,.2f\nBut the cost price is UGX %,.2f\n\nThis will result in a LOSS.\n\nDo you want to proceed?",
-                        amount, totalCost);
+                        "Warning: Potential Loss!\nSelling Price: UGX %,.2f\nActual Cost: UGX %,.2f\n\nProceed anyway?",
+                        totalAmount, totalCost);
 
-                if (!com.meto.inventory.utils.DialogHelper.showConfirm("Negative Profit Warning",
-                        "Selling Below Cost Price!", content)) {
-                    return; // Cancel addition
+                if (!com.meto.inventory.utils.DialogHelper.showConfirm("Profit Warning", "Selling Below Cost", content)) {
+                    return;
                 }
             }
-            // --------------------
 
-            if (!dataManager.getDbHelper().hasEnoughStock(item, size, countUnit)) {
+            // 3. STOCK CALCULATION:
+            // This still needs the total pieces/weight to subtract from inventory correctly.
+            // Example: 2 * 6 = 12.0
+            double weightForStock = getStockWeight(countUnit, size);
+            String weightStr = String.valueOf(weightForStock);
+
+            // Now hasEnoughStock will check if you have 100kg available
+            if (!dataManager.getDbHelper().hasEnoughStock(item, size, weightStr)) {
                 showAlert("Not enough stock!\nAvailable: " + dataManager.getDbHelper().getAvailableStock(item, size));
                 return;
             }
@@ -462,8 +475,8 @@ public class SalesController implements DataManager.DataChangeListener {
                     item,
                     size,
                     countUnit,
-                    String.format("%,.2f", price),
-                    String.format("%,.2f", amount)));
+                    String.format("%,.2f", unitPrice),
+                    String.format("%,.2f", totalAmount)));
 
             clearFields();
             updateTotal();
@@ -473,28 +486,69 @@ public class SalesController implements DataManager.DataChangeListener {
         }
     }
 
-    private double extractLeadingNumber(String text) {
-        // Looks for a number before the fraction (e.g., "2 1/4 kg" -> 2)
-        String firstPart = text.split(" ")[0];
-        try {
-            if (firstPart.contains("/"))
-                return 1.0; // It's just the fraction, so count as 1
-            return Double.parseDouble(firstPart.replaceAll("[^0-9.]", ""));
-        } catch (Exception e) {
-            return 1.0;
+    /**
+     * Returns the count of items for Price calculation.
+     * Example: "2 1/4 kg" -> returns 2.0
+     * Example: "1/4 kg"   -> returns 1.0 (default)
+     */
+    private double getMoneyMultiplier(String text) {
+        if (text == null || text.isEmpty()) return 1.0;
+        String lower = text.toLowerCase().trim();
+
+        // Split by common units to find the leading number
+        String[] parts = lower.split("(1/4|1/2|kg|sack|pcs|half doz|dozen|box|carton|crate)");
+        if (parts.length > 0) {
+            // If the string starts with a fraction (e.g. "1/4 kg"), parts[0] is empty or just the fraction
+            if (lower.startsWith("1/4") || lower.startsWith("1/2")) return 1.0;
+
+            String numeric = parts[0].replaceAll("[^0-9.]", "").trim();
+            if (!numeric.isEmpty()) {
+                try { return Double.parseDouble(numeric); } catch (Exception e) { return 1.0; }
+            }
         }
+        return 1.0;
     }
 
-    private double extractNumber(String text) {
-        if (text.toLowerCase().contains("1/4") || text.contains("0.25"))
-            return 0.25;
-        if (text.toLowerCase().contains("1/2") || text.contains("0.5"))
-            return 0.5;
+    /**
+     * Returns the actual weight/quantity for Stock subtraction.
+     * Example: "2 1/4 kg" -> returns 0.5  (2 * 0.25)
+     * Example: "2 1/2 kg" -> returns 1.0  (2 * 0.5)
+     * Example: "5 kg"     -> returns 5.0  (no fraction found)
+     */
+    private double getStockWeight(String text, String sizeStr) {
+        String lower = text.toLowerCase();
+        double count = getMoneyMultiplier(lower);
 
-        if (text.toLowerCase().contains("sack"))
-            return 1.0;
-        String numbers = text.replaceAll("[^0-9.]", "");
-        return numbers.isEmpty() ? 1.0 : Double.parseDouble(numbers);
+        // --- WEIGHT FRACTIONS ---
+        if (lower.contains("1/4")) {
+            return count * 0.25;
+        } else if (lower.contains("1/2")) {
+            return count * 0.5;
+        }
+
+        // --- PACKAGING UNITS ---
+        else if (lower.contains("half doz")) {
+            return count * 6;   // 2 half doz = 12 pcs
+        } else if (lower.contains("dozen")) {
+            return count * 12;  // 2 dozen = 24 pcs
+        } else if (lower.contains("box")) {
+            return count * 20;  // Standard soda/beer crate is 24
+        } else if (lower.contains("carton")) {
+            return count * 24;
+        } else if (lower.contains("crate")) {
+            return count * 25;
+        }
+            // --- SACK LOGIC (THE FIX) ---
+        else if (lower.contains("sack")) {
+                // We extract the numeric value from the dropdown size (e.g., "50kg" -> 50.0)
+                double kgPerSack = dataManager.getDbHelper().extractNumericValue(sizeStr);
+                return count * kgPerSack;
+            }
+
+        // --- DEFAULT (kg, pcs, sack) ---
+        else {
+            return count;
+        }
     }
 
     private void saveSale() {
@@ -560,8 +614,11 @@ public class SalesController implements DataManager.DataChangeListener {
     }
 
     private void updateStock(String itemName, String soldQty, String soldUnit) {
-        // This method will subtract the sold quantity from stock
-        dataManager.getDbHelper().updateStockQuantity(itemName, soldQty, soldUnit);
+        // Calculate the actual multiplication (e.g., "2 1/4 kg" -> 0.5)
+        double actualWeight = getStockWeight(soldUnit, soldQty);
+
+        // Pass the calculated number as a string so the DB helper subtracts 0.5
+        dataManager.getDbHelper().updateStockQuantity(itemName, soldQty, String.valueOf(actualWeight));
     }
 
     private String determineSaleType() {

@@ -70,7 +70,7 @@
                         <TableColumn fx:id="itemCol" text="ITEM" prefWidth="250"/>
                         <TableColumn fx:id="qtyCol" text="SIZE" prefWidth="100"/>
                         <TableColumn fx:id="unitCol" text="AVAILABLE" prefWidth="150"/>
-                        <TableColumn fx:id="priceCol" text="PRICE / PIECE" prefWidth="150"/>
+                        <TableColumn fx:id="priceCol" text="PRICE / PIECE / KG" prefWidth="150"/>
                         <TableColumn fx:id="totalValueCol" text="TOTAL VALUE" prefWidth="150"/>
                     </columns>
                     <columnResizePolicy>

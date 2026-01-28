@@ -62,7 +62,6 @@
 }
 
 /* Header/Title styles */
-/* Header/Title styles */
 Label.header-title {
     -fx-font-size: 32px !important;
     -fx-font-weight: 800;
@@ -146,8 +145,19 @@ Label.header-title {
 .nav-active {
     -fx-background-color: -fx-primary !important;
     -fx-text-fill: white !important;
+    -fx-border-width: 0 0 0 4;
 }
 
+.nav-button.nav-active .icon {
+    -fx-background-color: white;
+}
+
+/* Icons */
+.nav-button .icon {
+    -fx-background-color: -fx-text-muted;
+    -fx-min-width: 16;
+    -fx-min-height: 16;
+}
 /* =========================================
    4. FORMS & INPUTS
    ========================================= */
