@@ -24,7 +24,7 @@ jobs:
       # 3. Download JavaFX SDK
       - name: Download JavaFX SDK
         run: |
-          Invoke-WebRequest -Uri https://gluonhq.com/download/javafx-21-0-9-sdk/windows/javafx-sdk-21.0.9.zip -OutFile javafx-sdk.zip
+          Invoke-WebRequest -Uri https://download2.gluonhq.com/openjfx/21.0.10/openjfx-21.0.10_windows-x64_bin-sdk.zip -OutFile javafx-sdk.zip
           Expand-Archive javafx-sdk.zip -DestinationPath javafx-sdk
 
       # 4. Build the Maven project
@@ -40,7 +40,7 @@ jobs:
             --input target `
             --main-jar ManagementSYS-1.0-SNAPSHOT.jar `
             --main-class com.meto.inventory.Main `
-            --module-path javafx-sdk/javafx-sdk-21.0.9/lib `
+            --module-path javafx-sdk/javafx-sdk-21.0.10/lib `
             --add-modules javafx.controls,javafx.fxml `
             --win-dir-chooser `
             --win-menu `
