@@ -37,4 +37,5 @@ build/
 ### Mac OS ###
 .DS_Store
 
-##whats going on with commit
+##whats going on with commitinventory.db
+user_session.txt
