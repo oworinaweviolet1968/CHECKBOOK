@@ -47,6 +47,7 @@ public class NewStockController {
     private final ObservableList<StockItem> items = FXCollections.observableArrayList();
     private final DataManager dataManager = DataManager.getInstance();
     private final java.util.Map<String, Button> unitButtonsMap = new java.util.HashMap<>();
+    private final java.util.Map<String, Button> qtyButtonsMap = new java.util.HashMap<>();
 
     @FXML
     public void initialize() {
@@ -91,31 +92,65 @@ public class NewStockController {
 
         // --- STEP 1: ITEM SELECTION ---
         itemsComboBox.getEditor().textProperty().addListener((obs, old, newVal) -> {
-            // If the item changes even by one letter, clear EVERYTHING below it
             qtyComboBox.getEditor().clear();
             unitField.clear();
             priceField.clear();
-            setFlowLevel(0); // Lock it down
+            qtyErrorLabel.setVisible(false);
 
             if (newVal != null && !newVal.trim().isEmpty()) {
-                setFlowLevel(1);
+                setFlowLevel(1); // This enables the buttons by default
+
+                // CHECK IF ITEM EXISTS IN DB
+                boolean itemExists = itemsComboBox.getItems().contains(newVal);
+                updateQtyButtonsLockState(itemExists);
+
                 ObservableList<String> sizes = dataManager.getDbHelper().getItemSizes(newVal);
                 qtyComboBox.setItems(sizes);
+
+                if (!sizes.isEmpty()) {
+                    qtyErrorLabel.setText("* Use dropdown for existing sizes");
+                    qtyErrorLabel.setStyle("-fx-text-fill: #ffa000;");
+                    qtyErrorLabel.setVisible(true);
+                }
+            } else {
+                setFlowLevel(0);
+                updateQtyButtonsLockState(false); // Reset to default state
             }
         });
 
-        // --- STEP 2: QTY VALIDATION ---
+        // --- STEP 2: QTY VALIDATION (The Enforcer) ---
         qtyComboBox.getEditor().textProperty().addListener((obs, old, newVal) -> {
-            // If Qty changes, clear Unit and Price
-            unitField.clear();
-            priceField.clear();
-
+            // 1. Basic Flow Logic
             String sizePattern = ".*\\d+(g|kg|ml|l)$|^none$";
-            if (newVal.toLowerCase().matches(sizePattern)) {
+            if (newVal != null && newVal.toLowerCase().matches(sizePattern)) {
                 filterUnitButtons(newVal);
                 setFlowLevel(2);
             } else {
-                setFlowLevel(1); // Drop back to level 1
+                // We don't call setFlowLevel(1) here because it would reset the buttons
+                unitField.setDisable(true);
+                unitButtonsBox.setDisable(true);
+            }
+
+            // 2. THE LOCK ENFORCER:
+            // This runs AFTER setFlowLevel to ensure it has the final say.
+            boolean isExistingSize = qtyComboBox.getItems().contains(newVal);
+            if (isExistingSize) {
+                // If it matches a DB record, we FORCE the buttons to stay off
+                qtyButtonsBox.setDisable(true);
+                qtyButtonsBox.setOpacity(0.4);
+                qtyErrorLabel.setText("* Record Found: Buttons Locked");
+                qtyErrorLabel.setStyle("-fx-text-fill: #2e7d32;");
+                qtyErrorLabel.setVisible(true);
+            } else {
+                // Only enable buttons if we are at the right flow level AND it's a new size
+                qtyButtonsBox.setDisable(false);
+                qtyButtonsBox.setOpacity(1.0);
+                // If it's not a match, show the standard unit warning
+                if (!newVal.toLowerCase().matches(sizePattern)) {
+                    qtyErrorLabel.setText("* Missing size unit (e.g., 500ml, 1kg)");
+                    qtyErrorLabel.setStyle("-fx-text-fill: red;");
+                    qtyErrorLabel.setVisible(true);
+                }
             }
         });
 
@@ -236,17 +271,35 @@ public class NewStockController {
 
     private void handleQtySelection() {
         String item = itemsComboBox.getValue();
-        String size = qtyComboBox.getValue();
-        if (item != null && size != null) {
+        String size = qtyComboBox.getEditor().getText();
+
+        if (item != null && size != null && !size.isEmpty()) {
             double lastPrice = dataManager.getDbHelper().getLastRecordedPrice(item, size);
+
             if (lastPrice > 0) {
                 priceField.setText(String.format("%.2f", lastPrice));
+
+                // LOCK EVERYTHING TO PREVENT ERRORS
                 priceField.setEditable(false);
-                priceField.setStyle("-fx-background-color: #f4f4f4; -fx-text-fill: #757575; -fx-border-color: #ddd;");
+                priceField.setMouseTransparent(true);
+                priceField.setStyle("-fx-background-color: #eeeeee; -fx-text-fill: #444444;");
+
+                // DISABLE THE QUICK BUTTONS
+                qtyButtonsBox.setDisable(true);
+                qtyButtonsBox.setOpacity(0.5);
+
+                qtyErrorLabel.setText("* Record found: Manual edits locked");
+                qtyErrorLabel.setVisible(true);
+                qtyErrorLabel.setStyle("-fx-text-fill: #2e7d32;"); // Success green
             } else {
+                // UNLOCK IF IT'S A NEW SIZE
                 priceField.setEditable(true);
+                priceField.setMouseTransparent(false);
                 priceField.setStyle("");
-                priceField.clear();
+
+                qtyButtonsBox.setDisable(false);
+                qtyButtonsBox.setOpacity(1.0);
+                qtyErrorLabel.setVisible(false);
             }
         }
     }
@@ -268,20 +321,24 @@ public class NewStockController {
         });
     }
 
-    // Inside NewStockController.java
     private void setupAutoPriceCalculation() {
         unitField.textProperty().addListener((obs, oldVal, newVal) -> {
-            String item = itemsComboBox.getValue();
-            String size = qtyComboBox.getValue();
+            String item = itemsComboBox.getEditor().getText();
+            String size = qtyComboBox.getEditor().getText();
 
-            if (item != null && size != null && !newVal.isEmpty()) {
+            if (!item.isEmpty() && !size.isEmpty() && !newVal.isEmpty()) {
                 double costPerPiece = dataManager.getDbHelper().getExistingPrice(item, size);
-                double multiplier = dataManager.getDbHelper().getUnitMultiplier(newVal, size);
-                double count = extractNumericValue(newVal); // Get the "4" from "4 sacks"
 
                 if (costPerPiece > 0) {
+                    double multiplier = dataManager.getDbHelper().getUnitMultiplier(newVal, size);
+                    double count = extractNumericValue(newVal);
+
                     double totalAmount = count * multiplier * costPerPiece;
                     priceField.setText(String.format("%.2f", totalAmount));
+
+                    // Keep it locked if we are auto-calculating from existing records
+                    priceField.setEditable(false);
+                    priceField.setStyle("-fx-background-color: #e1f5fe; -fx-text-fill: #01579b;");
                 }
             }
         });
@@ -350,6 +407,15 @@ public class NewStockController {
             b.getStyleClass().add("pill");
             b.setOnAction(evt -> appendUnitToQty(q));
             qtyButtonsBox.getChildren().add(b);
+            qtyButtonsMap.put(q, b);
+        }
+    }
+
+    private void updateQtyButtonsLockState(boolean itemExists) {
+        // Buttons to lock if item exists
+        // Lock ALL buttons as requested
+        for (Button btn : qtyButtonsMap.values()) {
+            btn.setDisable(itemExists);
         }
     }
 
@@ -480,28 +546,30 @@ public class NewStockController {
     private void appendUnitToQty(String unit) {
         String currentQty = qtyComboBox.getEditor().getText().trim();
 
+        // HARD BLOCK: If the current text matches an item in the dropdown list, STOP.
+        if (qtyComboBox.getItems().contains(currentQty)) {
+            showAlert("This size is already recorded in the database. You cannot modify it using quick buttons.");
+            return;
+        }
+
         if (unit.equalsIgnoreCase("None")) {
             qtyComboBox.getEditor().setText("None");
+            handleQtySelection();
             return;
         }
 
-        // If the field is empty, do nothing
-        if (currentQty.isEmpty()) {
+        if (currentQty.isEmpty())
             return;
-        }
 
-        // If "None" was previously there, clear it before appending new unit
         if (currentQty.equalsIgnoreCase("None")) {
             qtyComboBox.getEditor().setText("");
-            return; // Or just let them start over
+            return;
         }
 
-        // Check if the current input already has a unit (kg, ml, or l)
+        // Logic for appending units...
         if (currentQty.endsWith("kg") || currentQty.endsWith("ml") || currentQty.endsWith("l")) {
-            // If it already has a unit, replace the existing unit
             qtyComboBox.getEditor().setText(currentQty.replaceAll("(g|kg|ml|l)$", "") + unit);
         } else {
-            // If no unit exists, simply append the unit
             qtyComboBox.getEditor().setText(currentQty + unit);
         }
     }
