@@ -1,8 +1,5 @@
 package com.meto.inventory;
 
-import com.meto.inventory.models.HistoryItem;
-import javafx.collections.ObservableList;
-import javafx.collections.FXCollections;
 import java.util.ArrayList;
 import java.util.List;
 

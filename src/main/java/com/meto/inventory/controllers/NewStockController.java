@@ -196,7 +196,6 @@ public class NewStockController {
                 try {
                     // Check if we have decimal part
                     if (clean.contains(".")) {
-                        double val = Double.parseDouble(clean);
                         // Don't enforce format while typing decimals aggressively
                     } else {
                         long val = Long.parseLong(clean);
@@ -360,39 +359,6 @@ public class NewStockController {
         return 1.0;
     }
 
-    private void calculateRestockPrice() {
-        String item = itemsComboBox.getValue();
-        String size = qtyComboBox.getValue(); // e.g., "50kg"
-        String unit = unitField.getText(); // e.g., "4 sacks"
-
-        if (item == null || size == null || unit.isEmpty())
-            return;
-
-        // 1. Get the cost per KG from DB
-        double costPerKg = dataManager.getDbHelper().getExistingPrice(item, size);
-
-        if (costPerKg > 0) {
-            // 2. Get the multiplier (e.g., "sack" = 50)
-            double multiplier = dataManager.getDbHelper().getUnitMultiplier(unit, size);
-
-            // 3. Get the count (e.g., "4")
-            double count = 1.0;
-            String numOnly = unit.replaceAll("[^0-9.]", "");
-            if (!numOnly.isEmpty())
-                count = Double.parseDouble(numOnly);
-
-            // 4. Calculate Total Cost for this entry
-            // 4 (sacks) * 50 (kg) * 3,000 (cost) = 600,000
-            double totalRestockPrice = count * multiplier * costPerKg;
-
-            // 5. Update the price field automatically
-            priceField.setText(String.format("%.2f", totalRestockPrice));
-
-            // Visual cue that this is an auto-calculated price
-            priceField.setStyle("-fx-control-inner-background: #e1f5fe;");
-        }
-    }
-
     private void refreshDropdowns() {
         ObservableList<String> availableItems = dataManager.getDbHelper().getAvailableItems();
         itemsComboBox.setItems(availableItems);
@@ -516,23 +482,6 @@ public class NewStockController {
             double unitPrice = basePrice * multiplier;
             priceField.setText(String.format("%.0f", unitPrice));
             unitErrorLabel.setVisible(false);
-        }
-    }
-
-    private String getUnitValue(String unit) {
-        switch (unit.toLowerCase()) {
-            case "pcs":
-                return "1";
-            case "half doz":
-                return "1";
-            case "carton":
-                return "1";
-            case "dozen":
-                return "1";
-            case "box":
-                return "1";
-            default:
-                return "1";
         }
     }
 
