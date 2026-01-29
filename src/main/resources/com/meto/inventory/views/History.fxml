@@ -29,7 +29,7 @@
             <!-- Toolbar -->
             <HBox spacing="10" alignment="CENTER_RIGHT">
                 <Label text="Filter by type:" style="-fx-font-weight: 600;"/>
-                <ComboBox fx:id="historyFilterCombo" prefWidth="150" promptText="All Transactions"/>
+                <ComboBox fx:id="historyFilterCombo" prefWidth="100" promptText="All Transactions"/>
                 <Button text="Export" styleClass="pill">
                     <!-- Icon placeholder -->
                 </Button>
