@@ -45,6 +45,12 @@
                     </graphic>
                 </Button>
                 
+                <Label fx:id="backupStatusLabel" text="Cloud: Ready" style="-fx-text-fill: #999; -fx-padding: 10 10 0 10; -fx-font-size: 11px;">
+                    <graphic>
+                        <!-- Optional: small icon -->
+                    </graphic>
+                </Label>
+
                 <Region VBox.vgrow="ALWAYS" />
 
                 <!-- Bottom Logo -->

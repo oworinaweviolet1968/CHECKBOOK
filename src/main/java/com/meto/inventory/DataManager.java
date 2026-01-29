@@ -40,6 +40,22 @@ public class DataManager {
         for (DataChangeListener listener : listeners) {
             listener.onDataChanged();
         }
+        triggerBackup();
+    }
+
+    private void triggerBackup() {
+        if (com.meto.inventory.services.FirebaseService.getInstance().isLoggedIn()) {
+            // Run in background to avoid freezing UI
+            new Thread(() -> {
+                try {
+                    // Simple debounce or just run it.
+                    // For better UX, we could verify hashing, but for now we upload.
+                    com.meto.inventory.services.FirebaseService.getInstance().uploadDatabase("inventory.db");
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        }
     }
 
     // In DataManager class

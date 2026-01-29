@@ -19,6 +19,9 @@ public class MainController {
     private Node newStockView, retailView, historyView, inShockView;
 
     @FXML
+    private javafx.scene.control.Label backupStatusLabel;
+
+    @FXML
     public void initialize() throws IOException {
         // Load views
         newStockView = FXMLLoader.load(getClass().getResource("/com/meto/inventory/views/NewStock.fxml"));
@@ -35,6 +38,24 @@ public class MainController {
         navHistory.setOnAction(e -> setView(historyView, navHistory));
         navInshock.setOnAction(e -> setView(inShockView, navInshock));
 
+        // Listen for Backup Status
+        com.meto.inventory.services.FirebaseService.getInstance().addStatusListener(status -> {
+            javafx.application.Platform.runLater(() -> {
+                if (backupStatusLabel != null) {
+                    backupStatusLabel.setText(status);
+                    if (status.contains("Synced")) {
+                        backupStatusLabel
+                                .setStyle("-fx-text-fill: #4CAF50; -fx-padding: 10 10 0 10; -fx-font-size: 11px;");
+                    } else if (status.contains("Error") || status.contains("Offline")) {
+                        backupStatusLabel
+                                .setStyle("-fx-text-fill: #F44336; -fx-padding: 10 10 0 10; -fx-font-size: 11px;");
+                    } else {
+                        backupStatusLabel
+                                .setStyle("-fx-text-fill: #2196F3; -fx-padding: 10 10 0 10; -fx-font-size: 11px;");
+                    }
+                }
+            });
+        });
     }
 
     private void setView(Node node, Button activeBtn) {
