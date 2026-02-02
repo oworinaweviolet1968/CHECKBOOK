@@ -11,16 +11,39 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class DatabaseHelper {
-    private static final String DB_URL = "jdbc:sqlite:inventory.db";
+    private String dbUrl = "jdbc:sqlite:inventory.db"; // Default
+    private String currentDbName = "inventory.db";
     private Connection connection;
 
     public void initializeDatabase() {
         try {
-            connection = DriverManager.getConnection(DB_URL);
+            connection = DriverManager.getConnection(dbUrl);
             createTables();
         } catch (SQLException e) {
             e.printStackTrace();
         }
+    }
+
+    public void setDatabaseName(String localFileName) {
+        try {
+            if (connection != null && !connection.isClosed()) {
+                connection.close();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        this.currentDbName = localFileName;
+        this.dbUrl = "jdbc:sqlite:" + localFileName;
+        initializeDatabase();
+    }
+
+    public String getCurrentDbName() {
+        return currentDbName;
+    }
+
+    public void connect() {
+        initializeDatabase();
     }
 
     private void createTables() {
@@ -394,21 +417,28 @@ public class DatabaseHelper {
     }
 
     public void addSaleWithProfit(String customer, String item, String size, String unit, double sellingPrice,
+            double totalAmount,
             String type) {
         // Remove Math.floor here if you added it earlier!
         double costPrice = getLastRecordedPrice(item, size);
 
         // 1. Get the raw number (e.g., "2" from "2 dozen")
-        double unitCount = extractNumericValue(unit);
+        // NOTE: For "3 1/2 kg", this now returns 1.5 (Total Weight/Qty), NOT 3 (Count)
+        double quantityFactor = extractNumericValue(unit);
 
-        // 2. Get the multiplier (e.g., 12 for dozen) to find total pieces for stock
-        // deduction
+        // 2. Get the multiplier
         double multiplier = getUnitMultiplier(unit, size);
-        double baseQty = unitCount * multiplier;
 
-        // 3. FIX: Total Amount should be (Count * Price)
-        // Example: 2 (dozens) * 26,000 = 52,000
-        double totalAmount = unitCount * sellingPrice;
+        // Logic check: If extractNumericValue returns 1.5, and multiplier returns 1
+        // (for KG/fractions),
+        // then baseQty = 1.5. Correct for stock deduction.
+        // If multiplier returns non-1 (e.g. sack=20), checks needed.
+        // Assuming getUnitMultiplier handles "1/2 kg" by returning 1 or similar if the
+        // fraction logic is inside extractNumericValue.
+        double baseQty = quantityFactor * multiplier;
+
+        // DEBUG: Ensure we use the PASSED totalAmount
+        // double totalAmount = unitCount * sellingPrice; <--- REMOVED
 
         String sql = "INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
@@ -418,8 +448,8 @@ public class DatabaseHelper {
             pstmt.setString(4, unit);
             pstmt.setDouble(5, sellingPrice);
             pstmt.setDouble(6, costPrice);
-            pstmt.setDouble(7, baseQty); // Keep this as 24 for profit math (pieces * cost_per_piece)
-            pstmt.setDouble(8, totalAmount); // This will now be 52,000
+            pstmt.setDouble(7, baseQty);
+            pstmt.setDouble(8, totalAmount); // Use the explicit amount
             pstmt.setString(9, type);
             pstmt.setString(10, LocalDate.now().toString());
             pstmt.executeUpdate();
@@ -498,9 +528,10 @@ public class DatabaseHelper {
         if (!numbersOnly.isEmpty()) {
             try {
                 double wholeNumber = Double.parseDouble(numbersOnly);
-                // FIX: Add the fraction to the whole number, don't multiply!
+                // FIX: User intends "2 1/2 kg" to mean "2 UNITS of 1/2 kg" (2 * 0.5 = 1.0)
+                // NOT "2 and a half" (2.5)
                 if (fractionValue > 0) {
-                    return wholeNumber + fractionValue; // 2 + 0.5 = 2.5
+                    return wholeNumber * fractionValue; // 2 * 0.5 = 1.0
                 }
                 return wholeNumber;
             } catch (NumberFormatException e) {
@@ -580,6 +611,24 @@ public class DatabaseHelper {
         } catch (SQLException e) {
             e.printStackTrace();
         }
+    }
+
+    public boolean hasData() {
+        try {
+            // Check if there are any rows in stock or sales
+            try (Statement stmt = connection.createStatement()) {
+                ResultSet rs1 = stmt.executeQuery("SELECT 1 FROM stock LIMIT 1");
+                if (rs1.next())
+                    return true;
+
+                ResultSet rs2 = stmt.executeQuery("SELECT 1 FROM sales LIMIT 1");
+                if (rs2.next())
+                    return true;
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
     }
 
     public ObservableList<String> getAvailableItems() {

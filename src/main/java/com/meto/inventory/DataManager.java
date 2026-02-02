@@ -25,6 +25,20 @@ public class DataManager {
         return dbHelper;
     }
 
+    public void resetDatabase(String userId) {
+        // Sanitize userId just in case (e.g. email or uuid)
+        String cleanId = userId.replaceAll("[^a-zA-Z0-9]", "_");
+        String dbName = "inventory_" + cleanId + ".db";
+        System.out.println("Switching database to: " + dbName);
+        dbHelper.setDatabaseName(dbName);
+        // FORCE a refresh of all data listeners (UI)
+        notifyDataChanged();
+    }
+
+    public String getCurrentDbName() {
+        return dbHelper.getCurrentDbName();
+    }
+
     public void addDataChangeListener(DataChangeListener listener) {
         listeners.add(listener);
     }
@@ -40,14 +54,37 @@ public class DataManager {
         triggerBackup();
     }
 
+    private boolean isBackupEnabled = true;
+
+    public void setBackupEnabled(boolean enabled) {
+        this.isBackupEnabled = enabled;
+    }
+
+    public boolean isBackupEnabled() {
+        return isBackupEnabled;
+    }
+
     private void triggerBackup() {
-        if (com.meto.inventory.services.FirebaseService.getInstance().isLoggedIn()) {
+        if (!isBackupEnabled) {
+            System.out.println("Backup skipped: Subscription required.");
+            return;
+        }
+        if (com.meto.inventory.services.SupabaseService.getInstance().isLoggedIn()) {
             // Run in background to avoid freezing UI
             new Thread(() -> {
                 try {
+                    // SAFEGUARD POINTER:
+                    // Do NOT upload if the database is empty.
+                    // This prevents overwriting the cloud backup when switching to a fresh DB file
+                    // on login.
+                    if (!dbHelper.hasData()) {
+                        System.out.println("Backup skipped: Local database is empty.");
+                        return;
+                    }
+
                     // Simple debounce or just run it.
                     // For better UX, we could verify hashing, but for now we upload.
-                    com.meto.inventory.services.FirebaseService.getInstance().uploadDatabase("inventory.db");
+                    com.meto.inventory.services.SupabaseService.getInstance().uploadDatabase(getCurrentDbName());
                 } catch (Exception e) {
                     e.printStackTrace();
                 }

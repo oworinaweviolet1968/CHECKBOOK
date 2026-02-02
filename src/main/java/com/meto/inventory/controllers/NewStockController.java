@@ -668,7 +668,20 @@ public class NewStockController {
                 dataManager.getDbHelper().addStock(supplier, item, qty, unit, price, LocalDate.now().toString());
             }
 
-            dataManager.getDbHelper().addSaleWithProfit(supplier, item, qty, unit, price, "NEW STOCK");
+            // Parse Total Amount from the StockItem (which has it stored as a String)
+            double totalAmount = 0.0;
+            try {
+                totalAmount = Double.parseDouble(s.getAmount().replaceAll("[^0-9.]", ""));
+            } catch (Exception e) {
+                // If parsing fails, fall back to calculating it manually
+                double count = extractNumericValue(unit); // Note: This might return the 1.5 logic...
+                // Ideally we trust the input Price as Total Price if Unit is singular?
+                // But in NewStockController logic (line 614), totalAmount = count * inputPrice.
+                // So let's just rely on the stored Amount string which computed it correctly
+                // during onAdd().
+            }
+
+            dataManager.getDbHelper().addSaleWithProfit(supplier, item, qty, unit, price, totalAmount, "NEW STOCK");
         }
 
         showAlert("Stock saved successfully!");

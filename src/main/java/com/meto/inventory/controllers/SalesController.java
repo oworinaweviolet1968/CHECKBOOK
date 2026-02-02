@@ -164,7 +164,8 @@ public class SalesController implements DataManager.DataChangeListener {
 
         // Add this inside initialize()
         priceField.textProperty().addListener((observable, oldValue, newValue) -> {
-            if (newValue.isEmpty()) return;
+            if (newValue.isEmpty())
+                return;
 
             // 1. Remove commas to get the raw number
             String cleanString = newValue.replaceAll(",", "");
@@ -267,6 +268,7 @@ public class SalesController implements DataManager.DataChangeListener {
         String existingNumbers = unitField.getText().replaceAll("[^0-9.]", "").trim();
         unitField.setText(existingNumbers.isEmpty() ? "1/2 kg" : existingNumbers + " 1/2 kg");
     }
+
     @Override
     public void onDataChanged() {
         // Refresh dropdowns when new items are added
@@ -440,32 +442,33 @@ public class SalesController implements DataManager.DataChangeListener {
             double moneyMultiplier = getMoneyMultiplier(countUnit);
             double totalAmount = moneyMultiplier * unitPrice;
 
-            // 2. COST CALCULATION (The Fix):
-            // We need: (Number of units) * (Pieces per unit) * (Cost per piece)
-            double costPerPiece = dataManager.getDbHelper().getLastRecordedPrice(item, size);
-            double dbMultiplier = dataManager.getDbHelper().getUnitMultiplier(countUnit, size);
+            // 2. STOCK CALCULATION (Moved UP for Cost Logic):
+            // This calculates the actual total weight/quantity (e.g., "2 1/4 kg" -> 0.5)
+            double weightForStock = getStockWeight(countUnit, size);
+            String weightStr = String.valueOf(weightForStock);
 
-            // This is the correct profit math:
-            // Example: 2 (moneyMultiplier) * 6 (dbMultiplier) * 3000 (cost) = 36,000 total cost
-            double totalCost = moneyMultiplier * dbMultiplier * costPerPiece;
+            // 3. COST CALCULATION (Fixed):
+            // Cost should be based on the ACTUAL weight being deducted from stock, not the
+            // generic multiplier.
+            // Cost = Total Weight * Cost Per Base Unit (e.g., 0.5kg * 5000/kg = 2500)
+            double costPerPiece = dataManager.getDbHelper().getLastRecordedPrice(item, size);
+            // We don't need dbMultiplier here because weightForStock already handles the
+            // conversion
+            double totalCost = weightForStock * costPerPiece;
 
             if (totalCost > 0 && totalAmount < totalCost) {
                 String content = String.format(
                         "Warning: Potential Loss!\nSelling Price: UGX %,.2f\nActual Cost: UGX %,.2f\n\nProceed anyway?",
                         totalAmount, totalCost);
 
-                if (!com.meto.inventory.utils.DialogHelper.showConfirm("Profit Warning", "Selling Below Cost", content)) {
+                if (!com.meto.inventory.utils.DialogHelper.showConfirm("Profit Warning", "Selling Below Cost",
+                        content)) {
                     return;
                 }
             }
 
-            // 3. STOCK CALCULATION:
-            // This still needs the total pieces/weight to subtract from inventory correctly.
-            // Example: 2 * 6 = 12.0
-            double weightForStock = getStockWeight(countUnit, size);
-            String weightStr = String.valueOf(weightForStock);
-
-            // Now hasEnoughStock will check if you have 100kg available
+            // 4. STOCK CHECK:
+            // Now hasEnoughStock will check if you have enough available
             if (!dataManager.getDbHelper().hasEnoughStock(item, size, weightStr)) {
                 showAlert("Not enough stock!\nAvailable: " + dataManager.getDbHelper().getAvailableStock(item, size));
                 return;
@@ -489,21 +492,28 @@ public class SalesController implements DataManager.DataChangeListener {
     /**
      * Returns the count of items for Price calculation.
      * Example: "2 1/4 kg" -> returns 2.0
-     * Example: "1/4 kg"   -> returns 1.0 (default)
+     * Example: "1/4 kg" -> returns 1.0 (default)
      */
     private double getMoneyMultiplier(String text) {
-        if (text == null || text.isEmpty()) return 1.0;
+        if (text == null || text.isEmpty())
+            return 1.0;
         String lower = text.toLowerCase().trim();
 
         // Split by common units to find the leading number
         String[] parts = lower.split("(1/4|1/2|kg|sack|pcs|half doz|dozen|box|carton|crate)");
         if (parts.length > 0) {
-            // If the string starts with a fraction (e.g. "1/4 kg"), parts[0] is empty or just the fraction
-            if (lower.startsWith("1/4") || lower.startsWith("1/2")) return 1.0;
+            // If the string starts with a fraction (e.g. "1/4 kg"), parts[0] is empty or
+            // just the fraction
+            if (lower.startsWith("1/4") || lower.startsWith("1/2"))
+                return 1.0;
 
             String numeric = parts[0].replaceAll("[^0-9.]", "").trim();
             if (!numeric.isEmpty()) {
-                try { return Double.parseDouble(numeric); } catch (Exception e) { return 1.0; }
+                try {
+                    return Double.parseDouble(numeric);
+                } catch (Exception e) {
+                    return 1.0;
+                }
             }
         }
         return 1.0;
@@ -511,9 +521,9 @@ public class SalesController implements DataManager.DataChangeListener {
 
     /**
      * Returns the actual weight/quantity for Stock subtraction.
-     * Example: "2 1/4 kg" -> returns 0.5  (2 * 0.25)
-     * Example: "2 1/2 kg" -> returns 1.0  (2 * 0.5)
-     * Example: "5 kg"     -> returns 5.0  (no fraction found)
+     * Example: "2 1/4 kg" -> returns 0.5 (2 * 0.25)
+     * Example: "2 1/2 kg" -> returns 1.0 (2 * 0.5)
+     * Example: "5 kg" -> returns 5.0 (no fraction found)
      */
     private double getStockWeight(String text, String sizeStr) {
         String lower = text.toLowerCase();
@@ -528,22 +538,22 @@ public class SalesController implements DataManager.DataChangeListener {
 
         // --- PACKAGING UNITS ---
         else if (lower.contains("half doz")) {
-            return count * 6;   // 2 half doz = 12 pcs
+            return count * 6; // 2 half doz = 12 pcs
         } else if (lower.contains("dozen")) {
-            return count * 12;  // 2 dozen = 24 pcs
+            return count * 12; // 2 dozen = 24 pcs
         } else if (lower.contains("box")) {
-            return count * 20;  // Standard soda/beer crate is 24
+            return count * 20; // Standard soda/beer crate is 24
         } else if (lower.contains("carton")) {
             return count * 24;
         } else if (lower.contains("crate")) {
             return count * 25;
         }
-            // --- SACK LOGIC (THE FIX) ---
+        // --- SACK LOGIC (THE FIX) ---
         else if (lower.contains("sack")) {
-                // We extract the numeric value from the dropdown size (e.g., "50kg" -> 50.0)
-                double kgPerSack = dataManager.getDbHelper().extractNumericValue(sizeStr);
-                return count * kgPerSack;
-            }
+            // We extract the numeric value from the dropdown size (e.g., "50kg" -> 50.0)
+            double kgPerSack = dataManager.getDbHelper().extractNumericValue(sizeStr);
+            return count * kgPerSack;
+        }
 
         // --- DEFAULT (kg, pcs, sack) ---
         else {
@@ -585,6 +595,7 @@ public class SalesController implements DataManager.DataChangeListener {
                     item.getQty(),
                     item.getUnit(),
                     price,
+                    amount, // Changed from totalAmount to amount (for this specific item)
                     saleType);
 
             // Update stock - subtract COUNT from same SIZE

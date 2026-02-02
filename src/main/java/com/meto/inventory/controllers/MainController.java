@@ -39,7 +39,7 @@ public class MainController {
         navInshock.setOnAction(e -> setView(inShockView, navInshock));
 
         // Listen for Backup Status
-        com.meto.inventory.services.FirebaseService.getInstance().addStatusListener(status -> {
+        com.meto.inventory.services.SupabaseService.getInstance().addStatusListener(status -> {
             javafx.application.Platform.runLater(() -> {
                 if (backupStatusLabel != null) {
                     backupStatusLabel.setText(status);
