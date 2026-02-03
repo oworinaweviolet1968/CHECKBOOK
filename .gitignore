@@ -39,3 +39,4 @@ build/
 
 ##whats going on with commitinventory.db
 user_session.txt
+.env

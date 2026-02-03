@@ -94,10 +94,54 @@ public class SalesController implements DataManager.DataChangeListener {
             return null; // Block otherwise
         };
         customerNameField.setTextFormatter(new TextFormatter<>(filter));
-        // We also want to protect the unit field slightly, though it needs flexibility
+
+        // --- INPUT VALIDATION FIX ---
+
+        // 1. Strict Numeric + Whitelist for Quantity/Unit
+        // User Request: "allow only text from the quick-pill-buttons or specific words"
+        // Strategy: Allow purely numeric/symbolic typing. Block typing letters
+        // manually.
+        // Allow the result ONLY if it matches the button-generated patterns
+        // (Whitelisted units).
         unitField.setTextFormatter(new TextFormatter<>(change -> {
-            if (change.getText().matches("[a-zA-Z0-9 .\\-,/]*"))
+            String newText = change.getControlNewText().toLowerCase();
+
+            // 1. empty allowed
+            if (newText.isEmpty())
                 return change;
+
+            // 2. Allow pure numbers and symbols (typing quantity)
+            // Allowed: 0-9, space, /, .
+            if (newText.matches("[0-9 ./]*")) {
+                return change;
+            }
+
+            // 3. Strict Button-Only Logic:
+            // We strip out all allowed numeric/symbol chars.
+            // The remaining text (if any) MUST be one of the known units EXACTLY.
+            // This blocks "2 pcsgarbage" because "pcsgarbage" is not a valid unit.
+            // It blocks typing "p" because "p" is not a valid unit.
+            // It allows "2 pcs" because "pcs" is valid.
+            String textContent = newText.replaceAll("[0-9 ./-]", "").trim();
+
+            if (textContent.isEmpty())
+                return change; // Just numbers is fine
+
+            if (isValidExactUnit(textContent)) {
+                return change;
+            }
+
+            // Otherwise block (e.g. user typing 'a', 'd', 's' manually, or appending
+            // garbage)
+            return null;
+        }));
+
+        // 2. Strict Numbers for Price
+        priceField.setTextFormatter(new TextFormatter<>(change -> {
+            String newText = change.getControlNewText().replaceAll(",", "");
+            if (newText.matches("\\d*")) { // Only digits allowed
+                return change;
+            }
             return null;
         }));
 
@@ -659,6 +703,18 @@ public class SalesController implements DataManager.DataChangeListener {
 
     private void showAlert(String message) {
         com.meto.inventory.utils.DialogHelper.showAlert(message);
+    }
+
+    private boolean isValidExactUnit(String text) {
+        // We match against the 'stripped' version of the units (no spaces)
+        // because we strip spaces from the input when checking.
+        // "half doz" -> "halfdoz"
+        String[] allowed = { "kg", "pcs", "sack", "doz", "dozen", "box", "carton", "crate", "ml", "l", "halfdoz" };
+        for (String unit : allowed) {
+            if (text.equals(unit))
+                return true;
+        }
+        return false;
     }
 
     public void destroy() {

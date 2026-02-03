@@ -15,10 +15,13 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
+import io.github.cdimascio.dotenv.Dotenv;
+
 public class SupabaseService {
-    // TODO: REPLACE WITH YOUR ACTUAL SUPABASE URL and ANON KEY
-    private static final String SUPABASE_URL = "https://jhucvkqwenhyiveqsmtf.supabase.co";
-    private static final String SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpodWN2a3F3ZW5oeWl2ZXFzbXRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NzI5MjIsImV4cCI6MjA4NTU0ODkyMn0.yXju47Ly5ak8Gm4D0OI42O89qTsc0nYtkmAb7dGFCC8";
+
+    private static final Dotenv dotenv = Dotenv.load();
+    private static final String SUPABASE_URL = dotenv.get("SUPABASE_URL");
+    private static final String SUPABASE_KEY = dotenv.get("SUPABASE_KEY");
 
     // Derived Endpoints
     private static final String AUTH_URL = SUPABASE_URL + "/auth/v1";
@@ -310,6 +313,21 @@ public class SupabaseService {
         }
     }
 
+    // --- PROGRESS TRACKING ---
+    private final java.util.List<java.util.function.Consumer<Double>> progressListeners = new java.util.ArrayList<>();
+
+    public void addProgressListener(java.util.function.Consumer<Double> listener) {
+        progressListeners.add(listener);
+    }
+
+    private void notifyProgress(double progress) {
+        javafx.application.Platform.runLater(() -> {
+            for (var listener : progressListeners) {
+                listener.accept(progress);
+            }
+        });
+    }
+
     public boolean syncOnLogin(String dbPath, boolean localHasData) {
         if (currentUserId == null)
             return false;
@@ -325,35 +343,20 @@ public class SupabaseService {
             File local = new File(dbPath);
             long localTs = local.exists() ? local.lastModified() : 0;
 
+            System.out.println("SYNC DEBUG: CloudTS=" + cloudTs + ", LocalTS=" + localTs);
+            System.out.println("SYNC DEBUG: LocalHasData=" + localHasData + ", LocalFileExists=" + local.exists());
+
             // Derive cloud path from local filename
             String cloudFileName = local.getName();
 
+            // Note: If cloudTs == 0 (fresh account), this block is skipped.
             if (cloudTs > localTs) {
                 System.out.println("Cloud is newer. Downloading...");
                 notifyStatus("Downloading...");
+                return downloadWithProgress(cloudFileName, dbPath);
 
-                String path = "backups/" + currentUserId + "/" + cloudFileName;
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(STORAGE_URL + "/" + path))
-                        .header("apikey", SUPABASE_KEY)
-                        .header("Authorization", "Bearer " + currentAccessToken)
-                        .GET()
-                        .build();
-
-                HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-
-                if (response.statusCode() == 200) {
-                    Files.write(Path.of(dbPath), response.body());
-                    System.out.println("Restored from Supabase.");
-                    return true;
-                } else {
-                    System.err.println("Download failed: " + response.statusCode());
-                }
             } else {
                 System.out.println("Local newer or same.");
-
-                // NO LONGER CHECKING hasData() HERE because DB is closed!
-                // We trust the passed 'localHasData' argument.
 
                 if (localHasData) {
                     System.out.println("Uploading changes...");
@@ -363,41 +366,8 @@ public class SupabaseService {
                     System.out.println("Local is empty but cloud has data. Forcing download.");
                     notifyStatus("Restoring Backup...");
 
-                    String path = "backups/" + currentUserId + "/" + cloudFileName;
-                    HttpRequest request = HttpRequest.newBuilder()
-                            .uri(URI.create(STORAGE_URL + "/" + path))
-                            .header("apikey", SUPABASE_KEY)
-                            .header("Authorization", "Bearer " + currentAccessToken)
-                            .GET()
-                            .build();
+                    return downloadWithProgress(cloudFileName, dbPath);
 
-                    HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-
-                    if (response.statusCode() == 200) {
-                        Files.write(Path.of(dbPath), response.body());
-                        System.out.println("Force Restored from Supabase.");
-                        return true;
-                    } else {
-                        System.err.println("Force Download failed: " + response.statusCode());
-
-                        // FALLBACK: Try downloading legacy 'inventory.db' if the new name fails
-                        // This helps transition existing backups to the new filename
-                        System.out.println("Attempting fallback to legacy inventory.db...");
-                        String legacyPath = "backups/" + currentUserId + "/inventory.db";
-                        HttpRequest legacyReq = HttpRequest.newBuilder()
-                                .uri(URI.create(STORAGE_URL + "/" + legacyPath))
-                                .header("apikey", SUPABASE_KEY)
-                                .header("Authorization", "Bearer " + currentAccessToken)
-                                .GET()
-                                .build();
-                        HttpResponse<byte[]> legacyResp = client.send(legacyReq,
-                                HttpResponse.BodyHandlers.ofByteArray());
-                        if (legacyResp.statusCode() == 200) {
-                            Files.write(Path.of(dbPath), legacyResp.body());
-                            System.out.println("Restored from LEGACY inventory.db");
-                            return true;
-                        }
-                    }
                 } else {
                     System.out.println("Local DB is empty and no cloud backup exists.");
                     notifyStatus("Cloud: Ready");
@@ -407,6 +377,61 @@ public class SupabaseService {
             e.printStackTrace();
         }
         return false;
+    }
+
+    private boolean downloadWithProgress(String cloudFileName, String localPath) {
+        try {
+            String path = "backups/" + currentUserId + "/" + cloudFileName;
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(STORAGE_URL + "/" + path))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .GET()
+                    .build();
+
+            HttpResponse<java.io.InputStream> response = client.send(request,
+                    HttpResponse.BodyHandlers.ofInputStream());
+
+            if (response.statusCode() == 200) {
+                long totalBytes = response.headers().firstValueAsLong("Content-Length").orElse(-1L);
+                System.out.println("Downloading... Total Bytes: " + totalBytes);
+
+                try (java.io.InputStream is = response.body();
+                        java.io.FileOutputStream fos = new java.io.FileOutputStream(localPath)) {
+
+                    byte[] buffer = new byte[8192];
+                    int bytesRead;
+                    long totalRead = 0;
+
+                    while ((bytesRead = is.read(buffer)) != -1) {
+                        fos.write(buffer, 0, bytesRead);
+                        totalRead += bytesRead;
+                        if (totalBytes > 0) {
+                            notifyProgress((double) totalRead / totalBytes);
+                        }
+                    }
+                }
+
+                notifyProgress(1.0); // Complete
+                long newSize = Files.size(Path.of(localPath));
+                System.out.println("Restored from Supabase. Size=" + newSize);
+                return true;
+            } else {
+                System.err.println("Download failed: " + response.statusCode());
+
+                // FAILSAFE FOR LEGACY FILENAME (Only on FORCE download, but let's keep it
+                // simple here)
+                if (response.statusCode() == 404 && !cloudFileName.equals("inventory.db")) {
+                    System.out.println("Retrying with legacy 'inventory.db'...");
+                    return downloadWithProgress("inventory.db", localPath);
+                }
+
+                return false;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     // --- ADMIN ---

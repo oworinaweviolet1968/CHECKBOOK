@@ -26,8 +26,25 @@ public class LoginController {
     private Label statusLabel;
 
     @FXML
+    private javafx.scene.control.ProgressBar syncProgressBar;
+
+    @FXML
     public void initialize() {
         loginButton.setOnAction(e -> handleLogin());
+
+        // Listen for progress updates
+        SupabaseService.getInstance().addProgressListener(progress -> {
+            Platform.runLater(() -> {
+                if (progress <= 0 || progress >= 1.0) {
+                    syncProgressBar.setVisible(false);
+                    syncProgressBar.setManaged(false);
+                } else {
+                    syncProgressBar.setVisible(true);
+                    syncProgressBar.setManaged(true);
+                    syncProgressBar.setProgress(progress);
+                }
+            });
+        });
     }
 
     private void handleLogin() {
@@ -247,15 +264,8 @@ public class LoginController {
                     // MIGRATION LOGIC (Legacy -> New)
                     if (!java.nio.file.Files.exists(newDbPath) && java.nio.file.Files.exists(oldDbPath)) {
                         try {
-                            long size = java.nio.file.Files.size(oldDbPath);
-                            if (size > 24000) {
-                                System.out.println(
-                                        "Migrating legacy database (" + size + " bytes) to user-specific file...");
-                                java.nio.file.Files.copy(oldDbPath, newDbPath);
-                            } else {
-                                System.out.println(
-                                        "Skipping migration of empty/decoy inventory.db (" + size + " bytes).");
-                            }
+                            System.out.println("Migrating legacy database to user-specific file...");
+                            java.nio.file.Files.copy(oldDbPath, newDbPath);
                         } catch (Exception e) {
                             e.printStackTrace();
                         }

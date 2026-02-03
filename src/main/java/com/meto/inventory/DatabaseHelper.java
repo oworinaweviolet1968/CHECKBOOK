@@ -78,7 +78,6 @@ public class DatabaseHelper {
                     )
                 """;
 
-        // New table to "Store" the year's total before resetting
         String createSummaryTable = """
                     CREATE TABLE IF NOT EXISTS yearly_summaries (
                         year INTEGER PRIMARY KEY,
@@ -92,8 +91,59 @@ public class DatabaseHelper {
             stmt.execute(createStockTable);
             stmt.execute(createSalesTable);
             stmt.execute(createSummaryTable);
+
+            // AUTOMATIC MIGRATION: Check for missing columns in legacy DBs
+            ensureSchema(stmt);
+
         } catch (SQLException e) {
             e.printStackTrace();
+        }
+    }
+
+    private void ensureSchema(Statement stmt) throws SQLException {
+        // 1. Check STOCK table for 'available_pieces'
+        try {
+            ResultSet rs = stmt.executeQuery("PRAGMA table_info(stock)");
+            boolean hasAvailablePieces = false;
+            while (rs.next()) {
+                if ("available_pieces".equalsIgnoreCase(rs.getString("name"))) {
+                    hasAvailablePieces = true;
+                    break;
+                }
+            }
+            if (!hasAvailablePieces) {
+                System.out.println("Migrating Schema: Adding 'available_pieces' to stock table.");
+                stmt.execute("ALTER TABLE stock ADD COLUMN available_pieces REAL DEFAULT 0");
+                // Optional: Backfill available_pieces from old logic if possible,
+                // but since we don't know the logic, 0 is safer than crashing.
+            }
+        } catch (SQLException e) {
+            System.err.println("Schema check failed for stock: " + e.getMessage());
+        }
+
+        // 2. Check SALES table for 'cost_price' and 'base_quantity'
+        try {
+            ResultSet rs = stmt.executeQuery("PRAGMA table_info(sales)");
+            boolean hasCostPrice = false;
+            boolean hasBaseQty = false;
+            while (rs.next()) {
+                String col = rs.getString("name");
+                if ("cost_price".equalsIgnoreCase(col))
+                    hasCostPrice = true;
+                if ("base_quantity".equalsIgnoreCase(col))
+                    hasBaseQty = true;
+            }
+
+            if (!hasCostPrice) {
+                System.out.println("Migrating Schema: Adding 'cost_price' to sales table.");
+                stmt.execute("ALTER TABLE sales ADD COLUMN cost_price REAL DEFAULT 0");
+            }
+            if (!hasBaseQty) {
+                System.out.println("Migrating Schema: Adding 'base_quantity' to sales table.");
+                stmt.execute("ALTER TABLE sales ADD COLUMN base_quantity REAL DEFAULT 0");
+            }
+        } catch (SQLException e) {
+            System.err.println("Schema check failed for sales: " + e.getMessage());
         }
     }
 
