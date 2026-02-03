@@ -11,9 +11,23 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class DatabaseHelper {
-    private String dbUrl = "jdbc:sqlite:inventory.db"; // Default
-    private String currentDbName = "inventory.db";
+    private static final String APP_DIR = System.getProperty("user.home") + java.io.File.separator + ".meto_inventory";
+
+    private String dbUrl = "jdbc:sqlite:" + resolvePath("inventory.db"); // Default
+    private String currentDbName = resolvePath("inventory.db");
     private Connection connection;
+
+    private static String resolvePath(String fileName) {
+        java.io.File dir = new java.io.File(APP_DIR);
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+        return new java.io.File(dir, fileName).getAbsolutePath();
+    }
+
+    public static String getAppDir() {
+        return APP_DIR;
+    }
 
     public void initializeDatabase() {
         try {
@@ -33,8 +47,9 @@ public class DatabaseHelper {
             e.printStackTrace();
         }
 
-        this.currentDbName = localFileName;
-        this.dbUrl = "jdbc:sqlite:" + localFileName;
+        String fullPath = resolvePath(localFileName);
+        this.currentDbName = fullPath;
+        this.dbUrl = "jdbc:sqlite:" + fullPath;
         initializeDatabase();
     }
 

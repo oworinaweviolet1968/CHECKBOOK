@@ -258,8 +258,10 @@ public class LoginController {
                         currentUid = "unknown_user";
 
                     String newDbName = "inventory_" + currentUid.replaceAll("[^a-zA-Z0-9]", "_") + ".db";
-                    java.nio.file.Path newDbPath = java.nio.file.Path.of(newDbName);
-                    java.nio.file.Path oldDbPath = java.nio.file.Path.of("inventory.db");
+
+                    String appDir = com.meto.inventory.DatabaseHelper.getAppDir();
+                    java.nio.file.Path newDbPath = java.nio.file.Path.of(appDir, newDbName);
+                    java.nio.file.Path oldDbPath = java.nio.file.Path.of(appDir, "inventory.db");
 
                     // MIGRATION LOGIC (Legacy -> New)
                     if (!java.nio.file.Files.exists(newDbPath) && java.nio.file.Files.exists(oldDbPath)) {
