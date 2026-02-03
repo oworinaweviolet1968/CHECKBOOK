@@ -11,29 +11,43 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class DatabaseHelper {
-    private static final String APP_DIR = System.getProperty("user.home") + java.io.File.separator + ".meto_inventory";
 
     private String dbUrl = "jdbc:sqlite:" + resolvePath("inventory.db"); // Default
     private String currentDbName = resolvePath("inventory.db");
     private Connection connection;
 
     private static String resolvePath(String fileName) {
-        java.io.File dir = new java.io.File(APP_DIR);
+        String userHome = System.getProperty("user.home");
+        String appData = System.getenv("APPDATA");
+
+        // Prefer APPDATA on Windows, user.home otherwise
+        String rootDir = (appData != null) ? appData : userHome;
+
+        java.io.File dir = new java.io.File(rootDir, "METO_IMS_DATA");
         if (!dir.exists()) {
-            dir.mkdirs();
+            boolean created = dir.mkdirs();
+            System.out.println("DEBUG: Created data dir: " + dir.getAbsolutePath() + " -> " + created);
+        } else {
+            System.out.println("DEBUG: Data dir exists: " + dir.getAbsolutePath());
         }
         return new java.io.File(dir, fileName).getAbsolutePath();
     }
 
     public static String getAppDir() {
-        return APP_DIR;
+        // Re-resolve to get the same directory logic
+        String userHome = System.getProperty("user.home");
+        String appData = System.getenv("APPDATA");
+        String rootDir = (appData != null) ? appData : userHome;
+        return new java.io.File(rootDir, "METO_IMS_DATA").getAbsolutePath();
     }
 
     public void initializeDatabase() {
         try {
+            System.out.println("DEBUG: Connecting to DB URL: " + dbUrl);
             connection = DriverManager.getConnection(dbUrl);
             createTables();
         } catch (SQLException e) {
+            System.err.println("CRITICAL: Failed to connect to DB at " + dbUrl);
             e.printStackTrace();
         }
     }
@@ -48,8 +62,13 @@ public class DatabaseHelper {
         }
 
         String fullPath = resolvePath(localFileName);
+        // FORCE FORWARD SLASHES for JDBC URL stability on Windows
+        String validUrlPath = fullPath.replace(java.io.File.separatorChar, '/');
+
         this.currentDbName = fullPath;
-        this.dbUrl = "jdbc:sqlite:" + fullPath;
+        this.dbUrl = "jdbc:sqlite:" + validUrlPath;
+
+        System.out.println("DEBUG: Setting DB Name. Path=" + fullPath + ", URL=" + dbUrl);
         initializeDatabase();
     }
 
