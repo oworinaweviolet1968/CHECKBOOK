@@ -9,7 +9,7 @@
             stylesheets="@styles/style.css">
 
     <!-- Global Vertical ScrollPane -->
-    <ScrollPane fitToWidth="true" fitToHeight="true" style="-fx-background-color: transparent;" 
+    <ScrollPane fitToWidth="true" fitToHeight="false" style="-fx-background-color: transparent;" 
                 AnchorPane.topAnchor="0.0" AnchorPane.bottomAnchor="0.0" 
                 AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0">
         <VBox spacing="20">
@@ -31,8 +31,8 @@
             <VBox styleClass="card" VBox.vgrow="ALWAYS" spacing="24">
                 
                 <!-- Metrics Row (Simulated Cards) -->
-                <ScrollPane fitToHeight="false" fitToWidth="false" vbarPolicy="NEVER" hbarPolicy="AS_NEEDED" pannable="true" minHeight="130" style="-fx-background-color: transparent; -fx-background: transparent; -fx-padding: 0;">
-                    <HBox spacing="16" style="-fx-padding: 0 0 20 0;">
+                <ScrollPane fitToHeight="true" fitToWidth="false" vbarPolicy="NEVER" hbarPolicy="AS_NEEDED" pannable="true" minHeight="120" style="-fx-background-color: transparent; -fx-background: transparent; -fx-padding: 0;">
+                    <HBox spacing="16" style="-fx-padding: 0 0 5 0;">
                         <!-- Metric 1: Total Stock Value -->
                         <VBox spacing="4" HBox.hgrow="ALWAYS" minWidth="200" style="-fx-border-color: -fx-color-border; -fx-border-radius: 8; -fx-padding: 16;">
                             <Label text="TOTAL STOCK VALUE" style="-fx-font-size: 10px; -fx-text-fill: -fx-text-muted; -fx-font-weight: 700;"/>

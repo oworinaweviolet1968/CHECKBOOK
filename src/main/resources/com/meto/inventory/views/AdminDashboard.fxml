@@ -46,6 +46,7 @@
                   <TableColumn fx:id="backupColumn" prefWidth="150.0" text="Cloud Backup" />
                   <TableColumn fx:id="backupExpiryColumn" prefWidth="150.0" text="Backup Expiry" />
                   <TableColumn fx:id="lastBackupColumn" prefWidth="180.0" text="Last Backed Up" />
+                  <TableColumn fx:id="resetPasswordColumn" prefWidth="120.0" text="Action" />
                </columns>
             </TableView>
          </children>

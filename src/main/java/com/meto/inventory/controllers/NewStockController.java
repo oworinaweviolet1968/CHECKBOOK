@@ -379,9 +379,10 @@ public class NewStockController {
 
     private void updateQtyButtonsLockState(boolean itemExists) {
         // Buttons to lock if item exists
-        // Lock ALL buttons as requested
+        // UNLOCK ALL buttons as requested by user to allow adding new sizes (e.g. 1l
+        // for Soda)
         for (Button btn : qtyButtonsMap.values()) {
-            btn.setDisable(itemExists);
+            btn.setDisable(false);
         }
     }
 
@@ -507,19 +508,31 @@ public class NewStockController {
             return;
         }
 
-        if (currentQty.isEmpty())
-            return;
-
-        if (currentQty.equalsIgnoreCase("None")) {
-            qtyComboBox.getEditor().setText("");
-            return;
-        }
-
         // Logic for appending units...
-        if (currentQty.endsWith("kg") || currentQty.endsWith("ml") || currentQty.endsWith("l")) {
-            qtyComboBox.getEditor().setText(currentQty.replaceAll("(g|kg|ml|l)$", "") + unit);
+
+        // CHECK IF IT HAS NUMBERS
+        boolean hasNumbers = currentQty.matches(".*\\d.*");
+
+        if (!hasNumbers) {
+            // Case 1: Empty or just text -> Set Unit & Move Cursor to START
+            // This allows User to Click 'kg' -> Type '5' -> Result '5kg'
+            qtyComboBox.getEditor().setText(unit);
+            javafx.application.Platform.runLater(() -> {
+                qtyComboBox.getEditor().positionCaret(0);
+                qtyComboBox.requestFocus();
+            });
         } else {
-            qtyComboBox.getEditor().setText(currentQty + unit);
+            // Case 2: Already has number -> Append unit to end
+            // e.g. "5" -> "5kg"
+            if (currentQty.endsWith("kg") || currentQty.endsWith("ml") || currentQty.endsWith("l")) {
+                qtyComboBox.getEditor().setText(currentQty.replaceAll("(g|kg|ml|l)$", "") + unit);
+            } else {
+                qtyComboBox.getEditor().setText(currentQty + unit);
+            }
+            javafx.application.Platform.runLater(() -> {
+                qtyComboBox.getEditor().positionCaret(qtyComboBox.getEditor().getText().length());
+                qtyComboBox.requestFocus();
+            });
         }
     }
 

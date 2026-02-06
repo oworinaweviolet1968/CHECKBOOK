@@ -119,6 +119,33 @@ public class SupabaseService {
         }
     }
 
+    public boolean sendPasswordResetEmail(String email, String redirectUrl) throws IOException, InterruptedException {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("email", email);
+
+        String fullUrl = AUTH_URL + "/recover";
+        if (redirectUrl != null && !redirectUrl.isEmpty()) {
+            fullUrl += "?redirect_to="
+                    + java.net.URLEncoder.encode(redirectUrl, java.nio.charset.StandardCharsets.UTF_8);
+        }
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(fullUrl))
+                .header("apikey", SUPABASE_KEY)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() == 200 || response.statusCode() == 201) {
+            return true;
+        } else {
+            System.err.println("Reset Password Failed: " + response.body());
+            return false;
+        }
+    }
+
     public boolean signIn(String email, String password) throws IOException, InterruptedException {
         JsonObject payload = new JsonObject();
         payload.addProperty("email", email);

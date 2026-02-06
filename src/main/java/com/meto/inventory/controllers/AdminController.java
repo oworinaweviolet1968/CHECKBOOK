@@ -41,6 +41,8 @@ public class AdminController {
     @FXML
     private TableColumn<AdminUser, String> lastBackupColumn;
     @FXML
+    private TableColumn<AdminUser, Void> resetPasswordColumn;
+    @FXML
     private Button refreshButton;
     @FXML
     private Button logoutButton;
@@ -121,6 +123,27 @@ public class AdminController {
 
         lastBackupColumn.setCellValueFactory(cellData -> cellData.getValue().lastBackupProperty());
         backupExpiryColumn.setCellValueFactory(cellData -> cellData.getValue().backupExpiryProperty());
+
+        resetPasswordColumn.setCellFactory(param -> new TableCell<>() {
+            private final Button btn = new Button("Reset");
+
+            {
+                btn.setOnAction(event -> {
+                    AdminUser user = getTableView().getItems().get(getIndex());
+                    handlePasswordReset(user);
+                });
+            }
+
+            @Override
+            protected void updateItem(Void item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) {
+                    setGraphic(null);
+                } else {
+                    setGraphic(btn);
+                }
+            }
+        });
 
         usersTable.setItems(userList);
         usersTable.setEditable(true);
@@ -261,6 +284,32 @@ public class AdminController {
             } catch (Exception e) {
                 e.printStackTrace();
                 Platform.runLater(() -> statusLabel.setText("Update Failed!"));
+            }
+        }).start();
+    }
+
+    private void handlePasswordReset(AdminUser user) {
+        String email = user.emailProperty().get();
+        if (email == null || email.isEmpty() || email.equals("No Email Saved") || email.equals("Login to Update")) {
+            statusLabel.setText("Cannot reset: No valid email.");
+            return;
+        }
+
+        statusLabel.setText("Sending reset email to " + email + "...");
+        new Thread(() -> {
+            try {
+                boolean success = SupabaseService.getInstance().sendPasswordResetEmail(email,
+                        "https://comforting-praline-1cf83a.netlify.app/");
+                Platform.runLater(() -> {
+                    if (success) {
+                        statusLabel.setText("Reset email sent to " + email);
+                    } else {
+                        statusLabel.setText("Failed to send reset email.");
+                    }
+                });
+            } catch (Exception e) {
+                e.printStackTrace();
+                Platform.runLater(() -> statusLabel.setText("Error sending email: " + e.getMessage()));
             }
         }).start();
     }
