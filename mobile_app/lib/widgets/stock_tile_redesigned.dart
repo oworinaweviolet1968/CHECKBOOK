@@ -1,0 +1,92 @@
+import 'package:flutter/material.dart';
+import '../utils/colors.dart';
+
+class StockTileRedesigned extends StatelessWidget {
+  final String itemName;
+  final String itemSize; // e.g. "Size: M" or "50kg"
+  final String price; // e.g. "UGX 25.00"
+  final String quantity; // e.g. "45 pcs"
+  final bool isLowStock;
+
+  const StockTileRedesigned({
+    super.key,
+    required this.itemName,
+    required this.itemSize,
+    required this.price,
+    required this.quantity,
+    this.isLowStock = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+          color: Colors.transparent, // Background handled by list container usually
+          border: Border(bottom: BorderSide(color: Colors.grey.shade50)), // divider
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Left: Icon + Text
+          Expanded(
+            child: Row(
+              children: [
+                 // No icon in HTML list for stock, but we can add one if needed? 
+                 // HTML has just text.
+                 Expanded(
+                   child: Column(
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                     children: [
+                       Text(
+                         itemName,
+                         style: const TextStyle(
+                           fontWeight: FontWeight.w600,
+                           fontSize: 14,
+                           color: AppColors.textPrimary,
+                         ),
+                       ),
+                       const SizedBox(height: 2),
+                       Text(
+                         "$itemSize • $price",
+                         style: const TextStyle(
+                           fontSize: 12,
+                           color: AppColors.textSecondary,
+                         ),
+                       ),
+                     ],
+                   ),
+                 ),
+              ],
+            ),
+          ),
+          
+          // Right: Quantity + Badge
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                quantity,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                isLowStock ? "LOW STOCK" : "IN STOCK",
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: isLowStock ? AppColors.accentAmber : AppColors.primaryGreen,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
