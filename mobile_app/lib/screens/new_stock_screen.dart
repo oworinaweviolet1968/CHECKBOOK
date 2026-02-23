@@ -362,7 +362,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
               spacing: 8,
               runSpacing: 8,
               children: _getFilteredUnitButtons().map((u) {
-                final isSelected = u['value'] == _selectedUnitLabel;
+                final isSelected = _isUnitSelected(u['value']);
                 final isSack = u['value'] == 'Sack';
                 return _buildQuickButton(
                   u['label']!, 
@@ -675,6 +675,23 @@ class _NewStockScreenState extends State<NewStockScreen> {
       );
   }
   
+  bool _isUnitSelected(String? btnValue) {
+      if (btnValue == null) return false;
+      String selected = _selectedUnitLabel.toLowerCase().replaceAll(' ', '');
+      String button = btnValue.toLowerCase().replaceAll(' ', '');
+      
+      // Case 1: Exact match
+      if (selected == button) return true;
+      
+      // Case 2: Selected contains the button value
+      if (selected.contains(button)) return true;
+      
+      // Case 3: Handle "pcs"
+      if (button == "pcs" && (selected == "pcs" || selected.endsWith("pcs"))) return true;
+      
+      return false;
+  }
+  
   Widget _buildNotice(String message, Color color) {
        return Container(
           padding: const EdgeInsets.all(8),
@@ -734,21 +751,22 @@ class _NewStockScreenState extends State<NewStockScreen> {
   }
 
   void _appendUnit(String val) {
-     String unitLabel = val;
+     String cleanVal = DatabaseHelper.instance.cleanUnitLabel(val);
+     String unitLabel = cleanVal;
      
      // Extract multiplier label for display
-     if (val == "half doz") unitLabel = "H.Doz";
-     else if (val == "dozen") unitLabel = "Doz";
-     else if (val.contains("box*")) unitLabel = "Box";
-     else if (val == "crate") unitLabel = "Crate";
-     else if (val == "pcs") unitLabel = "pcs";
+     if (cleanVal == "half doz") unitLabel = "H.Doz";
+     else if (cleanVal == "dozen") unitLabel = "Doz";
+     else if (cleanVal.contains("box*")) unitLabel = "Box";
+     else if (cleanVal == "crate") unitLabel = "Crate";
+     else if (cleanVal == "pcs") unitLabel = "pcs";
 
      String currentText = _unitController.text;
      double currentNum = DatabaseHelper.instance.extractNumericValue(currentText);
      if (currentNum <= 0) currentNum = 1;
 
      setState(() {
-         _selectedUnitLabel = val;
+         _selectedUnitLabel = cleanVal;
          // Display format: "3 Box"
          if (unitLabel.toLowerCase() == "pcs") {
             _unitController.text = currentNum.toStringAsFixed(0);

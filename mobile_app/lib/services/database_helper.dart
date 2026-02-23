@@ -357,7 +357,7 @@ class DatabaseHelper {
           ((existingPieces * existingCostPerPiece) + (incomingPieces * newCostPerPiece)) / (existingPieces + incomingPieces),
           supplier,
           DateTime.now().toString(), // Using full timestamp or just date part? Java uses LocalDate.now()
-          newUnit,
+          cleanUnitLabel(newUnit),
           id
         ]
       );
@@ -377,7 +377,7 @@ class DatabaseHelper {
 
     await db.rawInsert(
       'INSERT INTO stock(supplier, item, quantity, unit, price, available_pieces, date) VALUES(?, ?, ?, ?, ?, ?, ?)',
-      [s, i, q, u, pricePerSinglePiece, totalPieces, d]
+      [s, i, q, cleanUnitLabel(u), pricePerSinglePiece, totalPieces, d]
     );
   }
 
@@ -579,6 +579,30 @@ class DatabaseHelper {
       if (type.contains("box")) return 20.0; // Default for other boxes if unspecified 
 
       return 1.0;
+  }
+
+  /// Strips leading numbers/spaces to get a clean unit label for UI/DB
+  String cleanUnitLabel(String text) {
+      if (text.isEmpty) return "pcs";
+      String lower = text.toLowerCase().trim();
+      
+      // Remove leading numeric part and spaces (e.g., "5 Box * 24" -> "box * 24")
+      String cleaned = lower.replaceFirst(RegExp(r'^[\d\s\./]+'), '').trim();
+      
+      // Map back to standard internal values if possible
+      if (cleaned.contains("sack")) return "Sack";
+      if (cleaned.contains("halfdoz") || cleaned.contains("half doz")) return "half doz";
+      if (cleaned.contains("box*12")) return "box*12";
+      if (cleaned.contains("box*10")) return "box*10";
+      if (cleaned.contains("box*20")) return "box*20";
+      if (cleaned.contains("box*24") || cleaned.contains("carton")) return "box*24";
+      if (cleaned.contains("box*72")) return "box*72";
+      if (cleaned.contains("crate")) return "crate";
+      if (cleaned.contains("half")) return "half";
+      if (cleaned.contains("quarter")) return "quarter";
+      if (cleaned.contains("kg")) return "kg";
+      
+      return cleaned.isEmpty ? "pcs" : cleaned;
   }
   
   // Need to fix 'boolean' to 'bool' in Dart above

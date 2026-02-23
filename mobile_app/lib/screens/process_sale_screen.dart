@@ -30,7 +30,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
   String _totalPiecesSuffix = "pcs"; // e.g. "72 pcs"
 
   // Quick Buttons
-  final List<String> _weightButtons = ["Quarter", "Half", "Sack"];
+  final List<String> _weightButtons = ["kg", "Quarter", "Half", "Sack"];
   final List<Map<String, String>> _unitOptions = [
     {"label": "pcs * 1", "value": "pcs"},
     {"label": "Sack", "value": "Sack"},
@@ -60,7 +60,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
     double total = count * multiplier;
     
     setState(() {
-       _totalPiecesSuffix = "${total.toStringAsFixed(0)} pcs";
+       _totalPiecesSuffix = _isBulkItem ? "${total.toStringAsFixed(2)} kg" : "${total.toStringAsFixed(0)} pcs";
     });
   }
 
@@ -104,8 +104,9 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                     // Auto-select unit from stocking if none selected
                     String rawUnit = result.first['unit'] as String;
                     if (_unitController.text.isEmpty) {
-                        _selectedUnitLabel = rawUnit; 
-                        _appendUnit(rawUnit);
+                        String cleanUnit = DatabaseHelper.instance.cleanUnitLabel(rawUnit);
+                        _selectedUnitLabel = cleanUnit; 
+                        _appendUnit(cleanUnit);
                     }
                 });
            }
@@ -275,7 +276,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
                 SizedBox(
-                    width: 100,
+                    width: 200,
                     child: TextFormField(
                         controller: _unitController,
                         textAlign: TextAlign.center,
@@ -295,11 +296,11 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                         runSpacing: 8.0,
                         children: _isBulkItem 
                         ? _weightButtons.map((u) {
-                             final isSelected = u.toLowerCase().replaceAll(' ', '') == _selectedUnitLabel.toLowerCase().replaceAll(' ', '');
+                             final isSelected = _isUnitSelected(u);
                              return _buildQuickBtn(u, isSelected ? Colors.blue.shade50 : Colors.orange.shade50, isSelected ? Colors.blue.shade700 : Colors.orange.shade700, isSelected: isSelected);
                         }).toList()
                         : _unitOptions.map((u) {
-                             final isSelected = u['value']!.toLowerCase().replaceAll(' ', '') == _selectedUnitLabel.toLowerCase().replaceAll(' ', '');
+                             final isSelected = _isUnitSelected(u['value']);
                              return _buildQuickBtn(u['label']!, isSelected ? Colors.blue.shade50 : AppColors.primaryGreen.withValues(alpha: 0.1), isSelected ? Colors.blue.shade700 : AppColors.primaryGreen, value: u['value'], isSelected: isSelected);
                         }).toList(),
                     ),
@@ -462,6 +463,24 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
       );
   }
   
+  bool _isUnitSelected(String? btnValue) {
+      if (btnValue == null) return false;
+      String selected = _selectedUnitLabel.toLowerCase().replaceAll(' ', '');
+      String button = btnValue.toLowerCase().replaceAll(' ', '');
+      
+      // Case 1: Exact match
+      if (selected == button) return true;
+      
+      // Case 2: Selected contains the button value (e.g. "1box*72" contains "box*72")
+      // We check if it ends with or contains the button value to be robust
+      if (selected.contains(button)) return true;
+      
+      // Case 3: Handle "pcs" which might be stored as "1 pcs" or just "pcs"
+      if (button == "pcs" && (selected == "pcs" || selected.endsWith("pcs"))) return true;
+      
+      return false;
+  }
+
   bool isWideScreen(BuildContext context) => MediaQuery.of(context).size.width > 800;
 
   void _loadSizes(String item) async {
@@ -484,12 +503,14 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
       bool isBulk = size.toLowerCase().contains("kg") && val >= 10.0;
       setState(() {
           _isBulkItem = isBulk;
+          _totalPiecesSuffix = isBulk ? "kg" : "pcs";
       });
   }
 
   void _appendUnit(String val) async {
-     String unitLabel = val;
-     String vNorm = val.toLowerCase().replaceAll(' ', '');
+     String cleanVal = DatabaseHelper.instance.cleanUnitLabel(val);
+     String unitLabel = cleanVal;
+     String vNorm = cleanVal.toLowerCase().replaceAll(' ', '');
      
      // Extract multiplier label for display
      if (vNorm == "halfdoz") unitLabel = "H.Doz";
@@ -500,19 +521,25 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
      else if (vNorm == "half") unitLabel = "Half";
      else if (vNorm == "quarter") unitLabel = "Quarter";
      else if (vNorm == "sack") unitLabel = "Sack";
+     else if (vNorm == "kg") unitLabel = "kg";
 
      String currentText = _unitController.text;
      double currentNum = DatabaseHelper.instance.extractNumericValue(currentText);
      if (currentNum <= 0) currentNum = 1;
 
      setState(() {
-         _selectedUnitLabel = val;
+         _selectedUnitLabel = cleanVal;
          // Display format: "3 Box"
-         if (unitLabel.toLowerCase() == "pcs") {
+         if (unitLabel.toLowerCase() == "pcs" || unitLabel.toLowerCase() == "kg") {
             _unitController.text = currentNum.toStringAsFixed(0);
          } else {
             _unitController.text = "${currentNum.toStringAsFixed(0)} $unitLabel";
          }
+         
+         // Update suffix immediately
+         double multiplier = DatabaseHelper.instance.getUnitMultiplier(val, _selectedSize ?? "");
+         double total = currentNum * multiplier;
+         _totalPiecesSuffix = _isBulkItem ? "${total.toStringAsFixed(2)} kg" : "${total.toStringAsFixed(0)} pcs";
      });
   }
 
@@ -525,7 +552,11 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
       
       String item = _selectedItem!;
       String size = _selectedSize!;
-      String unitText = "${_unitController.text} $_selectedUnitLabel";
+      
+      // Fix redundant unit labels: ensure unitText is "Value Unit"
+      double unitCountVal = DatabaseHelper.instance.extractNumericValue(_unitController.text);
+      String unitText = "${unitCountVal.toStringAsFixed(0)} $_selectedUnitLabel";
+      
       // Use robust parsing to allow things like "1,000 negotiated"
       double price = DatabaseHelper.instance.extractNumericValue(_priceController.text);
       
@@ -588,7 +619,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
           ));
           _unitController.clear();
           _selectedUnitLabel = "pcs";
-          _totalPiecesSuffix = "pcs";
+          _totalPiecesSuffix = _isBulkItem ? "kg" : "pcs";
           // Price clear? Mockup clears? Usually keep price for speed if same item?
           // Let's clear for safety.
           _priceController.clear();
