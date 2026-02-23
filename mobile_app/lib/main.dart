@@ -10,6 +10,7 @@ import 'screens/history_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/database_helper.dart';
 import 'services/supabase_service.dart';
+import 'services/passcode_service.dart';
 import 'utils/colors.dart';
 
 // Credentials extracted from user's .env file
@@ -33,6 +34,7 @@ void main() async {
   final currentUserId = Supabase.instance.client.auth.currentUser?.id;
   if (currentUserId != null) {
     await DatabaseHelper.instance.switchDatabase(currentUserId);
+    await PasscodeService.instance.init();
   }
 
   runApp(const MyApp());
@@ -88,6 +90,7 @@ class _MainScreenState extends State<MainScreen> {
     if (userId != null) {
       await SupasService.instance.migrateLegacyDatabase();
       await DatabaseHelper.instance.switchDatabase(userId);
+      await PasscodeService.instance.init();
       // Trigger a sync in background too
       SupasService.instance.syncDatabase();
     }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; 
 import '../models/history_item.dart';
 import '../services/database_helper.dart';
+import '../services/passcode_service.dart';
 import '../utils/colors.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -378,13 +379,19 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                                   color: isStock ? const Color(0xFFEA580C) : const Color(0xFF10B981) 
                                               )
                                           ),
-                                          if (!isStock) ...[
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                  "Profit: ${_formatter.format(double.tryParse(item.profit.replaceAll(',', '')) ?? 0)}", 
-                                                  style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))
-                                              ),
-                                          ]
+                                           if (!isStock) ...[
+                                               const SizedBox(height: 4),
+                                               ValueListenableBuilder<bool>(
+                                                 valueListenable: PasscodeService.instance.isLocked,
+                                                 builder: (context, isLocked, child) {
+                                                   if (isLocked) return const SizedBox.shrink();
+                                                   return Text(
+                                                       "Profit: ${_formatter.format(double.tryParse(item.profit.replaceAll(',', '')) ?? 0)}", 
+                                                       style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))
+                                                   );
+                                                 },
+                                               ),
+                                           ]
                                      ],
                                  )
                              ],

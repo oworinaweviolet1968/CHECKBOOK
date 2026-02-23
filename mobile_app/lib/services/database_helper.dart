@@ -139,6 +139,12 @@ class DatabaseHelper {
          // Ensure schemas if opening existing DB
          // In real sync scenario, we might be overwriting this file entirely,
          // so onOpen might need to re-check if we replaced the file.
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS settings (
+              key TEXT PRIMARY KEY,
+              value TEXT
+            )
+          ''');
       }
     );
   }
@@ -201,6 +207,14 @@ class DatabaseHelper {
         total_profit REAL,
         total_sales REAL,
         closed_at $dateTimeDefault
+      )
+    ''');
+
+    // Settings Table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
       )
     ''');
   }
@@ -617,6 +631,29 @@ class DatabaseHelper {
       final db = await instance.database;
       final result = await db.rawQuery("SELECT DISTINCT quantity FROM stock WHERE item = ?", [itemName]);
       return result.map((row) => row['quantity'] as String).toList();
+  }
+
+  // --- SETTINGS ---
+  Future<void> saveSetting(String key, String value) async {
+    final db = await instance.database;
+    await db.insert(
+      'settings',
+      {'key': key, 'value': value},
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String?> getSetting(String key) async {
+    final db = await instance.database;
+    final maps = await db.query(
+      'settings',
+      where: 'key = ?',
+      whereArgs: [key],
+    );
+    if (maps.isNotEmpty) {
+      return maps.first['value'] as String?;
+    }
+    return null;
   }
   
   Future<void> close() async {

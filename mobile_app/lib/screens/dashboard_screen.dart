@@ -7,6 +7,8 @@ import '../widgets/sale_tile_redesigned.dart';
 import '../screens/login_screen.dart';
 import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
+import '../screens/account_screen.dart';
+import '../services/passcode_service.dart';
 import 'package:intl/intl.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -107,24 +109,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     )
                 ],
             ),
-            const SizedBox(width: 8),
-            PopupMenuButton<String>(
-              onSelected: (value) {
-                if (value == 'logout') _logout();
+            ValueListenableBuilder<bool>(
+              valueListenable: PasscodeService.instance.isLocked,
+              builder: (context, isLocked, child) {
+                if (isLocked) return const SizedBox.shrink();
+                return IconButton(
+                  icon: const Icon(Icons.lock_outline, color: AppColors.textPrimary),
+                  onPressed: () => PasscodeService.instance.lock(),
+                  tooltip: 'Hide Metrics',
+                );
               },
-              itemBuilder: (BuildContext context) {
-                return [
-                  const PopupMenuItem<String>(
-                    value: 'logout',
-                    child: Row(
-                      children: [
-                        Icon(Icons.logout, color: Colors.red, size: 20),
-                        SizedBox(width: 8),
-                        Text('Logout'),
-                      ],
-                    ),
-                  ),
-                ];
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AccountScreen()),
+                );
               },
               child: Container(
                   margin: const EdgeInsets.only(right: 16),
@@ -152,80 +153,89 @@ class _DashboardScreenState extends State<DashboardScreen> {
              children: [
                  Padding(
                      padding: const EdgeInsets.all(16),
-                     child: LayoutBuilder(
-                         builder: (context, constraints) {
-                             bool isWide = constraints.maxWidth > 800;
-                             
-                             final card1 = FutureBuilder<double>(
-                                future: _totalStockValue,
-                                builder: (ctx, snap) => _buildSummaryCard(
-                                    "Total Stock Value", 
-                                    snap.data ?? 0.0, 
-                                    0, 
-                                    true
-                                ),
-                             );
-                             
-                             final card2 = FutureBuilder<double>(
-                                future: _yearlyProfit,
-                                builder: (ctx, snap) {
-                                    final current = snap.data ?? 0.0;
-                                    return FutureBuilder<double>(
-                                        future: _prevYearProfit,
-                                        builder: (ctx2, snap2) {
-                                            final prev = snap2.data ?? 0.0;
-                                            return _buildSummaryCard(
-                                                "Yearly Profit", 
-                                                current, 
-                                                prev, 
-                                                true
-                                            );
-                                        }
-                                    );
-                                }
-                             );
-                             
-                             final card3 = FutureBuilder<Map<String, double>>(
-                                future: _todaysStats,
-                                builder: (ctx, snap) {
-                                    final profit = snap.data?['profit'] ?? 0.0;
-                                    return FutureBuilder<double>(
-                                        future: _yesterdaysProfit,
-                                        builder: (ctx2, snap2) {
-                                            final yesterday = snap2.data ?? 0.0;
-                                            return _buildSummaryCard(
-                                                "Today's Profit", 
-                                                profit, 
-                                                yesterday, 
-                                                true
-                                            );
-                                        }
-                                    );
-                                }
-                             );
-
-                             if (isWide) {
-                                 return Row(
-                                     children: [
-                                         Expanded(child: card1),
-                                         const SizedBox(width: 16),
-                                         Expanded(child: card2),
-                                         const SizedBox(width: 16),
-                                         Expanded(child: card3),
-                                     ],
-                                 );
-                             } else {
-                                 return Column(
-                                     children: [
-                                         card1,
-                                         const SizedBox(height: 12),
-                                         card2,
-                                         const SizedBox(height: 12),
-                                         card3,
-                                     ],
-                                 );
-                             }
+                     child: ValueListenableBuilder<bool>(
+                       valueListenable: PasscodeService.instance.isLocked,
+                       builder: (context, isLocked, child) {
+                         if (isLocked) {
+                           return _buildLockedPlaceholder();
                          }
+                         
+                         return LayoutBuilder(
+                             builder: (context, constraints) {
+                                 bool isWide = constraints.maxWidth > 800;
+                                 
+                                 final card1 = FutureBuilder<double>(
+                                    future: _totalStockValue,
+                                    builder: (ctx, snap) => _buildSummaryCard(
+                                        "Total Stock Value", 
+                                        snap.data ?? 0.0, 
+                                        0, 
+                                        true
+                                    ),
+                                 );
+                                 
+                                 final card2 = FutureBuilder<double>(
+                                    future: _yearlyProfit,
+                                    builder: (ctx, snap) {
+                                        final current = snap.data ?? 0.0;
+                                        return FutureBuilder<double>(
+                                            future: _prevYearProfit,
+                                            builder: (ctx2, snap2) {
+                                                final prev = snap2.data ?? 0.0;
+                                                return _buildSummaryCard(
+                                                    "Yearly Profit", 
+                                                    current, 
+                                                    prev, 
+                                                    true
+                                                );
+                                            }
+                                        );
+                                    }
+                                 );
+                                 
+                                 final card3 = FutureBuilder<Map<String, double>>(
+                                    future: _todaysStats,
+                                    builder: (ctx, snap) {
+                                        final profit = snap.data?['profit'] ?? 0.0;
+                                        return FutureBuilder<double>(
+                                            future: _yesterdaysProfit,
+                                            builder: (ctx2, snap2) {
+                                                final yesterday = snap2.data ?? 0.0;
+                                                return _buildSummaryCard(
+                                                    "Today's Profit", 
+                                                    profit, 
+                                                    yesterday, 
+                                                    true
+                                                );
+                                            }
+                                        );
+                                    }
+                                 );
+
+                                 if (isWide) {
+                                     return Row(
+                                         children: [
+                                             Expanded(child: card1),
+                                             const SizedBox(width: 16),
+                                             Expanded(child: card2),
+                                             const SizedBox(width: 16),
+                                             Expanded(child: card3),
+                                         ],
+                                     );
+                                 } else {
+                                     return Column(
+                                         children: [
+                                             card1,
+                                             const SizedBox(height: 12),
+                                             card2,
+                                             const SizedBox(height: 12),
+                                             card3,
+                                         ],
+                                     );
+                                 }
+                             }
+                         );
+                       },
                      ),
                  ),
                  
@@ -370,7 +380,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                      fontWeight: FontWeight.bold, 
                                      color: AppColors.textPrimary
                                  )),
-                                 FutureBuilder<Map<String, double>>(
+                                  FutureBuilder<Map<String, double>>(
                                    future: _todaysStats,
                                    builder: (context, snap) {
                                      final total = snap.data?['sales'] ?? 0.0;
@@ -410,14 +420,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                      final time = sale['created_at'].toString().split(' ')[1].substring(0, 5); 
                                      
                                      final unitSold = sale['unit']; 
-                                     
-                                     return SaleTileRedesigned(
-                                         customer: "$unitSold x ${sale['item']}", 
-                                         orderInfo: "Order #$orderId • $time",
-                                         amount: "UGX ${_formatter.format(amount)}",
-                                         profit: "Profit: UGX ${_formatter.format(profit)}",
-                                         isPositiveProfit: profit >= 0,
-                                     );
+                                                                          return ValueListenableBuilder<bool>(
+                                         valueListenable: PasscodeService.instance.isLocked,
+                                         builder: (context, isLocked, child) {
+                                             return SaleTileRedesigned(
+                                                 customer: "$unitSold x ${sale['item']}", 
+                                                 orderInfo: "Order #$orderId • $time",
+                                                 amount: "UGX ${_formatter.format(amount)}",
+                                                 profit: isLocked ? "" : "Profit: UGX ${_formatter.format(profit)}",
+                                                 isPositiveProfit: profit >= 0,
+                                             );
+                                         },
+                                      );
                                  }).toList(),
                              );
                          }
@@ -447,5 +461,84 @@ class _DashboardScreenState extends State<DashboardScreen> {
           percentage: "$sign${percent.toStringAsFixed(1)}%", 
           isPositive: percent >= 0
       );
+  }
+
+  Widget _buildLockedPlaceholder() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
+            child: Icon(Icons.visibility_off_outlined, color: Colors.grey.shade400, size: 32),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Passcode required',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Metrics are hidden for security',
+            style: TextStyle(color: Colors.grey, fontSize: 13),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: _showPasscodeDialog,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryGreen,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
+            ),
+            child: const Text('Unlock View', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showPasscodeDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Enter Passcode'),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          maxLength: 4,
+          obscureText: true,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 24, letterSpacing: 10),
+          decoration: const InputDecoration(border: OutlineInputBorder(), counterText: ""),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () async {
+              bool success = await PasscodeService.instance.verifyPasscode(controller.text);
+              if (mounted) {
+                if (success) {
+                  Navigator.pop(context);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Invalid passcode'), backgroundColor: Colors.red),
+                  );
+                }
+              }
+            },
+            child: const Text('Unlock'),
+          ),
+        ],
+      ),
+    );
   }
 }

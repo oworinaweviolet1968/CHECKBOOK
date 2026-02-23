@@ -284,7 +284,11 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                         inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                         decoration: _inputDecoration("", null).copyWith(
-                            suffixText: " $_totalPiecesSuffix",
+                            prefixIcon: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                                child: Text(_selectedUnitLabel, style: const TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold, fontSize: 16)),
+                            ),
+                            suffixText: _totalPiecesSuffix,
                             suffixStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.grey)
                         ),
                     ),
@@ -529,12 +533,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
 
      setState(() {
          _selectedUnitLabel = cleanVal;
-         // Display format: "3 Box"
-         if (unitLabel.toLowerCase() == "pcs" || unitLabel.toLowerCase() == "kg") {
-            _unitController.text = currentNum.toStringAsFixed(0);
-         } else {
-            _unitController.text = "${currentNum.toStringAsFixed(0)} $unitLabel";
-         }
+         _unitController.text = currentNum.toStringAsFixed(0);
          
          // Update suffix immediately
          double multiplier = DatabaseHelper.instance.getUnitMultiplier(val, _selectedSize ?? "");

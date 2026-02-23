@@ -356,7 +356,16 @@ class _NewStockScreenState extends State<NewStockScreen> {
           const SizedBox(height: 20),
           
           _buildLabel("Quantity / Count"),
-          _buildTextField(_unitController, "Enter Count", isNumber: true, suffixText: " $_totalPiecesSuffix"),
+          _buildTextField(
+            _unitController, 
+            "Enter Count", 
+            isNumber: true, 
+            prefixIcon: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              child: Text(_selectedUnitLabel, style: const TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+            suffixText: " $_totalPiecesSuffix"
+          ),
           const SizedBox(height: 12),
           Wrap(
               spacing: 8,
@@ -629,7 +638,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
       );
   }
   
-  Widget _buildTextField(TextEditingController controller, String hint, {bool isNumber = false, bool isCurrency = false, double paddingLeft = 16, bool isReadOnly = false, String? suffixText}) {
+  Widget _buildTextField(TextEditingController controller, String hint, {bool isNumber = false, bool isCurrency = false, double paddingLeft = 16, bool isReadOnly = false, String? suffixText, Widget? prefixIcon}) {
       return TextField(
           controller: controller,
           readOnly: isReadOnly,
@@ -642,7 +651,8 @@ class _NewStockScreenState extends State<NewStockScreen> {
               hintText: hint,
               fillColor: isReadOnly ? const Color(0xFFF1F5F9) : const Color(0xFFF8FAFC),
               suffixText: suffixText,
-              suffixStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.grey)
+              suffixStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.grey),
+              prefixIcon: prefixIcon,
           ),
       );
   }
@@ -767,12 +777,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
 
      setState(() {
          _selectedUnitLabel = cleanVal;
-         // Display format: "3 Box"
-         if (unitLabel.toLowerCase() == "pcs") {
-            _unitController.text = currentNum.toStringAsFixed(0);
-         } else {
-            _unitController.text = "${currentNum.toStringAsFixed(0)} $unitLabel";
-         }
+         _unitController.text = currentNum.toStringAsFixed(0);
      });
      _checkExistingPrice();
   }
