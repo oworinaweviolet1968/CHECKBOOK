@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
+import '../services/database_helper.dart';
 import '../main.dart'; // To navigate to MainScreen
 import '../utils/colors.dart';
 
@@ -30,12 +31,22 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
       }
 
-      await Supabase.instance.client.auth.signInWithPassword(email: email, password: password);
+      final response = await Supabase.instance.client.auth.signInWithPassword(email: email, password: password);
+      final userId = response.user?.id;
       
-      // Sync on login
-      // Wait for sync or show progress? 
-      // For now, simple wait.
-      await SupasService.instance.syncDatabase();
+      if (userId != null) {
+          // 1. Migrate legacy data if this is the first user-specific login
+          await SupasService.instance.migrateLegacyDatabase();
+          
+          // 2. Switch to user-specific DB
+          await DatabaseHelper.instance.switchDatabase(userId);
+          
+          // 3. Ensure cloud metadata exists
+          await SupasService.instance.ensureUserMetadataExists(email);
+          
+          // 4. Run Sync
+          await SupasService.instance.syncDatabase();
+      }
 
       if (mounted) {
         Navigator.of(context).pushReplacement(

@@ -10,10 +10,42 @@ class DatabaseHelper {
 
   DatabaseHelper._init();
 
+  String _dbName = 'inventory.db';
+
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('inventory.db');
+    _database = await _initDB(_dbName);
     return _database!;
+  }
+
+  // --- DATABASE MANAGEMENT ---
+
+  Future<void> switchDatabase(String userId) async {
+    // Sanitize userId (match JavaFX logic)
+    String cleanId = userId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+    String newDbName = "inventory_$cleanId.db";
+
+    if (_dbName == newDbName && _database != null) return;
+
+    // Close current
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
+
+    _dbName = newDbName;
+    // Database will be re-initialized on next 'get database' call
+  }
+
+  Future<bool> hasData() async {
+    final db = await instance.database;
+    final stock = await db.rawQuery('SELECT COUNT(*) as count FROM stock');
+    final sales = await db.rawQuery('SELECT COUNT(*) as count FROM sales');
+
+    int stockCount = Sqflite.firstIntValue(stock) ?? 0;
+    int salesCount = Sqflite.firstIntValue(sales) ?? 0;
+
+    return stockCount > 0 || salesCount > 0;
   }
 
   // --- HISTORY & SALES ---
@@ -82,8 +114,20 @@ class DatabaseHelper {
 
 
   Future<Database> _initDB(String filePath) async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, filePath);
+    String path;
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      // Mirror JavaFX logic: ~/METO_IMS_DATA
+      final userHome = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+      // Simplified: JavaFX uses METO_IMS_DATA in home
+      final dir = Directory(join(userHome, 'METO_IMS_DATA'));
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      path = join(dir.path, filePath);
+    } else {
+      final dbPath = await getDatabasesPath();
+      path = join(dbPath, filePath);
+    }
 
     print('Database Path: $path');
 
@@ -101,8 +145,12 @@ class DatabaseHelper {
   
   // Helper to get the full path for sync operations
   Future<String> getDbPath() async {
-      final dbPath = await getDatabasesPath();
-      return join(dbPath, 'inventory.db');
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+       final userHome = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+       return join(userHome, 'METO_IMS_DATA', _dbName);
+    }
+    final dbPath = await getDatabasesPath();
+    return join(dbPath, _dbName);
   }
 
   Future _createDB(Database db, int version) async {
@@ -434,31 +482,30 @@ class DatabaseHelper {
 
   /// Ported from Java extractNumericValue
   double extractNumericValue(String text) {
-      if (text.isEmpty) return 0.0;
-      String lowercaseText = text.toLowerCase().trim();
-      double fractionValue = 0.0;
+    if (text.isEmpty) return 0.0;
+    String lowercaseText = text.toLowerCase().trim();
+    double fractionValue = 0.0;
 
-      if (lowercaseText.contains("1/4")) fractionValue = 0.25;
-      else if (lowercaseText.contains("1/2")) fractionValue = 0.5;
+    // Handle common fractions at the beginning
+    if (lowercaseText.startsWith("1/4")) fractionValue = 0.25;
+    else if (lowercaseText.startsWith("1/2")) fractionValue = 0.5;
 
-      String numbersOnly = lowercaseText
-              .replaceAll("1/4", "")
-              .replaceAll("1/2", "")
-              .replaceAll(RegExp(r"[^0-9.]"), "")
-              .trim();
-      
-      if (numbersOnly.isNotEmpty) {
-          try {
-              double wholeNumber = double.parse(numbersOnly);
-              if (fractionValue > 0) {
-                  return wholeNumber * fractionValue; 
-              }
-              return wholeNumber;
-          } catch (e) {
-              return fractionValue;
-          }
-      }
-      return fractionValue;
+    // Regex to find the FIRST numeric part (whole number or decimal) at the START of the string
+    // This ignores internal numbers like the "72" in "2 box*72"
+    final cleaned = lowercaseText.replaceAll("1/4", "").replaceAll("1/2", "").replaceAll(",", "").trim();
+    final match = RegExp(r'^(\d+(\.\d+)?)').firstMatch(cleaned);
+    
+    if (match != null) {
+        try {
+            double wholeNumber = double.parse(match.group(1)!);
+            return wholeNumber + fractionValue;
+        } catch (e) {
+            return fractionValue;
+        }
+    }
+    
+    // If no leading number, check if there's just a fraction
+    return fractionValue;
   }
 
   /// Ported from Java getUnitMultiplier
@@ -474,9 +521,12 @@ class DatabaseHelper {
       }
       if (type.contains("half doz")) return 6.0;
       if (type.contains("dozen") || type.contains("doz")) return 12.0;
-      if (type.contains("carton")) return 24.0;
-      if (type.contains("crate")) return 25.0;
-      if (type.contains("box")) return 20.0;
+      if (type.contains("carton") || type.contains("box*24")) return 24.0;
+      if (type.contains("crate") || type.contains("crate*25")) return 25.0;
+      if (type.contains("box*10")) return 10.0;
+      if (type.contains("box*72")) return 72.0;
+      if (type.contains("box*20") || type == "box") return 20.0;
+      if (type.contains("box")) return 20.0; // Default for other boxes if unspecified 
 
       return 1.0;
   }

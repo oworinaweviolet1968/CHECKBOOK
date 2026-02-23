@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-// import 'package:intl/intl.dart'; 
+import 'package:intl/intl.dart'; 
 import '../models/history_item.dart';
 import '../services/database_helper.dart';
 import '../utils/colors.dart';
@@ -25,6 +25,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
   final TextEditingController _searchController = TextEditingController();
 
   bool _isLoading = true;
+  final _formatter = NumberFormat("#,###");
 
   @override
   void initState() {
@@ -369,23 +370,21 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                  Column(
                                      crossAxisAlignment: CrossAxisAlignment.end,
                                      children: [
-                                         Text(
-                                             "UGX ${item.amount}", 
-                                             style: TextStyle(
-                                                 fontWeight: FontWeight.bold, 
-                                                 fontSize: 16,
-                                                 color: isStock ? const Color(0xFFEA580C) : const Color(0xFF10B981) 
-                                                 // Stock: Orange, Sale: Green (per mockup colors: orange-600 vs accent-green)
-                                                 // Note: Mockup used Orange for Stock cost, Green for Sale revenue.
-                                             )
-                                         ),
-                                         if (!isStock) ...[
-                                             const SizedBox(height: 4),
-                                             Text(
-                                                 "Profit: ${item.profit}", 
-                                                 style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))
-                                             ),
-                                         ]
+                                          Text(
+                                              "UGX ${_formatter.format(double.tryParse(item.amount.replaceAll(',', '')) ?? 0)}", 
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold, 
+                                                  fontSize: 16,
+                                                  color: isStock ? const Color(0xFFEA580C) : const Color(0xFF10B981) 
+                                              )
+                                          ),
+                                          if (!isStock) ...[
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                  "Profit: ${_formatter.format(double.tryParse(item.profit.replaceAll(',', '')) ?? 0)}", 
+                                                  style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))
+                                              ),
+                                          ]
                                      ],
                                  )
                              ],

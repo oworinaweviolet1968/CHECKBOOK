@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../utils/colors.dart';
 import '../services/database_helper.dart';
+import '../services/supabase_service.dart';
 import '../models/sale_item.dart';
+import 'package:intl/intl.dart';
 
 class ProcessSaleScreen extends StatefulWidget {
   const ProcessSaleScreen({super.key});
@@ -22,25 +25,42 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
   String? _selectedItem;
   String? _selectedSize;
   String _currentStock = "";
+  String _selectedUnitLabel = "pcs"; // e.g. "Box", "Sack"
+  String _totalPiecesSuffix = "pcs"; // e.g. "72 pcs"
 
   // Quick Buttons
-  final List<String> _weightButtons = ["Quarter", "Half", "Kg", "Sack"];
+  final List<String> _weightButtons = ["Quarter", "Half", "Kg", "g", "ml", "l", "50kg", "25kg", "10kg", "Sack"];
   final List<Map<String, String>> _unitOptions = [
-    {"label": "pcs × 1", "value": "pcs"},
-    {"label": "Sack", "value": "sack"},
-    {"label": "Half Doz × 6", "value": "half doz"},
-    {"label": "Dozen × 12", "value": "dozen"},
-    {"label": "Box × 20", "value": "box"},
-    {"label": "Carton × 24", "value": "carton"},
-    {"label": "Crate × 25", "value": "crate"},
+    {"label": "pcs * 1", "value": "pcs"},
+    {"label": "Sack", "value": "Sack"},
+    {"label": "Half Doz * 6", "value": "half doz"},
+    {"label": "Dozen * 12", "value": "dozen"},
+    {"label": "Box * 10", "value": "box*10"},
+    {"label": "Box * 20", "value": "box*20"},
+    {"label": "Box * 24", "value": "box*24"},
+    {"label": "Crate * 25", "value": "crate"},
+    {"label": "Box * 72", "value": "box*72"},
   ];
 
   bool _isBulkItem = false; 
+  final _formatter = NumberFormat("#,###");
 
   @override
   void initState() {
     super.initState();
     _loadItems();
+    _unitController.addListener(_updatePieceCount);
+  }
+
+  void _updatePieceCount() {
+    String text = _unitController.text;
+    double count = DatabaseHelper.instance.extractNumericValue(text);
+    double multiplier = DatabaseHelper.instance.getUnitMultiplier(_selectedUnitLabel, _selectedSize ?? "");
+    double total = count * multiplier;
+    
+    setState(() {
+       _totalPiecesSuffix = "${total.toStringAsFixed(0)} pcs";
+    });
   }
 
   void _loadItems() async {
@@ -101,7 +121,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-
+        automaticallyImplyLeading: false,
         title: const Text('Process Sale', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -226,6 +246,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                             TextFormField(
                                 controller: _priceController,
                                 keyboardType: TextInputType.number,
+                                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,]'))],
                                 decoration: _inputDecoration("Enter Price", null, prefixText: "UGX "),
                             ),
                         ],
@@ -253,8 +274,13 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                     child: TextFormField(
                         controller: _unitController,
                         textAlign: TextAlign.center,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                        decoration: _inputDecoration("", null),
+                        decoration: _inputDecoration("", null).copyWith(
+                            suffixText: " $_totalPiecesSuffix",
+                            suffixStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.grey)
+                        ),
                     ),
                 ),
                 const SizedBox(width: 8),
@@ -263,8 +289,14 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                         spacing: 8.0,
                         runSpacing: 8.0,
                         children: _isBulkItem 
-                        ? _weightButtons.map((u) => _buildQuickBtn(u, Colors.orange.shade50, Colors.orange.shade700)).toList()
-                        : _unitOptions.map((u) => _buildQuickBtn(u['label']!, AppColors.primaryGreen.withValues(alpha: 0.1), AppColors.primaryGreen, value: u['value'])).toList(),
+                        ? _weightButtons.map((u) {
+                             final isSelected = u == _selectedUnitLabel;
+                             return _buildQuickBtn(u, isSelected ? Colors.blue.shade50 : Colors.orange.shade50, isSelected ? Colors.blue.shade700 : Colors.orange.shade700, isSelected: isSelected);
+                        }).toList()
+                        : _unitOptions.map((u) {
+                             final isSelected = u['value'] == _selectedUnitLabel;
+                             return _buildQuickBtn(u['label']!, AppColors.primaryGreen.withValues(alpha: 0.1), AppColors.primaryGreen, value: u['value'], isSelected: isSelected);
+                        }).toList(),
                     ),
                 ),
             ],
@@ -357,7 +389,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                  children: [
                                      const Text("Total Amount", style: TextStyle(fontWeight: FontWeight.w500, color: AppColors.textSecondary)),
-                                     Text(_calculateTotal(), style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: AppColors.primaryGreen)),
+                                     Text("UGX ${_formatter.format(_calculateTotalNum())}", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: AppColors.primaryGreen)),
                                  ],
                              ),
                              const SizedBox(height: 16),
@@ -396,27 +428,30 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
           prefixStyle: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600),
           filled: true,
           fillColor: Colors.white, // dark:bg-slate-900 logic would go here
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.primaryGreen, width: 2)),
       );
   }
   
-  Widget _buildQuickBtn(String label, Color bg, Color text, {String? value}) {
+  Widget _buildQuickBtn(String label, Color bg, Color text, {String? value, bool isSelected = false}) {
+      final color = isSelected ? Colors.blue : text;
+      final bgColor = isSelected ? Colors.blue.shade50 : bg;
+
       return Material(
           color: Colors.transparent,
           child: InkWell(
               onTap: () => _appendUnit(value ?? label),
               borderRadius: BorderRadius.circular(8),
               child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                      color: bg,
-                      border: Border.all(color: text.withValues(alpha: 0.2)),
+                      color: bgColor,
+                      border: Border.all(color: color.withValues(alpha: 0.2)),
                       borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: text)),
+                  child: Text(label, style: TextStyle(fontSize: 11, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600, color: color)),
               ),
           ),
       );
@@ -448,23 +483,28 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
   }
 
   void _appendUnit(String val) async {
-     String current = _unitController.text;
-     String number = current.replaceAll(RegExp(r'[^0-9.]'), '').trim();
-     if (number.isEmpty) number = "1";
+     String unitLabel = val;
      
-     String unitToUse = val;
-     if (val == "Quarter") {
-       unitToUse = "1/4 kg";
-     } else if (val == "Half") {
-       unitToUse = "1/2 kg";
-     } else if (val == "Kg") {
-       unitToUse = "kg";
-     } else if (val == "Sack") {
-       unitToUse = "sack";
-     }
+     // Extract multiplier label for display
+     if (val == "half doz") unitLabel = "H.Doz";
+     else if (val == "dozen") unitLabel = "Doz";
+     else if (val.contains("box*")) unitLabel = "Box";
+     else if (val == "crate") unitLabel = "Crate";
+     else if (val == "pcs") unitLabel = "pcs";
 
-     String newUnitText = "$number $unitToUse";
-     _unitController.text = newUnitText;
+     String currentText = _unitController.text;
+     double currentNum = DatabaseHelper.instance.extractNumericValue(currentText);
+     if (currentNum <= 0) currentNum = 1;
+
+     setState(() {
+         _selectedUnitLabel = val;
+         // Display format: "3 Box"
+         if (unitLabel.toLowerCase() == "pcs") {
+            _unitController.text = currentNum.toStringAsFixed(0);
+         } else {
+            _unitController.text = "${currentNum.toStringAsFixed(0)} $unitLabel";
+         }
+     });
   }
 
   void _addToCart() async {
@@ -476,8 +516,9 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
       
       String item = _selectedItem!;
       String size = _selectedSize!;
-      String unitText = _unitController.text;
-      double price = double.tryParse(_priceController.text) ?? 0.0;
+      String unitText = "${_unitController.text} $_selectedUnitLabel";
+      // Use robust parsing to allow things like "1,000 negotiated"
+      double price = DatabaseHelper.instance.extractNumericValue(_priceController.text);
       
       // Stock Check
       bool hasStock = await DatabaseHelper.instance.hasEnoughStock(item, size, unitText);
@@ -517,7 +558,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                    context: context, 
                    builder: (context) => AlertDialog(
                        title: const Text("Warning: Loss Sale", style: TextStyle(color: Colors.red)),
-                       content: Text("You are selling below cost price!\n\nUnit Cost: ${unitCost.toStringAsFixed(0)}\nSelling Price: ${price.toStringAsFixed(0)}\n\nAre you sure you want to proceed?"),
+                       content: Text("You are selling below cost price!\n\nUnit Cost: ${_formatter.format(unitCost)}\nSelling Price: ${_formatter.format(price)}\n\nAre you sure you want to proceed?"),
                        actions: [
                            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
                            TextButton(onPressed: () => Navigator.pop(context, true), child: const Text("Confirm Loss Sale", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
@@ -537,6 +578,8 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
               amount: total.toStringAsFixed(0)
           ));
           _unitController.clear();
+          _selectedUnitLabel = "pcs";
+          _totalPiecesSuffix = "pcs";
           // Price clear? Mockup clears? Usually keep price for speed if same item?
           // Let's clear for safety.
           _priceController.clear();
@@ -555,7 +598,10 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
 
   Widget _buildCartList(bool isWide) {
       if (_cart.isEmpty) {
-        return const Center(child: Padding(padding: EdgeInsets.all(32), child: Text("Cart is empty", style: TextStyle(color: AppColors.textSecondary))));
+        return const SizedBox(
+            height: 150,
+            child: Center(child: Padding(padding: EdgeInsets.all(32), child: Text("Cart is empty", style: TextStyle(color: AppColors.textSecondary))))
+        );
       }
       
       return ListView.separated(
@@ -584,7 +630,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                           Column(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                  Text("UGX ${item.amount}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.primaryGreen)),
+                                  Text("UGX ${_formatter.format(double.tryParse(item.amount) ?? 0)}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.primaryGreen)),
                                   const SizedBox(height: 4),
                                   InkWell(
                                       onTap: () => setState(() => _cart.removeAt(index)),
@@ -617,6 +663,9 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                   item.item, item.quantity, item.unit
               );
           }
+
+          // Trigger background upload
+          SupasService.instance.uploadDatabase();
            if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sale Completed Successfully!')));
               setState(() {
@@ -626,6 +675,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                   _selectedSize = null;
                   _availableSizes = [];
                   _currentStock = "";
+                  _selectedUnitLabel = "pcs";
               });
           }
       } catch (e) {
@@ -633,11 +683,11 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
       }
   }
 
-  String _calculateTotal() {
+  double _calculateTotalNum() {
       double total = 0;
       for (var item in _cart) {
           total += double.tryParse(item.amount) ?? 0;
       }
-      return "UGX ${total.toInt().toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}";
+      return total;
   }
 }

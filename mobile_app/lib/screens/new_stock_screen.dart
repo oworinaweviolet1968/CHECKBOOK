@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../utils/colors.dart';
 import '../services/database_helper.dart';
+import '../services/supabase_service.dart';
 import '../models/stock_item.dart';
+import 'package:intl/intl.dart';
 
 class NewStockScreen extends StatefulWidget {
   const NewStockScreen({super.key});
@@ -28,9 +31,14 @@ class _NewStockScreenState extends State<NewStockScreen> {
   
   bool _isNewItem = false;
   bool _isNewSize = false;
+  bool _isPriceLocked = false;
+  String _selectedUnitLabel = "pcs"; // e.g. "Box", "Sack"
+  String _totalPiecesSuffix = "pcs"; // e.g. "72 pcs"
   
   static const String _addNewItemOption = "__NEW_ITEM__";
   static const String _addNewSizeOption = "__NEW_SIZE__";
+  
+  final _formatter = NumberFormat("#,###");
 
   // Data from Mockup
   final List<String> _qtyQuickButtons = ["None", "g", "kg", "ml", "l", "50kg", "25kg", "10kg"];
@@ -39,14 +47,40 @@ class _NewStockScreenState extends State<NewStockScreen> {
     {"label": "Sack", "value": "Sack"},
     {"label": "Half Doz * 6", "value": "half doz"},
     {"label": "Dozen * 12", "value": "dozen"},
-    {"label": "Box * 20", "value": "box"},
-    {"label": "Carton * 24", "value": "carton"},
+    {"label": "Box * 10", "value": "box*10"},
+    {"label": "Box * 20", "value": "box*20"},
+    {"label": "Box * 24", "value": "box*24"},
+    {"label": "Crate * 25", "value": "crate"},
+    {"label": "Box * 72", "value": "box*72"},
   ];
 
   @override
   void initState() {
     super.initState();
     _loadItems();
+    _unitController.addListener(_updatePieceCount);
+  }
+
+  void _updatePieceCount() {
+    String text = _unitController.text;
+    double count = DatabaseHelper.instance.extractNumericValue(text);
+    double multiplier = DatabaseHelper.instance.getUnitMultiplier(_selectedUnitLabel, _selectedSize ?? "");
+    double total = count * multiplier;
+    
+    setState(() {
+       _totalPiecesSuffix = "${total.toStringAsFixed(0)} pcs";
+    });
+  }
+
+  @override
+  void dispose() {
+    _unitController.removeListener(_updatePieceCount);
+    _unitController.dispose();
+    _supplierController.dispose();
+    _itemController.dispose();
+    _qtyController.dispose();
+    _priceController.dispose();
+    super.dispose();
   }
 
   void _loadItems() async {
@@ -62,7 +96,35 @@ class _NewStockScreenState extends State<NewStockScreen> {
       _availableSizes = sizes;
       _selectedSize = null;
       _isNewSize = false;
+      _isPriceLocked = false;
     });
+  }
+
+  void _checkExistingPrice() async {
+      if (_selectedItem != null && _selectedItem != _addNewItemOption && 
+          _selectedSize != null && _selectedSize != _addNewSizeOption) {
+          
+          double basePrice = await DatabaseHelper.instance.getLastRecordedPrice(_selectedItem!, _selectedSize!);
+          if (basePrice > 0) {
+              // Get current unit multiplier
+              String unitText = "${_unitController.text} $_selectedUnitLabel";
+              double multiplier = DatabaseHelper.instance.getUnitMultiplier(unitText, _selectedSize!);
+              
+              setState(() {
+                  double unitPrice = basePrice * (multiplier > 0 ? multiplier : 1);
+                  _priceController.text = unitPrice.toStringAsFixed(0);
+                  _isPriceLocked = true;
+              });
+          } else {
+              setState(() {
+                  _isPriceLocked = false;
+              });
+          }
+      } else {
+          setState(() {
+              _isPriceLocked = false;
+          });
+      }
   }
 
   @override
@@ -80,6 +142,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
         backgroundColor: surfaceColor,
         elevation: 0,
         centerTitle: false,
+        automaticallyImplyLeading: false,
         title: Text(
           'New Stock Entry',
           style: TextStyle(
@@ -121,7 +184,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
                      child: Column(
                        children: [
                          _buildListHeader(borderColor, textDark, textGray),
-                         Expanded(child: _buildItemsList(borderColor, textDark, textGray)),
+                         Expanded(child: _buildItemsList(borderColor, textDark, textGray, isMobile: false)),
                          _buildFooter(surfaceColor, borderColor, textDark, textGray),
                        ],
                      ),
@@ -139,7 +202,6 @@ class _NewStockScreenState extends State<NewStockScreen> {
                    const SizedBox(height: 24),
                    // Create a container for the list that mimics the right side of desktop but fits in column
                    Container(
-                     height: 600, // Fixed height for list area on mobile to allow scrolling inside it, or minimal height
                      decoration: BoxDecoration(
                        color: surfaceColor,
                        borderRadius: BorderRadius.circular(12),
@@ -151,7 +213,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
                      child: Column(
                        children: [
                          _buildListHeader(borderColor, textDark, textGray),
-                         Expanded(child: _buildItemsList(borderColor, textDark, textGray)),
+                         _buildItemsList(borderColor, textDark, textGray, isMobile: true),
                          _buildFooter(surfaceColor, borderColor, textDark, textGray),
                        ],
                      ),
@@ -229,6 +291,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
                           _selectedItem = val;
                           _itemController.text = val!;
                           _loadSizes(val);
+                          _checkExistingPrice();
                       }
                    });
                 },
@@ -265,6 +328,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
                           _isNewSize = false;
                           _selectedSize = val;
                           _qtyController.text = val!;
+                          _checkExistingPrice();
                       }
                   });
               },
@@ -272,6 +336,10 @@ class _NewStockScreenState extends State<NewStockScreen> {
           if (_isNewSize || _isNewItem) ...[
               const SizedBox(height: 8),
               _buildTextField(_qtyController, "Enter Size (e.g. 50kg)"),
+          ],
+          if (_isPriceLocked) ...[
+              const SizedBox(height: 8),
+              _buildNotice("Existing item detected. Price is locked.", AppColors.primaryGreen),
           ],
           const SizedBox(height: 12),
           Wrap(
@@ -282,23 +350,27 @@ class _NewStockScreenState extends State<NewStockScreen> {
           const SizedBox(height: 20),
           
           _buildLabel("Quantity / Count"),
-          _buildTextField(_unitController, "Enter Count", isNumber: false), // Needs text for units like "10 sacks"
+          _buildTextField(_unitController, "Enter Count", isNumber: false, suffixText: " $_totalPiecesSuffix"),
           const SizedBox(height: 12),
           Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: _unitQuickButtons.map((u) => _buildQuickButton(
+              children: _getFilteredUnitButtons().map((u) {
+                final isSelected = u['value'] == _selectedUnitLabel;
+                return _buildQuickButton(
                   u['label']!, 
                   () => _appendUnit(u['value']!), 
-                  isBlue: u['value'] == 'Sack'
-              )).toList(),
+                  isBlue: isSelected,
+                  isSelected: isSelected,
+                );
+              }).toList(),
           ),
           const SizedBox(height: 20),
           
           _buildLabel("Unit Price"),
           Stack(
              children: [
-               _buildTextField(_priceController, "0.00", isNumber: true, paddingLeft: 60),
+               _buildTextField(_priceController, "0.00", isCurrency: true, paddingLeft: 60, isReadOnly: _isPriceLocked),
                Positioned(
                  left: 16,
                  top: 0,
@@ -359,12 +431,86 @@ class _NewStockScreenState extends State<NewStockScreen> {
           ),
       );
   }
-  
-  Widget _buildItemsList(Color border, Color textDark, Color textGray) {
+   Widget _buildItemsList(Color border, Color textDark, Color textGray, {required bool isMobile}) {
      if (_items.isEmpty) {
-        return const Center(child: Text("No items added yet", style: TextStyle(color: Colors.grey)));
+        return SizedBox(
+          height: 150,
+          child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.inventory_2_outlined, size: 40, color: Colors.grey.withOpacity(0.5)),
+                  const SizedBox(height: 8),
+                  const Text("No items added yet", style: TextStyle(color: Colors.grey)),
+                ],
+              )
+          ),
+        );
      }
      
+     final listView = ListView.separated(
+       padding: EdgeInsets.zero,
+       shrinkWrap: isMobile,
+       physics: isMobile ? const NeverScrollableScrollPhysics() : const AlwaysScrollableScrollPhysics(),
+       itemCount: _items.length,
+       separatorBuilder: (c, i) => Divider(height: 1, color: border),
+       itemBuilder: (context, index) {
+          final item = _items[index];
+          return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+              color: Colors.white,
+              child: Row(
+                 children: [
+                     Expanded(
+                         flex: 5,
+                         child: Column(
+                             crossAxisAlignment: CrossAxisAlignment.start,
+                             children: [
+                                 Text(item.item, style: TextStyle(fontWeight: FontWeight.w500, color: textDark, fontSize: 14)),
+                                 if (item.quantity.isNotEmpty && item.quantity != "None")
+                                    Text("Size: ${item.quantity}", style: TextStyle(color: textGray, fontSize: 12)),
+                             ],
+                         ),
+                     ),
+                     Expanded(
+                         flex: 2,
+                         child: Center(
+                             child: Container(
+                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                 decoration: BoxDecoration(
+                                     color: Colors.blue.withOpacity(0.1),
+                                     borderRadius: BorderRadius.circular(4),
+                                 ),
+                                 child: Text(item.unit, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue)),
+                             ),
+                         ),
+                     ),
+                     Expanded(
+                         flex: 3,
+                         child: Column(
+                             crossAxisAlignment: CrossAxisAlignment.end,
+                             children: [
+                                 Text("UGX ${_formatter.format(double.tryParse(item.price) ?? 0)}", style: TextStyle(fontWeight: FontWeight.w600, color: textDark, fontSize: 13)),
+                                 Text("Total: ${_formatter.format(double.tryParse(item.amount.replaceAll(',', '')) ?? 0)}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                             ],
+                         ),
+                     ),
+                     Expanded(
+                         flex: 2,
+                         child: Align(
+                             alignment: Alignment.centerRight,
+                             child: IconButton(
+                                 icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                                 onPressed: () => setState(() => _items.removeAt(index)),
+                             ),
+                         ),
+                     ),
+                 ],
+              ),
+          );
+       },
+     );
+
      return Column(
        children: [
          // Table Header
@@ -384,68 +530,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
             ),
          ),
          // List
-         Expanded(
-           child: ListView.separated(
-             padding: EdgeInsets.zero,
-             itemCount: _items.length,
-             separatorBuilder: (c, i) => Divider(height: 1, color: border),
-             itemBuilder: (context, index) {
-                final item = _items[index];
-                return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    color: Colors.white,
-                    child: Row(
-                       children: [
-                           Expanded(
-                               flex: 5,
-                               child: Column(
-                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                   children: [
-                                       Text(item.item, style: TextStyle(fontWeight: FontWeight.w500, color: textDark, fontSize: 14)),
-                                       if (item.quantity.isNotEmpty && item.quantity != "None")
-                                          Text("Size: ${item.quantity}", style: TextStyle(color: textGray, fontSize: 12)),
-                                   ],
-                               ),
-                           ),
-                           Expanded(
-                               flex: 2,
-                               child: Center(
-                                   child: Container(
-                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                       decoration: BoxDecoration(
-                                           color: Colors.blue.withOpacity(0.1),
-                                           borderRadius: BorderRadius.circular(4),
-                                       ),
-                                       child: Text(item.unit, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue)),
-                                   ),
-                               ),
-                           ),
-                           Expanded(
-                               flex: 3,
-                               child: Column(
-                                   crossAxisAlignment: CrossAxisAlignment.end,
-                                   children: [
-                                       Text("UGX ${item.price}", style: TextStyle(fontWeight: FontWeight.w600, color: textDark, fontSize: 13)),
-                                       Text("Total: ${item.amount}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                                   ],
-                               ),
-                           ),
-                           Expanded(
-                               flex: 2,
-                               child: Align(
-                                   alignment: Alignment.centerRight,
-                                   child: IconButton(
-                                       icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
-                                       onPressed: () => setState(() => _items.removeAt(index)),
-                                   ),
-                               ),
-                           ),
-                       ],
-                    ),
-                );
-             },
-           ),
-         ),
+         isMobile ? listView : Expanded(child: listView),
        ],
      );
   }
@@ -468,7 +553,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                      children: [
                          Text("Total Value", style: TextStyle(color: textGray, fontSize: 14, fontWeight: FontWeight.w500)),
-                         Text("UGX ${totalVal.toStringAsFixed(0)}", style: const TextStyle(color: AppColors.primaryGreen, fontSize: 18, fontWeight: FontWeight.bold)),
+                         Text("UGX ${_formatter.format(totalVal)}", style: const TextStyle(color: AppColors.primaryGreen, fontSize: 18, fontWeight: FontWeight.bold)),
                      ],
                  ),
                  const SizedBox(height: 16),
@@ -519,7 +604,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
       return InputDecoration(
           filled: true,
           fillColor: const Color(0xFFF8FAFC), // gray-50
-          contentPadding: EdgeInsets.fromLTRB(paddingLeft, 16, 16, 16),
+          contentPadding: EdgeInsets.fromLTRB(paddingLeft, 20, 16, 20),
           border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: BorderSide.none,
@@ -536,19 +621,27 @@ class _NewStockScreenState extends State<NewStockScreen> {
       );
   }
   
-  Widget _buildTextField(TextEditingController controller, String hint, {bool isNumber = false, double paddingLeft = 16}) {
+  Widget _buildTextField(TextEditingController controller, String hint, {bool isNumber = false, bool isCurrency = false, double paddingLeft = 16, bool isReadOnly = false, String? suffixText}) {
       return TextField(
           controller: controller,
-          keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-          style: const TextStyle(color: Color(0xFF334155), fontWeight: FontWeight.w500),
-          decoration: _inputDecoration(paddingLeft: paddingLeft).copyWith(hintText: hint),
+          readOnly: isReadOnly,
+          keyboardType: (isNumber || isCurrency) ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+          inputFormatters: isCurrency 
+            ? [ThousandsFormatter()] 
+            : (isNumber ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))] : null),
+          style: TextStyle(color: isReadOnly ? Colors.grey : const Color(0xFF334155), fontWeight: FontWeight.w500),
+          decoration: _inputDecoration(paddingLeft: paddingLeft).copyWith(
+              hintText: hint,
+              fillColor: isReadOnly ? const Color(0xFFF1F5F9) : const Color(0xFFF8FAFC),
+              suffixText: suffixText,
+              suffixStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.grey)
+          ),
       );
   }
   
-  Widget _buildQuickButton(String label, VoidCallback onTap, {bool isBlue = false}) {
-      // User requested all buttons to look like the "Sack" button (which was blue) but in Green.
-      // So we ignore isBlue and apply Green style to all.
-      const color = AppColors.primaryGreen;
+  Widget _buildQuickButton(String label, VoidCallback onTap, {bool isBlue = false, bool isSelected = false}) {
+      // If isSelected, use Light Blue. Otherwise use Green.
+      final color = isSelected ? Colors.blue : AppColors.primaryGreen;
       return InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(6),
@@ -564,7 +657,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
                   style: TextStyle(
                       fontSize: 13, 
                       color: color, 
-                      fontWeight: FontWeight.w600 // Slightly bolder to match "Sack" look
+                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600
                   ),
               ),
           ),
@@ -602,15 +695,43 @@ class _NewStockScreenState extends State<NewStockScreen> {
     }
   }
 
-  void _appendUnit(String val) {
-     String current = _unitController.text;
-     String number = current.replaceAll(RegExp(r'[^0-9.]'), '').trim();
-     if (number.isEmpty) number = "1";
+  List<Map<String, String>> _getFilteredUnitButtons() {
+      final sizeText = _qtyController.text;
+      final sizeVal = DatabaseHelper.instance.extractNumericValue(sizeText);
+      final isKg = sizeText.toLowerCase().contains("kg");
+      
+      if (isKg && sizeVal >= 10.0) {
+          return _unitQuickButtons.where((u) => u['value'] == 'pcs' || u['value'] == 'Sack').toList();
+      } else {
+          // Hide Sack for non-bulk
+          return _unitQuickButtons.where((u) => u['value'] != 'Sack').toList();
+      }
+  }
 
-     String unitToUse = val;
-     if (val == "half doz") unitToUse = "1/2 doz"; // mapping logic
+  void _appendUnit(String val) {
+     String unitLabel = val;
      
-     _unitController.text = "$number $unitToUse";
+     // Extract multiplier label for display
+     if (val == "half doz") unitLabel = "H.Doz";
+     else if (val == "dozen") unitLabel = "Doz";
+     else if (val.contains("box*")) unitLabel = "Box";
+     else if (val == "crate") unitLabel = "Crate";
+     else if (val == "pcs") unitLabel = "pcs";
+
+     String currentText = _unitController.text;
+     double currentNum = DatabaseHelper.instance.extractNumericValue(currentText);
+     if (currentNum <= 0) currentNum = 1;
+
+     setState(() {
+         _selectedUnitLabel = val;
+         // Display format: "3 Box"
+         if (unitLabel.toLowerCase() == "pcs") {
+            _unitController.text = currentNum.toStringAsFixed(0);
+         } else {
+            _unitController.text = "${currentNum.toStringAsFixed(0)} $unitLabel";
+         }
+     });
+     _checkExistingPrice();
   }
 
   void _addItem() {
@@ -623,8 +744,9 @@ class _NewStockScreenState extends State<NewStockScreen> {
       String supplier = _supplierController.text;
       String item = _itemController.text;
       String quantity = _qtyController.text;
-      String unitText = _unitController.text;
-      double price = double.tryParse(_priceController.text.replaceAll(',', '')) ?? 0.0;
+      String unitText = "${_unitController.text} $_selectedUnitLabel";
+      // Use robust parsing to allow things like "1,000 pkg"
+      double price = DatabaseHelper.instance.extractNumericValue(_priceController.text);
       
       double count = DatabaseHelper.instance.extractNumericValue(unitText);
       double total = count * price;
@@ -649,6 +771,8 @@ class _NewStockScreenState extends State<NewStockScreen> {
           _availableSizes = [];
           _isNewItem = false;
           _isNewSize = false;
+          _selectedUnitLabel = "pcs";
+          _totalPiecesSuffix = "pcs";
       });
   }
 
@@ -675,6 +799,9 @@ class _NewStockScreenState extends State<NewStockScreen> {
           }
 
           if (mounted) {
+              // Trigger background upload
+              SupasService.instance.uploadDatabase();
+               
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stock Saved Successfully!')));
               setState(() {
                   _items.clear();
@@ -685,11 +812,37 @@ class _NewStockScreenState extends State<NewStockScreen> {
                   _availableSizes = [];
                   _isNewItem = false;
                   _isNewSize = false;
+                  _selectedUnitLabel = "pcs";
+                  _totalPiecesSuffix = "pcs";
               });
               _loadItems();
           }
       } catch (e) {
          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving: $e')));
       }
+  }
+}
+
+class ThousandsFormatter extends TextInputFormatter {
+  final NumberFormat _formatter = NumberFormat("#,###");
+
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.text.isEmpty) return newValue;
+
+    // Remove all non-essential formatting characters
+    String digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return newValue;
+
+    try {
+      final double value = double.parse(digits);
+      final String formatted = _formatter.format(value);
+      return TextEditingValue(
+        text: formatted,
+        selection: TextSelection.collapsed(offset: formatted.length),
+      );
+    } catch (_) {
+      return oldValue;
+    }
   }
 }

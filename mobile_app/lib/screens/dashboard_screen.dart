@@ -6,6 +6,8 @@ import '../widgets/stock_tile_redesigned.dart';
 import '../widgets/sale_tile_redesigned.dart';
 import '../screens/login_screen.dart';
 import '../services/database_helper.dart';
+import '../services/supabase_service.dart';
+import 'package:intl/intl.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -24,6 +26,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // New Futures for % change
   late Future<double> _yesterdaysProfit;
   late Future<double> _prevYearProfit;
+
+  bool _showAllStock = false;
+
+  final _formatter = NumberFormat("#,###");
 
   @override
   void initState() {
@@ -57,7 +63,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      // Custom Header imitating the HTML one
       appBar: AppBar(
         title: Row(
           children: [
@@ -81,14 +86,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
-        backgroundColor: Colors.white.withValues(alpha: 0.8), // Backdrop blur simulated
+        backgroundColor: Colors.white.withValues(alpha: 0.8),
         elevation: 0,
         bottom: PreferredSize(
             preferredSize: const Size.fromHeight(1),
             child: Container(color: AppColors.primaryGreen.withValues(alpha: 0.1), height: 1)
         ),
         actions: [
-            // Notifications Icon
             Stack(
                 alignment: Alignment.center,
                 children: [
@@ -104,7 +108,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
             ),
             const SizedBox(width: 8),
-            // Profile Pic
             PopupMenuButton<String>(
               onSelected: (value) {
                 if (value == 'logout') _logout();
@@ -143,11 +146,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.only(bottom: 80), // for bottom nav space
+          padding: const EdgeInsets.only(bottom: 80),
           child: Column(
              crossAxisAlignment: CrossAxisAlignment.stretch,
              children: [
-                 // Summary Cards Section
                  Padding(
                      padding: const EdgeInsets.all(16),
                      child: LayoutBuilder(
@@ -227,22 +229,81 @@ class _DashboardScreenState extends State<DashboardScreen> {
                      ),
                  ),
                  
-                 // In Stock Inventory Section
                  Padding(
                      padding: const EdgeInsets.symmetric(horizontal: 16),
                      child: Row(
                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                          children: [
-                             const Text("In Stock Inventory", style: TextStyle(
-                                 fontSize: 18, 
-                                 fontWeight: FontWeight.bold, 
-                                 color: AppColors.textPrimary
-                             )),
+                             Row(
+                               children: [
+                                 const Text("In Stock Inventory", style: TextStyle(
+                                     fontSize: 18, 
+                                     fontWeight: FontWeight.bold, 
+                                     color: AppColors.textPrimary
+                                 )),
+                                 const SizedBox(width: 8),
+                                 ValueListenableBuilder<SyncStatus>(
+                                   valueListenable: SupasService.instance.syncStatus,
+                                   builder: (context, status, child) {
+                                     Color color = Colors.grey;
+                                     IconData icon = Icons.cloud_off;
+                                     String label = "Offline";
+
+                                     switch (status) {
+                                       case SyncStatus.syncing:
+                                         color = Colors.blue;
+                                         icon = Icons.sync;
+                                         label = "Syncing...";
+                                         break;
+                                       case SyncStatus.synced:
+                                         color = AppColors.primaryGreen;
+                                         icon = Icons.cloud_done;
+                                         label = "Synced";
+                                         break;
+                                       case SyncStatus.error:
+                                         color = Colors.orange;
+                                         icon = Icons.cloud_off;
+                                         label = "Offline";
+                                         break;
+                                       case SyncStatus.offline:
+                                         color = Colors.orange;
+                                         icon = Icons.cloud_off;
+                                         label = "Not Backed Up";
+                                         break;
+                                       case SyncStatus.idle:
+                                         color = Colors.grey;
+                                         icon = Icons.cloud_queue;
+                                         label = "Idle";
+                                         break;
+                                     }
+
+                                     return Container(
+                                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                       decoration: BoxDecoration(
+                                         color: color.withValues(alpha: 0.1),
+                                         borderRadius: BorderRadius.circular(4),
+                                         border: Border.all(color: color.withValues(alpha: 0.2)),
+                                       ),
+                                       child: Row(
+                                         mainAxisSize: MainAxisSize.min,
+                                         children: [
+                                           Icon(icon, size: 10, color: color),
+                                           const SizedBox(width: 4),
+                                           Text(label, style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: color)),
+                                         ],
+                                       ),
+                                     );
+                                   },
+                                 ),
+                               ],
+                             ),
                              TextButton(
                                  onPressed: () {
-                                     // Navigate to View All logic
+                                     setState(() {
+                                         _showAllStock = !_showAllStock;
+                                     });
                                  },
-                                 child: const Text("View All", style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.w600)),
+                                 child: Text(_showAllStock ? "Show Less" : "View All", style: const TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.w600)),
                              )
                          ],
                      ),
@@ -264,7 +325,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                              final list = snapshot.data!;
                              if (list.isEmpty) return const Padding(padding: EdgeInsets.all(16), child: Text("No stock available"));
                              
-                             final displayList = list.take(5).toList();
+                             final displayList = _showAllStock ? list : list.take(5).toList();
                              
                              return Column(
                                  children: displayList.map((item) {
@@ -285,7 +346,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                      return StockTileRedesigned(
                                          itemName: item['item'], 
                                          itemSize: "Size: $size", 
-                                         price: "UGX ${price.toInt().toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}", 
+                                         price: "UGX ${_formatter.format(price)}", 
                                          quantity: displayAvail,
                                          isLowStock: isLow,
                                      );
@@ -298,17 +359,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
                  
                  const SizedBox(height: 24),
                  
-                 // Today's Sales Log Section
                  Padding(
                      padding: const EdgeInsets.symmetric(horizontal: 16),
                      child: Row(
                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                          children: [
-                             const Text("Today's Sales Log", style: TextStyle(
-                                 fontSize: 18, 
-                                 fontWeight: FontWeight.bold, 
-                                 color: AppColors.textPrimary
-                             )),
+                             Column(
+                               crossAxisAlignment: CrossAxisAlignment.start,
+                               children: [
+                                 const Text("Today's Sales Log", style: TextStyle(
+                                     fontSize: 18, 
+                                     fontWeight: FontWeight.bold, 
+                                     color: AppColors.textPrimary
+                                 )),
+                                 FutureBuilder<Map<String, double>>(
+                                   future: _todaysStats,
+                                   builder: (context, snap) {
+                                     final total = snap.data?['sales'] ?? 0.0;
+                                     return Text(
+                                       "Total: UGX ${_formatter.format(total)}",
+                                       style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primaryGreen),
+                                     );
+                                   },
+                                 ),
+                               ],
+                             ),
                              Container(
                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                  decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4)),
@@ -336,14 +411,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                      final orderId = sale['id'];
                                      final time = sale['created_at'].toString().split(' ')[1].substring(0, 5); 
                                      
-                                     // Use 'unit' (e.g. 2 pcs) instead of 'quantity' (e.g. Size M)
                                      final unitSold = sale['unit']; 
                                      
                                      return SaleTileRedesigned(
                                          customer: "$unitSold x ${sale['item']}", 
                                          orderInfo: "Order #$orderId • $time",
-                                         amount: "UGX ${amount.toInt().toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}",
-                                         profit: "Profit: UGX ${profit.toInt().toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}",
+                                         amount: "UGX ${_formatter.format(amount)}",
+                                         profit: "Profit: UGX ${_formatter.format(profit)}",
                                          isPositiveProfit: profit >= 0,
                                      );
                                  }).toList(),
@@ -358,21 +432,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Helper to build Summary Card with % calc
   Widget _buildSummaryCard(String title, double current, double previous, bool isPositiveTrendGood) {
       double diff = current - previous;
       double percent = 0.0;
       if (previous > 0) {
           percent = (diff / previous) * 100;
       } else if (current > 0) {
-          percent = 100.0; // New income
+          percent = 100.0;
       }
       
       String sign = percent >= 0 ? "+" : "";
       
       return StatCard(
           title: title, 
-          value: "UGX ${current.toInt().toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}", 
+          value: "UGX ${_formatter.format(current)}", 
           percentage: "$sign${percent.toStringAsFixed(1)}%", 
           isPositive: percent >= 0
       );

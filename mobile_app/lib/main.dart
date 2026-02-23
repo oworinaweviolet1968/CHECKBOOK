@@ -8,6 +8,8 @@ import 'screens/new_stock_screen.dart';
 import 'screens/process_sale_screen.dart';
 import 'screens/history_screen.dart';
 import 'screens/login_screen.dart';
+import 'services/database_helper.dart';
+import 'services/supabase_service.dart';
 import 'utils/colors.dart';
 
 // Credentials extracted from user's .env file
@@ -26,6 +28,12 @@ void main() async {
     url: supabaseUrl,
     anonKey: supabaseKey,
   );
+
+  // Early DB initialization if already logged in
+  final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+  if (currentUserId != null) {
+    await DatabaseHelper.instance.switchDatabase(currentUserId);
+  }
 
   runApp(const MyApp());
 }
@@ -68,6 +76,22 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 2; // Default to Dashboard
+
+  @override
+  void initState() {
+    super.initState();
+    _initDatabase();
+  }
+
+  Future<void> _initDatabase() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId != null) {
+      await SupasService.instance.migrateLegacyDatabase();
+      await DatabaseHelper.instance.switchDatabase(userId);
+      // Trigger a sync in background too
+      SupasService.instance.syncDatabase();
+    }
+  }
 
   final List<Widget> _screens = [
     NewStockScreen(),
