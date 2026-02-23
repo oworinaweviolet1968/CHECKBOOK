@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../utils/colors.dart';
+import '../utils/formatters.dart';
 import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
 import '../models/sale_item.dart';
@@ -29,12 +30,12 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
   String _totalPiecesSuffix = "pcs"; // e.g. "72 pcs"
 
   // Quick Buttons
-  final List<String> _weightButtons = ["Quarter", "Half", "Kg", "g", "ml", "l", "50kg", "25kg", "10kg", "Sack"];
+  final List<String> _weightButtons = ["Quarter", "Half", "Sack"];
   final List<Map<String, String>> _unitOptions = [
     {"label": "pcs * 1", "value": "pcs"},
     {"label": "Sack", "value": "Sack"},
     {"label": "Half Doz * 6", "value": "half doz"},
-    {"label": "Dozen * 12", "value": "dozen"},
+    {"label": "Box * 12", "value": "box*12"},
     {"label": "Box * 10", "value": "box*10"},
     {"label": "Box * 20", "value": "box*20"},
     {"label": "Box * 24", "value": "box*24"},
@@ -87,27 +88,26 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
           
            final db = await DatabaseHelper.instance.database;
            final result = await db.rawQuery(
-               "SELECT quantity, available_pieces FROM stock WHERE item = ? AND quantity = ?",
+               "SELECT quantity, unit, available_pieces FROM stock WHERE item = ? AND quantity = ?",
                [_selectedItem, _selectedSize]
            );
            
            if (result.isNotEmpty && mounted) {
                double avail = (result.first['available_pieces'] as num).toDouble();
                String unit = result.first['quantity'].toString();
-               String display = "${avail.toStringAsFixed(1)} units";
-               
-                if (unit.toLowerCase().contains("kg")) {
-                    double sizeVal = DatabaseHelper.instance.extractNumericValue(unit);
-                    if (sizeVal > 0) {
-                         display = "${avail.toStringAsFixed(1)} kg";
-                    }
-                } else {
-                    display = "${avail.toInt()} units";
-                }
+                String display = DatabaseHelper.instance.formatStockForDisplay(avail, result.first['unit'] as String, unit);
+
                
                setState(() {
                    _currentStock = "Stock: $display";
-               });
+                    
+                    // Auto-select unit from stocking if none selected
+                    String rawUnit = result.first['unit'] as String;
+                    if (_unitController.text.isEmpty) {
+                        _selectedUnitLabel = rawUnit; 
+                        _appendUnit(rawUnit);
+                    }
+                });
            }
       } else {
           setState(() {
@@ -200,10 +200,14 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
             isExpanded: true,
             items: _availableItems.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
             onChanged: (val) {
-                setState(() {
-                    _selectedItem = val;
-                    _loadSizes(val!);
-                });
+                if (val != null) {
+                    setState(() {
+                        _selectedItem = val;
+                        _unitController.clear();
+                        _selectedUnitLabel = "pcs";
+                        _loadSizes(val);
+                    });
+                }
             },
         ),
         const SizedBox(height: 16),
@@ -226,8 +230,9 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                                     if (val != null) {
                                         setState(() {
                                             _selectedSize = val;
+                                            _unitController.clear();
+                                            _selectedUnitLabel = "pcs";
                                             _checkBulkStatus(val);
-                                            // _autoFillPrice(); // Disabled by user request
                                             _updateStockDisplay();
                                         });
                                     }
@@ -246,7 +251,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                             TextFormField(
                                 controller: _priceController,
                                 keyboardType: TextInputType.number,
-                                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9,]'))],
+                                inputFormatters: [ThousandsFormatter()],
                                 decoration: _inputDecoration("Enter Price", null, prefixText: "UGX "),
                             ),
                         ],
@@ -290,12 +295,12 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                         runSpacing: 8.0,
                         children: _isBulkItem 
                         ? _weightButtons.map((u) {
-                             final isSelected = u == _selectedUnitLabel;
+                             final isSelected = u.toLowerCase().replaceAll(' ', '') == _selectedUnitLabel.toLowerCase().replaceAll(' ', '');
                              return _buildQuickBtn(u, isSelected ? Colors.blue.shade50 : Colors.orange.shade50, isSelected ? Colors.blue.shade700 : Colors.orange.shade700, isSelected: isSelected);
                         }).toList()
                         : _unitOptions.map((u) {
-                             final isSelected = u['value'] == _selectedUnitLabel;
-                             return _buildQuickBtn(u['label']!, AppColors.primaryGreen.withValues(alpha: 0.1), AppColors.primaryGreen, value: u['value'], isSelected: isSelected);
+                             final isSelected = u['value']!.toLowerCase().replaceAll(' ', '') == _selectedUnitLabel.toLowerCase().replaceAll(' ', '');
+                             return _buildQuickBtn(u['label']!, isSelected ? Colors.blue.shade50 : AppColors.primaryGreen.withValues(alpha: 0.1), isSelected ? Colors.blue.shade700 : AppColors.primaryGreen, value: u['value'], isSelected: isSelected);
                         }).toList(),
                     ),
                 ),
@@ -436,7 +441,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
   }
   
   Widget _buildQuickBtn(String label, Color bg, Color text, {String? value, bool isSelected = false}) {
-      final color = isSelected ? Colors.blue : text;
+      final color = isSelected ? Colors.blue.shade800 : text;
       final bgColor = isSelected ? Colors.blue.shade50 : bg;
 
       return Material(
@@ -484,13 +489,17 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
 
   void _appendUnit(String val) async {
      String unitLabel = val;
+     String vNorm = val.toLowerCase().replaceAll(' ', '');
      
      // Extract multiplier label for display
-     if (val == "half doz") unitLabel = "H.Doz";
-     else if (val == "dozen") unitLabel = "Doz";
-     else if (val.contains("box*")) unitLabel = "Box";
-     else if (val == "crate") unitLabel = "Crate";
-     else if (val == "pcs") unitLabel = "pcs";
+     if (vNorm == "halfdoz") unitLabel = "H.Doz";
+     else if (vNorm == "dozen" || vNorm == "doz") unitLabel = "Doz";
+     else if (vNorm.contains("box*")) unitLabel = "Box";
+     else if (vNorm == "crate") unitLabel = "Crate";
+     else if (vNorm == "pcs") unitLabel = "pcs";
+     else if (vNorm == "half") unitLabel = "Half";
+     else if (vNorm == "quarter") unitLabel = "Quarter";
+     else if (vNorm == "sack") unitLabel = "Sack";
 
      String currentText = _unitController.text;
      double currentNum = DatabaseHelper.instance.extractNumericValue(currentText);

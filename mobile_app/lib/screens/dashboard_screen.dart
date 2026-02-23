@@ -335,13 +335,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                      
                                      bool isLow = avail < 12;
                                      
-                                     String displayAvail = "${avail.toInt()} pcs";
-                                      if (size.toLowerCase().contains("kg")) {
-                                            double sizeVal = DatabaseHelper.instance.extractNumericValue(size);
-                                            if (sizeVal > 0) {
-                                                displayAvail = "${avail.toStringAsFixed(1)} kg";
-                                            }
-                                      }
+                                     String displayAvail = DatabaseHelper.instance.formatStockForDisplay(
+                                         avail, 
+                                         item['unit'] ?? "pcs", 
+                                         size
+                                     );
 
                                      return StockTileRedesigned(
                                          itemName: item['item'], 

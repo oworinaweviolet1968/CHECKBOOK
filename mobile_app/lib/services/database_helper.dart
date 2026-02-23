@@ -424,16 +424,59 @@ class DatabaseHelper {
   Future<String> getAvailableStockString(String itemName, String size) async {
       final db = await instance.database;
       final result = await db.rawQuery(
-          "SELECT unit, quantity FROM stock WHERE item = ? AND quantity = ?",
+          "SELECT unit, quantity, available_pieces FROM stock WHERE item = ? AND quantity = ?",
           [itemName, size]
       );
       if (result.isNotEmpty) {
-          // Replicating calculateTotalBaseStock logic partially here or just reusing validation logic
-           // For display string, we need formatStockForDisplay from Java.
-           // Since we don't have that helper ported yet, returning simple string for now.
-           return "${result.first['quantity']} (Check detailed views)"; 
+           final row = result.first;
+           return formatStockForDisplay(
+               (row['available_pieces'] as num).toDouble(), 
+               row['unit'] as String, 
+               row['quantity'] as String
+           );
       }
       return "0";
+  }
+
+  String formatStockForDisplay(double availablePieces, String unitLabel, String size) {
+      if (availablePieces <= 0) return "0";
+
+      double multiplier = getUnitMultiplier(unitLabel, size);
+      String sizeLower = size.toLowerCase();
+      String unitLower = unitLabel.toLowerCase();
+      
+      // If multiplier is 1 or it's a direct unit comparison, just return standard
+      if (multiplier <= 1) {
+          if (sizeLower.contains("kg")) return "${availablePieces.toStringAsFixed(1)} kg";
+          return "${availablePieces.toInt()} pcs";
+      }
+
+      int mainUnits = (availablePieces / multiplier).floor();
+      double remainder = availablePieces % multiplier;
+
+      // Extract a clean label for the main unit (e.g. "Sack", "Box")
+      String cleanMainLabel = "units";
+      if (unitLower.contains("sack")) cleanMainLabel = "sack";
+      else if (unitLower.contains("box")) cleanMainLabel = "box";
+      else if (unitLower.contains("crate")) cleanMainLabel = "crate";
+      else if (unitLower.contains("doz") || unitLower.contains("dozen")) cleanMainLabel = "box";
+      else if (unitLower.contains("carton")) cleanMainLabel = "carton";
+
+      double sizeVal = extractNumericValue(sizeLower);
+      bool isBulkSack = sizeLower.contains("kg") && sizeVal > 9.0;
+      String baseUnit = isBulkSack ? "kg" : "pcs";
+      
+      if (mainUnits > 0) {
+          String mainStr = "$mainUnits $cleanMainLabel${mainUnits > 1 ? 's' : ''}";
+          if (remainder > 0) {
+              String remStr = remainder == remainder.toInt() ? remainder.toInt().toString() : remainder.toStringAsFixed(2);
+              return "$mainStr $remStr $baseUnit";
+          }
+          return mainStr;
+      } else {
+          String remStr = remainder == remainder.toInt() ? remainder.toInt().toString() : remainder.toStringAsFixed(2);
+          return "$remStr $baseUnit";
+      }
   }
 
   // --- SALES OPERATIONS ---
@@ -492,7 +535,11 @@ class DatabaseHelper {
 
     // Regex to find the FIRST numeric part (whole number or decimal) at the START of the string
     // This ignores internal numbers like the "72" in "2 box*72"
-    final cleaned = lowercaseText.replaceAll("1/4", "").replaceAll("1/2", "").replaceAll(",", "").trim();
+    final cleaned = lowercaseText
+        .replaceAll("1/4", "")
+        .replaceAll("1/2", "")
+        .replaceAll(",", "")
+        .trim();
     final match = RegExp(r'^(\d+(\.\d+)?)').firstMatch(cleaned);
     
     if (match != null) {
@@ -510,8 +557,8 @@ class DatabaseHelper {
 
   /// Ported from Java getUnitMultiplier
   double getUnitMultiplier(String unitText, String size) {
-      String type = unitText.toLowerCase().trim();
-      String sizeLower = size.toLowerCase().trim();
+      String type = unitText.toLowerCase().replaceAll(' ', '');
+      String sizeLower = size.toLowerCase().replaceAll(' ', '');
 
       double sizeNum = extractNumericValue(sizeLower);
       bool isBulkSack = sizeLower.contains("kg") && sizeNum >= 10.0;
@@ -519,8 +566,11 @@ class DatabaseHelper {
       if (type.contains("sack") || (isBulkSack && type.contains("pc"))) {
           return sizeNum;
       }
-      if (type.contains("half doz")) return 6.0;
-      if (type.contains("dozen") || type.contains("doz")) return 12.0;
+      if (type.contains("halfdoz")) return 6.0;
+      if (type.contains("half")) return 0.5;
+      if (type.contains("quarter")) return 0.25;
+
+      if (type.contains("dozen") || type.contains("doz") || type.contains("box*12")) return 12.0;
       if (type.contains("carton") || type.contains("box*24")) return 24.0;
       if (type.contains("crate") || type.contains("crate*25")) return 25.0;
       if (type.contains("box*10")) return 10.0;

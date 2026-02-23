@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../utils/colors.dart';
+import '../utils/formatters.dart';
 import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
 import '../models/stock_item.dart';
@@ -46,7 +47,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
     {"label": "pcs * 1", "value": "pcs"},
     {"label": "Sack", "value": "Sack"},
     {"label": "Half Doz * 6", "value": "half doz"},
-    {"label": "Dozen * 12", "value": "dozen"},
+    {"label": "Box * 12", "value": "box*12"},
     {"label": "Box * 10", "value": "box*10"},
     {"label": "Box * 20", "value": "box*20"},
     {"label": "Box * 24", "value": "box*24"},
@@ -335,7 +336,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
           ),
           if (_isNewSize || _isNewItem) ...[
               const SizedBox(height: 8),
-              _buildTextField(_qtyController, "Enter Size (e.g. 50kg)"),
+              _buildTextField(_qtyController, "Enter Size (e.g. 50kg)", isNumber: true),
           ],
           if (_isPriceLocked) ...[
               const SizedBox(height: 8),
@@ -345,23 +346,30 @@ class _NewStockScreenState extends State<NewStockScreen> {
           Wrap(
               spacing: 8,
               runSpacing: 8,
-              children: _qtyQuickButtons.map((label) => _buildQuickButton(label, () => _appendQty(label))).toList(),
+              children: _qtyQuickButtons.map((label) {
+                final isSelected = label == "None" 
+                    ? _qtyController.text == "None" 
+                    : _qtyController.text.endsWith(label);
+                return _buildQuickButton(label, () => _appendQty(label), isSelected: isSelected);
+              }).toList(),
           ),
           const SizedBox(height: 20),
           
           _buildLabel("Quantity / Count"),
-          _buildTextField(_unitController, "Enter Count", isNumber: false, suffixText: " $_totalPiecesSuffix"),
+          _buildTextField(_unitController, "Enter Count", isNumber: true, suffixText: " $_totalPiecesSuffix"),
           const SizedBox(height: 12),
           Wrap(
               spacing: 8,
               runSpacing: 8,
               children: _getFilteredUnitButtons().map((u) {
                 final isSelected = u['value'] == _selectedUnitLabel;
+                final isSack = u['value'] == 'Sack';
                 return _buildQuickButton(
                   u['label']!, 
                   () => _appendUnit(u['value']!), 
-                  isBlue: isSelected,
+                  isBlue: !isSack && isSelected,
                   isSelected: isSelected,
+                  customColor: isSack ? Colors.orange : null,
                 );
               }).toList(),
           ),
@@ -639,9 +647,12 @@ class _NewStockScreenState extends State<NewStockScreen> {
       );
   }
   
-  Widget _buildQuickButton(String label, VoidCallback onTap, {bool isBlue = false, bool isSelected = false}) {
-      // If isSelected, use Light Blue. Otherwise use Green.
-      final color = isSelected ? Colors.blue : AppColors.primaryGreen;
+  Widget _buildQuickButton(String label, VoidCallback onTap, {bool isBlue = false, bool isSelected = false, Color? customColor}) {
+      // If isSelected, use Light Blue. Otherwise use Green (or customColor).
+      final color = isSelected 
+          ? (customColor != null ? customColor : Colors.blue) 
+          : (customColor != null ? customColor : AppColors.primaryGreen);
+      
       return InkWell(
           onTap: onTap,
           borderRadius: BorderRadius.circular(6),
@@ -687,11 +698,24 @@ class _NewStockScreenState extends State<NewStockScreen> {
         _qtyController.text = "None";
         return;
     }
-    String current = _qtyController.text;
-    if (current.isEmpty) {
+    
+    // If val starts with a number (e.g. "50kg"), replace everything
+    if (RegExp(r'^\d').hasMatch(val)) {
         _qtyController.text = val;
+        return;
+    }
+
+    String current = _qtyController.text;
+    if (current == "None") current = "";
+
+    // Extract numeric part from current text
+    final match = RegExp(r'^(\d+(\.\d+)?)').firstMatch(current);
+    if (match != null) {
+        String numPart = match.group(1)!;
+        _qtyController.text = numPart + val;
     } else {
-        _qtyController.text = current + val;
+        // No numeric part, just replace or append if empty
+        _qtyController.text = val;
     }
   }
 
@@ -700,8 +724,9 @@ class _NewStockScreenState extends State<NewStockScreen> {
       final sizeVal = DatabaseHelper.instance.extractNumericValue(sizeText);
       final isKg = sizeText.toLowerCase().contains("kg");
       
-      if (isKg && sizeVal >= 10.0) {
-          return _unitQuickButtons.where((u) => u['value'] == 'pcs' || u['value'] == 'Sack').toList();
+      if (isKg && sizeVal > 9.0) {
+          // ONLY Sack for bulk > 9kg
+          return _unitQuickButtons.where((u) => u['value'] == 'Sack').toList();
       } else {
           // Hide Sack for non-bulk
           return _unitQuickButtons.where((u) => u['value'] != 'Sack').toList();
@@ -744,6 +769,12 @@ class _NewStockScreenState extends State<NewStockScreen> {
       String supplier = _supplierController.text;
       String item = _itemController.text;
       String quantity = _qtyController.text;
+      // Unit Validation: ensure it has kg, g, ml, l or is "None"
+      final hasUnit = RegExp(r'(kg|g|ml|l)$', caseSensitive: false).hasMatch(quantity) || quantity == "None";
+      if (!hasUnit) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please specify a unit (e.g. kg, g, ml, l) for size')));
+          return;
+      }
       String unitText = "${_unitController.text} $_selectedUnitLabel";
       // Use robust parsing to allow things like "1,000 pkg"
       double price = DatabaseHelper.instance.extractNumericValue(_priceController.text);
@@ -823,26 +854,4 @@ class _NewStockScreenState extends State<NewStockScreen> {
   }
 }
 
-class ThousandsFormatter extends TextInputFormatter {
-  final NumberFormat _formatter = NumberFormat("#,###");
 
-  @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
-    if (newValue.text.isEmpty) return newValue;
-
-    // Remove all non-essential formatting characters
-    String digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.isEmpty) return newValue;
-
-    try {
-      final double value = double.parse(digits);
-      final String formatted = _formatter.format(value);
-      return TextEditingValue(
-        text: formatted,
-        selection: TextSelection.collapsed(offset: formatted.length),
-      );
-    } catch (_) {
-      return oldValue;
-    }
-  }
-}
