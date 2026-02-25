@@ -111,43 +111,131 @@ class _MainScreenState extends State<MainScreen> {
   
   @override
   Widget build(BuildContext context) {
-      // If index is out of bounds (e.g. initial), safe check
-      final safeIndex = (_selectedIndex >= 0 && _selectedIndex < _screens.length) ? _selectedIndex : 2;
-      
-    return Scaffold(
-      body: _screens[safeIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.add_box_outlined),
-            activeIcon: Icon(Icons.add_box),
-            label: 'New Stock',
+    // If index is out of bounds (e.g. initial), safe check
+    final safeIndex = (_selectedIndex >= 0 && _selectedIndex < _screens.length) ? _selectedIndex : 2;
+
+    return ValueListenableBuilder<Map<String, dynamic>?>(
+      valueListenable: SupasService.instance.userMetadata,
+      builder: (context, meta, child) {
+        final now = DateTime.now().millisecondsSinceEpoch;
+
+        // 1. Ownership Check
+        final isOwnershipEnabled = meta?['ownership_payment'] as bool? ?? false;
+        final ownershipExpiry = meta?['ownership_expiry'] as int? ?? 0;
+        final isOwnershipActive = isOwnershipEnabled && (ownershipExpiry == 0 || ownershipExpiry > now);
+
+        if (!isOwnershipActive && meta != null) {
+          // Trigger ownership popup if not active
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _showOwnershipRequiredDialog();
+          });
+        }
+
+        // 2. Backup Subscription Banner
+        final isBackupEnabled = meta?['monthly_cloud_backup'] as bool? ?? true;
+        final backupExpiry = meta?['backup_expiry'] as int? ?? 0;
+        final isBackupActive = isBackupEnabled && (backupExpiry == 0 || backupExpiry > now);
+
+        return Scaffold(
+          body: Column(
+            children: [
+              if (!isBackupActive && meta != null)
+                MaterialBanner(
+                  content: const Text(
+                    'Backup Subscription Inactive. Your data is not being synced to the cloud.',
+                    style: TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => SupasService.instance.refreshUserMetadata(),
+                      child: const Text('REFRESH', style: TextStyle(color: Colors.yellow, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                  backgroundColor: Colors.orange.shade800,
+                  elevation: 2,
+                ),
+              Expanded(child: _screens[safeIndex]),
+            ],
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart_outlined),
-            activeIcon: Icon(Icons.shopping_cart),
-            label: 'Sales',
+          bottomNavigationBar: BottomNavigationBar(
+            items: const <BottomNavigationBarItem>[
+              BottomNavigationBarItem(
+                icon: Icon(Icons.add_box_outlined),
+                activeIcon: Icon(Icons.add_box),
+                label: 'New Stock',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.shopping_cart_outlined),
+                activeIcon: Icon(Icons.shopping_cart),
+                label: 'Sales',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.inventory_2_outlined),
+                activeIcon: Icon(Icons.inventory_2),
+                label: 'In Stock',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.history),
+                label: 'History',
+              ),
+            ],
+            currentIndex: safeIndex,
+            selectedItemColor: AppColors.primaryGreen,
+            unselectedItemColor: AppColors.textSecondary,
+            showUnselectedLabels: true,
+            type: BottomNavigationBarType.fixed,
+            onTap: _onItemTapped,
+            backgroundColor: Colors.white,
+            elevation: 8,
+            selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.inventory_2_outlined),
-            activeIcon: Icon(Icons.inventory_2),
-            label: 'In Stock',
+        );
+      },
+    );
+  }
+
+  bool _isDialogOpen = false;
+
+  void _showOwnershipRequiredDialog() {
+    if (_isDialogOpen) return;
+    _isDialogOpen = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => WillPopScope(
+        onWillPop: () async => false,
+        child: AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.lock, color: Colors.red),
+              SizedBox(width: 8),
+              Text('Ownership Required'),
+            ],
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.history),
-            label: 'History',
+          content: const Text(
+            'Your application ownership has expired or is not verified. Please contact support to activate your license and continue using the app.',
           ),
-        ],
-        currentIndex: safeIndex,
-        selectedItemColor: AppColors.primaryGreen,
-        unselectedItemColor: AppColors.textSecondary, // Was grey
-        showUnselectedLabels: true,
-        type: BottomNavigationBarType.fixed,
-        onTap: _onItemTapped,
-        backgroundColor: Colors.white,
-        elevation: 8,
-        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-        unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await SupasService.instance.refreshUserMetadata();
+                final meta = SupasService.instance.userMetadata.value;
+                final now = DateTime.now().millisecondsSinceEpoch;
+                final isOwnershipEnabled = meta?['ownership_payment'] as bool? ?? false;
+                final ownershipExpiry = meta?['ownership_expiry'] as int? ?? 0;
+                final isOwnershipActive = isOwnershipEnabled && (ownershipExpiry == 0 || ownershipExpiry > now);
+
+                if (isOwnershipActive) {
+                  Navigator.of(context).pop();
+                  _isDialogOpen = false;
+                }
+              },
+              child: const Text('RETRY / VERIFY'),
+            ),
+          ],
+        ),
       ),
     );
   }

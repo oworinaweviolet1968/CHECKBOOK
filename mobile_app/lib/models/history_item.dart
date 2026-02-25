@@ -1,4 +1,5 @@
 class HistoryItem {
+  final int? id;
   final String customer;
   final String item;
   final String type;
@@ -8,8 +9,11 @@ class HistoryItem {
   final String amount;
   final String profit;
   final String date;
+  final bool isDebt;
+  final bool isPaid;
 
   HistoryItem({
+    this.id,
     required this.customer, 
     required this.item, 
     required this.type, 
@@ -18,6 +22,8 @@ class HistoryItem {
     required this.price, 
     required this.amount, 
     required this.profit, 
-    required this.date
+    required this.date,
+    this.isDebt = false,
+    this.isPaid = false,
   });
 }

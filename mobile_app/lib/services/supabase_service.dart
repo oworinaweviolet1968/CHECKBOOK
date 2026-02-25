@@ -17,6 +17,7 @@ class SupasService {
 
   final SupabaseClient client = Supabase.instance.client;
   final ValueNotifier<SyncStatus> syncStatus = ValueNotifier(SyncStatus.idle);
+  final ValueNotifier<Map<String, dynamic>?> userMetadata = ValueNotifier(null);
 
   // Sign In
   Future<AuthResponse> signIn(String email, String password) async {
@@ -40,12 +41,17 @@ class SupasService {
       print('SYNC: Starting sync for user $userId');
       
       // 1. Get Metadata & Local Info
-      final meta = await _getUserMetadata();
+      final meta = await refreshUserMetadata();
       final cloudTs = meta?['last_backup_timestamp'] as int? ?? 0;
       final isBackupEnabled = meta?['monthly_cloud_backup'] as bool? ?? true;
+      final backupExpiry = meta?['backup_expiry'] as int? ?? 0;
       
-      if (!isBackupEnabled) {
-          print('SYNC: Backup disabled for this user.');
+      // Check if subscription has expired (if expiry is set)
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final isBackupActive = isBackupEnabled && (backupExpiry == 0 || backupExpiry > now);
+
+      if (!isBackupActive) {
+          print('SYNC: Backup disabled or subscription expired for this user.');
           syncStatus.value = SyncStatus.offline;
           return;
       }
@@ -83,16 +89,19 @@ class SupasService {
   Future<void> ensureUserMetadataExists(String email) async {
     if (userId == null) return;
     try {
-      final meta = await _getUserMetadata();
+      final meta = await refreshUserMetadata();
       if (meta != null) return; // Already exists
 
       await client.from('users').insert({
         'id': userId,
         'email': email,
         'ownership_payment': false,
+        'ownership_expiry': 0,
         'monthly_cloud_backup': true,
+        'backup_expiry': 0,
       });
       print('SYNC: Created user metadata');
+      await refreshUserMetadata();
     } catch (e) {
        print('METADATA ERROR: $e');
     }
@@ -198,8 +207,16 @@ class SupasService {
       }
   }
 
-  Future<Map<String, dynamic>?> _getUserMetadata() async {
-      return await client.from('users').select().eq('id', userId!).maybeSingle();
+  Future<Map<String, dynamic>?> refreshUserMetadata() async {
+      if (userId == null) return null;
+      try {
+        final meta = await client.from('users').select().eq('id', userId!).maybeSingle();
+        userMetadata.value = meta;
+        return meta;
+      } catch (e) {
+        print('REFRESH METADATA ERROR: $e');
+        return null;
+      }
   }
   
   Future<String> _getLocalDbPath() async {

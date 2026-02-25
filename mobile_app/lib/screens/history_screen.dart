@@ -31,7 +31,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_handleTabSelection);
     _loadHistory();
   }
@@ -47,6 +47,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
           case 0: _currentTabFilter = "ALL"; break;
           case 1: _currentTabFilter = "NEW STOCK"; break;
           case 2: _currentTabFilter = "SALES"; break;
+          case 3: _currentTabFilter = "DEBTS"; break;
         }
         _applyFilters();
     });
@@ -73,7 +74,9 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
       if (_currentTabFilter == "NEW STOCK") {
           temp = temp.where((i) => i.type == "NEW STOCK").toList();
       } else if (_currentTabFilter == "SALES") {
-          temp = temp.where((i) => i.type != "NEW STOCK").toList();
+          temp = temp.where((i) => i.type != "NEW STOCK" && !i.isDebt).toList();
+      } else if (_currentTabFilter == "DEBTS") {
+          temp = temp.where((i) => i.isDebt && !i.isPaid).toList();
       }
 
       // 2. Search Filter
@@ -236,6 +239,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                          Tab(text: "ALL"),
                          Tab(text: "NEW STOCK"),
                          Tab(text: "SALES"),
+                         Tab(text: "DEBTS"),
                      ],
                  ),
              ),
@@ -309,7 +313,11 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
           child: Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: () {}, // Detail view?
+              onTap: () {
+                if (item.isDebt && !item.isPaid) {
+                    _showPaymentModal(item);
+                }
+              }, // Detail view?
               borderRadius: BorderRadius.circular(12),
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -400,6 +408,125 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                 ),
               ),
             ),
+          ),
+      );
+  }
+
+  void _showPaymentModal(HistoryItem item) {
+      final amountController = TextEditingController();
+      final passcodeController = TextEditingController();
+      bool isVerifyingPasscode = false;
+
+      showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+          builder: (context) => StatefulBuilder(
+              builder: (context, setModalState) => Padding(
+                  padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(context).viewInsets.bottom,
+                      left: 24, right: 24, top: 24
+                  ),
+                  child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                          Row(
+                              children: [
+                                  Icon(Icons.payment, color: Colors.orange.shade700),
+                                  const SizedBox(width: 12),
+                                  const Text("Settle Debt", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                              ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text("Settling debt for ${item.customer}", style: const TextStyle(color: Colors.grey)),
+                          const Divider(height: 32),
+                          
+                          Text("Total Debt: UGX ${_formatter.format(double.tryParse(item.amount) ?? 0)}", 
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primaryGreen)),
+                          const SizedBox(height: 16),
+                          
+                          if (!isVerifyingPasscode) ...[
+                              TextField(
+                                  controller: amountController,
+                                  keyboardType: TextInputType.number,
+                                  decoration: InputDecoration(
+                                      labelText: "Enter Amount Paid",
+                                      prefixText: "UGX ",
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                              ),
+                              const SizedBox(height: 24),
+                              ElevatedButton(
+                                  onPressed: () {
+                                      double entered = double.tryParse(amountController.text) ?? 0;
+                                      double total = double.tryParse(item.amount) ?? 0;
+                                      if (entered == total) {
+                                          setModalState(() => isVerifyingPasscode = true);
+                                      } else {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text("Amount must equal the total debt amount."))
+                                          );
+                                      }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppColors.primaryGreen,
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                  child: const Text("Verify Amount", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              ),
+                          ] else ...[
+                              const Text("Enter Passcode to Confirm Payment", style: TextStyle(fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 12),
+                              TextField(
+                                  controller: passcodeController,
+                                  obscureText: true,
+                                  keyboardType: TextInputType.number,
+                                  maxLength: 4,
+                                  decoration: InputDecoration(
+                                      labelText: "Passcode",
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                      counterText: "",
+                                  ),
+                              ),
+                              const SizedBox(height: 24),
+                              ElevatedButton(
+                                  onPressed: () async {
+                                      final pc = passcodeController.text;
+                                      final isValid = await PasscodeService.instance.verifyPasscode(pc);
+                                      
+                                      if (isValid && pc.isNotEmpty) {
+                                          if (item.id != null) {
+                                              await DatabaseHelper.instance.markSaleAsPaid(item.id!);
+                                              Navigator.pop(context); // Close modal
+                                              _loadHistory(); // Refresh list
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text("Payment Confirmed! Debt settled."))
+                                              );
+                                          }
+                                      } else {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text("Incorrect Passcode!"), backgroundColor: Colors.red)
+                                          );
+                                      }
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.orange.shade700,
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  ),
+                                  child: const Text("Confirm Payment", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                              ),
+                              TextButton(
+                                  onPressed: () => setModalState(() => isVerifyingPasscode = false),
+                                  child: const Text("Back"),
+                              ),
+                          ],
+                          const SizedBox(height: 32),
+                      ],
+                  ),
+              )
           ),
       );
   }

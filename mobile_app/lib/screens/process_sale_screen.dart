@@ -28,12 +28,12 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
   String _currentStock = "";
   String _selectedUnitLabel = "pcs"; // e.g. "Box", "Sack"
   String _totalPiecesSuffix = "pcs"; // e.g. "72 pcs"
+  bool _isDebt = false;
 
   // Quick Buttons
-  final List<String> _weightButtons = ["kg", "Quarter", "Half", "Sack"];
+  final List<String> _weightButtons = ["kg", "Quarter", "Half"];
   final List<Map<String, String>> _unitOptions = [
     {"label": "pcs * 1", "value": "pcs"},
-    {"label": "Sack", "value": "Sack"},
     {"label": "Half Doz * 6", "value": "half doz"},
     {"label": "Box * 12", "value": "box*12"},
     {"label": "Box * 10", "value": "box*10"},
@@ -58,10 +58,16 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
     double count = DatabaseHelper.instance.extractNumericValue(text);
     double multiplier = DatabaseHelper.instance.getUnitMultiplier(_selectedUnitLabel, _selectedSize ?? "");
     double total = count * multiplier;
-    
-    setState(() {
-       _totalPiecesSuffix = _isBulkItem ? "${total.toStringAsFixed(2)} kg" : "${total.toStringAsFixed(0)} pcs";
-    });
+        setState(() {
+        final double totalPieces = total;
+        if (_isBulkItem) {
+            _totalPiecesSuffix = "${totalPieces.toStringAsFixed(2)} kg";
+        } else {
+            _totalPiecesSuffix = totalPieces % 1 == 0 
+                ? "${totalPieces.toInt()} pcs" 
+                : "${totalPieces.toStringAsFixed(2)} pcs";
+        }
+     });
   }
 
   void _loadItems() async {
@@ -214,6 +220,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
         const SizedBox(height: 16),
 
         Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
                 Expanded(
                     child: Column(
@@ -224,7 +231,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                             DropdownButtonFormField<String>(
                                 value: _selectedSize,
                                 hint: const Text("Select size"),
-                                decoration: _inputDecoration("Select size", null), // No icon for size
+                                decoration: _inputDecoration("Select size", null), 
                                 isExpanded: true,
                                 items: _availableSizes.map((size) => DropdownMenuItem(value: size, child: Text(size))).toList(),
                                 onChanged: (val) {
@@ -235,6 +242,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                                             _selectedUnitLabel = "pcs";
                                             _checkBulkStatus(val);
                                             _updateStockDisplay();
+                                            _updatePieceCount(); // Update pieces suffix when size changes
                                         });
                                     }
                                 },
@@ -260,6 +268,42 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                 ),
             ],
         ),
+        const SizedBox(height: 8),
+        Align(
+            alignment: Alignment.centerRight,
+            child: InkWell(
+                onTap: () => setState(() => _isDebt = !_isDebt),
+                borderRadius: BorderRadius.circular(8),
+                child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                        color: _isDebt ? Colors.orange.shade600 : Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.shade200),
+                    ),
+                    child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                            Icon(
+                                _isDebt ? Icons.check_circle : Icons.money_off,
+                                size: 16,
+                                color: _isDebt ? Colors.white : Colors.orange.shade700,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                                "DEBT",
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: _isDebt ? Colors.white : Colors.orange.shade700,
+                                ),
+                            ),
+                        ],
+                    ),
+                ),
+            ),
+        ),
         const SizedBox(height: 16),
         
         // Quantity / Unit
@@ -275,22 +319,53 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
         Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-                SizedBox(
-                    width: 200,
-                    child: TextFormField(
-                        controller: _unitController,
-                        textAlign: TextAlign.center,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                        decoration: _inputDecoration("", null).copyWith(
-                            prefixIcon: Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                                child: Text(_selectedUnitLabel, style: const TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold, fontSize: 16)),
+                Container(
+                    width: 180,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                        color: const Color(0xFFF1F5F9), // slate-100
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.grey.shade200),
+                    ),
+                    child: Row(
+                        children: [
+                            Expanded(
+                                child: TextFormField(
+                                    controller: _unitController,
+                                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                    inputFormatters: [
+                                        if (!_isBulkItem) FilteringTextInputFormatter.digitsOnly
+                                        else FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                                        if (_isBulkItem) TextInputFormatter.withFunction((oldValue, newValue) {
+                                            if (newValue.text.startsWith('.')) return oldValue;
+                                            if (newValue.text.contains('.') && newValue.text.indexOf('.') != newValue.text.lastIndexOf('.')) return oldValue;
+                                            return newValue;
+                                        }),
+                                    ],
+                                    style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 32, color: AppColors.textPrimary),
+                                    decoration: const InputDecoration(
+                                        isDense: true,
+                                        border: InputBorder.none,
+                                        contentPadding: EdgeInsets.zero,
+                                    ),
+                                ),
                             ),
-                            suffixText: _totalPiecesSuffix,
-                            suffixStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.grey)
-                        ),
+                            const SizedBox(width: 8),
+                            Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                    Text(
+                                        _selectedUnitLabel.toUpperCase(), 
+                                        style: const TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.w900, fontSize: 13)
+                                    ),
+                                    Text(
+                                        _totalPiecesSuffix, 
+                                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.grey)
+                                    ),
+                                ],
+                            ),
+                        ],
                     ),
                 ),
                 const SizedBox(width: 8),
@@ -438,7 +513,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
           prefixStyle: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600),
           filled: true,
           fillColor: Colors.white, // dark:bg-slate-900 logic would go here
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: Colors.grey.shade200)),
           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.primaryGreen, width: 2)),
@@ -614,7 +689,8 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
               quantity: size,
               unit: unitText,
               price: price.toStringAsFixed(0),
-              amount: total.toStringAsFixed(0)
+              amount: total.toStringAsFixed(0),
+              isDebt: _isDebt,
           ));
           _unitController.clear();
           _selectedUnitLabel = "pcs";
@@ -622,6 +698,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
           // Price clear? Mockup clears? Usually keep price for speed if same item?
           // Let's clear for safety.
           _priceController.clear();
+          _isDebt = false; // Reset debt toggle after adding to cart
       });
   }
 
@@ -662,7 +739,22 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                                   children: [
                                       Text(item.item, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
                                       const SizedBox(height: 2),
-                                      Text("Size: ${item.quantity} • Qty: ${item.unit}", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                      Row(
+                                          children: [
+                                              Text("Size: ${item.quantity} • Qty: ${item.unit}", style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                              if (item.isDebt) ...[
+                                                  const SizedBox(width: 8),
+                                                  Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                                      decoration: BoxDecoration(
+                                                          color: Colors.orange.shade100,
+                                                          borderRadius: BorderRadius.circular(4),
+                                                      ),
+                                                      child: Text("DEBT", style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.orange.shade900)),
+                                                  ),
+                                              ],
+                                          ],
+                                      ),
                                   ],
                               ),
                           ),
@@ -696,7 +788,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                   type = "WHOLESALE";
               }
               await DatabaseHelper.instance.addSaleWithProfit(
-                  customer, item.item, item.quantity, item.unit, price, amount, type
+                  customer, item.item, item.quantity, item.unit, price, amount, type, isDebt: item.isDebt
               );
               await DatabaseHelper.instance.updateStockQuantity(
                   item.item, item.quantity, item.unit

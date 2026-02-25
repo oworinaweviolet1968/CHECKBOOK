@@ -52,12 +52,16 @@ class DatabaseHelper {
 
   Future<List<HistoryItem>> getHistory(String filter) async {
     final db = await instance.database;
-    String sql = "SELECT customer, item, type, quantity, unit, price, cost_price, base_quantity, amount, date FROM sales WHERE 1=1";
+    String sql = "SELECT id, customer, item, type, quantity, unit, price, cost_price, base_quantity, amount, date, is_debt, is_paid FROM sales WHERE 1=1";
 
     List<dynamic> args = [];
     if (filter.isNotEmpty && filter != "ALL") {
-        sql += " AND type = ?";
-        args.add(filter);
+        if (filter == "DEBTS") {
+            sql += " AND is_debt = 1 AND is_paid = 0";
+        } else {
+            sql += " AND type = ?";
+            args.add(filter);
+        }
     }
     sql += " ORDER BY date DESC, created_at DESC";
 
@@ -70,6 +74,7 @@ class DatabaseHelper {
         double profitVal = amount - (cost * baseQty);
         
         return HistoryItem(
+            id: rs['id'] as int,
             customer: rs['customer'] as String,
             item: rs['item'] as String,
             type: rs['type'] as String,
@@ -78,7 +83,9 @@ class DatabaseHelper {
             price: (rs['price'] as num).toStringAsFixed(0),
             amount: amount.toStringAsFixed(0),
             profit: profitVal.toStringAsFixed(0),
-            date: rs['date'] as String
+            date: rs['date'] as String,
+            isDebt: (rs['is_debt'] as int? ?? 0) == 1,
+            isPaid: (rs['is_paid'] as int? ?? 0) == 1,
         );
     }).toList();
   }
@@ -88,7 +95,7 @@ class DatabaseHelper {
       final today = DateTime.now().toIso8601String().split('T')[0];
       
       final result = await db.rawQuery(
-          "SELECT customer, item, type, quantity, unit, price, amount, cost_price, base_quantity, date FROM sales WHERE date = ? AND type != 'NEW STOCK' ORDER BY created_at DESC",
+          "SELECT id, customer, item, type, quantity, unit, price, amount, cost_price, base_quantity, date, is_debt, is_paid FROM sales WHERE date = ? AND type != 'NEW STOCK' ORDER BY created_at DESC",
           [today]
       );
 
@@ -99,6 +106,7 @@ class DatabaseHelper {
           double profitVal = amount - (cost * baseQty);
 
           return HistoryItem(
+              id: rs['id'] as int,
               customer: rs['customer'] as String,
               item: rs['item'] as String,
               type: rs['type'] as String,
@@ -107,7 +115,9 @@ class DatabaseHelper {
               price: (rs['price'] as num).toStringAsFixed(0),
               amount: amount.toStringAsFixed(0),
               profit: profitVal.toStringAsFixed(0),
-              date: rs['date'] as String
+              date: rs['date'] as String,
+              isDebt: (rs['is_debt'] as int? ?? 0) == 1,
+              isPaid: (rs['is_paid'] as int? ?? 0) == 1,
           );
       }).toList();
   }
@@ -136,15 +146,21 @@ class DatabaseHelper {
       version: 1, 
       onCreate: _createDB,
       onOpen: (db) async {
-         // Ensure schemas if opening existing DB
-         // In real sync scenario, we might be overwriting this file entirely,
-         // so onOpen might need to re-check if we replaced the file.
+          // Ensure schemas if opening existing DB
           await db.execute('''
             CREATE TABLE IF NOT EXISTS settings (
               key TEXT PRIMARY KEY,
               value TEXT
             )
           ''');
+
+          // Migration for Debts
+          try {
+              await db.execute("ALTER TABLE sales ADD COLUMN is_debt INTEGER DEFAULT 0");
+              await db.execute("ALTER TABLE sales ADD COLUMN is_paid INTEGER DEFAULT 0");
+          } catch (e) {
+              // Columns might already exist
+          }
       }
     );
   }
@@ -196,6 +212,8 @@ class DatabaseHelper {
         amount $realType,
         type $textType,
         date $dateType,
+        is_debt INTEGER DEFAULT 0,
+        is_paid INTEGER DEFAULT 0,
         created_at $dateTimeDefault
       )
     ''');
@@ -501,7 +519,7 @@ class DatabaseHelper {
 
   // --- SALES OPERATIONS ---
 
-  Future<void> addSaleWithProfit(String customer, String item, String size, String unit, double sellingPrice, double totalAmount, String type) async {
+  Future<void> addSaleWithProfit(String customer, String item, String size, String unit, double sellingPrice, double totalAmount, String type, {bool isDebt = false}) async {
       final db = await instance.database;
       double costPrice = await getLastRecordedPrice(item, size);
       
@@ -510,8 +528,6 @@ class DatabaseHelper {
       double baseQty = quantityFactor * multiplier;
       
       // Normalize cost basis for Bulk Items
-      // If Cost Price is per Sack (e.g. 50kg), but we sold fractions (e.g. 1kg),
-      // baseQty (which is in KG) must be divided by Sack Size to get "Fraction of Sack".
       double sizeVal = extractNumericValue(size);
       bool isBulk = size.toLowerCase().contains("kg") && sizeVal >= 10.0;
       
@@ -520,13 +536,19 @@ class DatabaseHelper {
       }
 
       await db.rawInsert(
-          'INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
               customer, item, size, unit, sellingPrice, 
               costPrice, baseQty, totalAmount, type, 
-              DateTime.now().toIso8601String().split('T')[0]
+              DateTime.now().toIso8601String().split('T')[0],
+              isDebt ? 1 : 0, 0
           ]
       );
+  }
+
+  Future<void> markSaleAsPaid(int id) async {
+      final db = await instance.database;
+      await db.rawUpdate('UPDATE sales SET is_paid = 1 WHERE id = ?', [id]);
   }
 
   Future<double> getLastRecordedPrice(String item, String size) async {
@@ -612,15 +634,16 @@ class DatabaseHelper {
       // Map back to standard internal values if possible
       if (cleaned.contains("sack")) return "Sack";
       if (cleaned.contains("halfdoz") || cleaned.contains("half doz")) return "half doz";
-      if (cleaned.contains("box*12")) return "box*12";
-      if (cleaned.contains("box*10")) return "box*10";
-      if (cleaned.contains("box*20")) return "box*20";
-      if (cleaned.contains("box*24") || cleaned.contains("carton")) return "box*24";
-      if (cleaned.contains("box*72")) return "box*72";
-      if (cleaned.contains("crate")) return "crate";
-      if (cleaned.contains("half")) return "half";
-      if (cleaned.contains("quarter")) return "quarter";
-      if (cleaned.contains("kg")) return "kg";
+      String normalized = cleaned.replaceAll(' ', '');
+      if (normalized.contains("box*12")) return "box*12";
+      if (normalized.contains("box*10")) return "box*10";
+      if (normalized.contains("box*20")) return "box*20";
+      if (normalized.contains("box*24") || normalized.contains("carton")) return "box*24";
+      if (normalized.contains("box*72")) return "box*72";
+      if (normalized.contains("crate")) return "crate";
+      if (normalized.contains("half")) return "half";
+      if (normalized.contains("quarter")) return "quarter";
+      if (normalized.contains("kg")) return "kg";
       
       return cleaned.isEmpty ? "pcs" : cleaned;
   }

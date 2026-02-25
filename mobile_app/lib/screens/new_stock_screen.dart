@@ -70,7 +70,9 @@ class _NewStockScreenState extends State<NewStockScreen> {
     double total = count * multiplier;
     
     setState(() {
-       _totalPiecesSuffix = "${total.toStringAsFixed(0)} pcs";
+       _totalPiecesSuffix = total % 1 == 0 
+           ? "${total.toInt()} pcs" 
+           : "${total.toStringAsFixed(2)} pcs";
     });
   }
 
@@ -83,6 +85,11 @@ class _NewStockScreenState extends State<NewStockScreen> {
     _qtyController.dispose();
     _priceController.dispose();
     super.dispose();
+  }
+
+  bool get _shouldAllowDecimal {
+    final u = _selectedUnitLabel.toLowerCase();
+    return u.contains('kg') || u.contains('g') || u.contains('ml') || u.contains('l') || u.contains('sack');
   }
 
   void _loadItems() async {
@@ -346,6 +353,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
                             _selectedSize = val;
                             _qtyController.text = val!;
                             _checkExistingPrice();
+                            _updatePieceCount(); // Update piece count when size changes
                         }
                     });
                 },
@@ -372,15 +380,54 @@ class _NewStockScreenState extends State<NewStockScreen> {
           const SizedBox(height: 20),
           
           _buildLabel("Quantity / Count"),
-          _buildTextField(
-            _unitController, 
-            "Enter Count", 
-            isNumber: true, 
-            prefixIcon: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-              child: Text(_selectedUnitLabel, style: const TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold, fontSize: 16)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9), // slate-100
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: border),
             ),
-            suffixText: " $_totalPiecesSuffix"
+            child: Row(
+                children: [
+                    Expanded(
+                        child: TextFormField(
+                            controller: _unitController,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [
+                                if (!_shouldAllowDecimal) FilteringTextInputFormatter.digitsOnly
+                                else FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                                if (_shouldAllowDecimal) TextInputFormatter.withFunction((oldValue, newValue) {
+                                    if (newValue.text.startsWith('.')) return oldValue;
+                                    if (newValue.text.contains('.') && newValue.text.indexOf('.') != newValue.text.lastIndexOf('.')) return oldValue;
+                                    return newValue;
+                                }),
+                            ],
+                            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 32, color: textDark),
+                            decoration: const InputDecoration(
+                                isDense: true,
+                                border: InputBorder.none,
+                                contentPadding: EdgeInsets.zero,
+                                hintText: "0",
+                            ),
+                        ),
+                    ),
+                    const SizedBox(width: 8),
+                    Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                            Text(
+                                _selectedUnitLabel.toUpperCase(), 
+                                style: const TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.w900, fontSize: 13)
+                            ),
+                            Text(
+                                _totalPiecesSuffix, 
+                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: textGray)
+                            ),
+                        ],
+                    ),
+                ],
+            ),
           ),
           const SizedBox(height: 12),
           Wrap(
@@ -661,7 +708,14 @@ class _NewStockScreenState extends State<NewStockScreen> {
           keyboardType: (isNumber || isCurrency) ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
           inputFormatters: isCurrency 
             ? [ThousandsFormatter()] 
-            : (isNumber ? [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))] : null),
+            : (isNumber ? [
+                FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+                TextInputFormatter.withFunction((oldValue, newValue) {
+                    if (newValue.text.startsWith('.')) return oldValue;
+                    if (newValue.text.contains('.') && newValue.text.indexOf('.') != newValue.text.lastIndexOf('.')) return oldValue;
+                    return newValue;
+                }),
+              ] : null),
           style: TextStyle(color: isReadOnly ? Colors.grey : const Color(0xFF334155), fontWeight: FontWeight.w500),
           decoration: _inputDecoration(paddingLeft: paddingLeft).copyWith(
               hintText: hint,
@@ -795,6 +849,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
      setState(() {
          _selectedUnitLabel = cleanVal;
          _unitController.text = currentNum.toStringAsFixed(0);
+         _updatePieceCount();
      });
      _checkExistingPrice();
   }
