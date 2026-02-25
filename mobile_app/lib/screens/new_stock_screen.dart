@@ -60,6 +60,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
     super.initState();
     _loadItems();
     _unitController.addListener(_updatePieceCount);
+    _qtyController.addListener(() => setState(() {})); // Trigger rebuild for unit button filtering
   }
 
   void _updatePieceCount() {
@@ -263,79 +264,94 @@ class _NewStockScreenState extends State<NewStockScreen> {
           const SizedBox(height: 20),
           
           _buildLabel("Item Name"),
-          Container(
-             decoration: BoxDecoration(
-                 color: const Color(0xFFF8FAFC), // gray-50
-                 borderRadius: BorderRadius.circular(8),
-                 border: Border.all(color: Colors.transparent), // Manage border via decoration or InputDecorator?
+          if (!_isNewItem)
+            Container(
+               decoration: BoxDecoration(
+                   color: const Color(0xFFF8FAFC), // gray-50
+                   borderRadius: BorderRadius.circular(8),
+                   border: Border.all(color: Colors.transparent),
+               ),
+               child: DropdownButtonFormField<String>(
+                  value: _selectedItem,
+                  hint: const Text("Select Item"),
+                  isExpanded: true,
+                  style: TextStyle(color: textDark, fontSize: 15),
+                  decoration: _inputDecoration(),
+                  items: [
+                     ..._availableItems.map((item) => DropdownMenuItem(value: item, child: Text(item))),
+                     const DropdownMenuItem(value: _addNewItemOption, child: Text("➕ Add New Item...", style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold))),
+                  ],
+                  onChanged: (val) {
+                     setState(() {
+                        if (val == _addNewItemOption) {
+                            _isNewItem = true;
+                            _selectedItem = _addNewItemOption;
+                            _itemController.clear();
+                            _availableSizes = [];
+                            _selectedSize = null;
+                        } else {
+                            _isNewItem = false;
+                            _selectedItem = val;
+                            _itemController.text = val!;
+                            _loadSizes(val);
+                            _checkExistingPrice();
+                        }
+                     });
+                  },
+               ),
+            )
+          else ...[
+             _buildTextField(
+                _itemController, 
+                "Enter New Item Name",
+                prefixIcon: const Icon(Icons.add_circle_outline, color: AppColors.primaryGreen, size: 20),
+                suffixIconButton: IconButton(
+                    icon: const Icon(Icons.list, color: AppColors.primaryGreen),
+                    onPressed: () {
+                        setState(() {
+                            _isNewItem = false;
+                            _selectedItem = null;
+                            _itemController.clear();
+                            _availableSizes = [];
+                            _selectedSize = null;
+                        });
+                    },
+                ),
              ),
-             child: DropdownButtonFormField<String>(
-                value: _selectedItem,
-                hint: const Text("Select Item"),
-                isExpanded: true,
-                style: TextStyle(color: textDark, fontSize: 15),
-                decoration: _inputDecoration(),
-                items: [
-                   ..._availableItems.map((item) => DropdownMenuItem(value: item, child: Text(item))),
-                   const DropdownMenuItem(value: _addNewItemOption, child: Text("➕ Add New Item...", style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold))),
-                ],
-                onChanged: (val) {
-                   setState(() {
-                      if (val == _addNewItemOption) {
-                          _isNewItem = true;
-                          _selectedItem = _addNewItemOption;
-                          _itemController.clear();
-                          _availableSizes = [];
-                          _selectedSize = null;
-                      } else {
-                          _isNewItem = false;
-                          _selectedItem = val;
-                          _itemController.text = val!;
-                          _loadSizes(val);
-                          _checkExistingPrice();
-                      }
-                   });
-                },
-             ),
-          ),
-          if (_isNewItem) ...[
-             const SizedBox(height: 8),
-             _buildTextField(_itemController, "Enter New Item Name"),
              const SizedBox(height: 4),
              _buildNotice("Adding a NEW Product", Colors.blue),
           ],
           const SizedBox(height: 20),
           
           _buildLabel("Item Size / Variant"),
-          DropdownButtonFormField<String>(
-              value: _selectedSize,
-              hint: const Text("Select Size"),
-              isExpanded: true,
-              style: TextStyle(color: textDark, fontSize: 15),
-              decoration: _inputDecoration(),
-              items: _isNewItem 
-                  ? [const DropdownMenuItem(value: _addNewSizeOption, child: Text("➕ Add New Size...", style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold)))]
-                  : [
-                      ..._availableSizes.map((s) => DropdownMenuItem(value: s, child: Text(s))),
-                      const DropdownMenuItem(value: _addNewSizeOption, child: Text("➕ Add New Size...", style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold))),
-                  ],
-              onChanged: (val) {
-                  setState(() {
-                      if (val == _addNewSizeOption) {
-                          _isNewSize = true;
-                          _selectedSize = _addNewSizeOption;
-                          _qtyController.clear();
-                      } else {
-                          _isNewSize = false;
-                          _selectedSize = val;
-                          _qtyController.text = val!;
-                          _checkExistingPrice();
-                      }
-                  });
-              },
-          ),
+          if (!_isNewItem)
+            DropdownButtonFormField<String>(
+                value: _selectedSize,
+                hint: const Text("Select Size"),
+                isExpanded: true,
+                style: TextStyle(color: textDark, fontSize: 15),
+                decoration: _inputDecoration(),
+                items: [
+                    ..._availableSizes.map((s) => DropdownMenuItem(value: s, child: Text(s))),
+                    const DropdownMenuItem(value: _addNewSizeOption, child: Text("➕ Add New Size...", style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold))),
+                ],
+                onChanged: (val) {
+                    setState(() {
+                        if (val == _addNewSizeOption) {
+                            _isNewSize = true;
+                            _selectedSize = _addNewSizeOption;
+                            _qtyController.clear();
+                        } else {
+                            _isNewSize = false;
+                            _selectedSize = val;
+                            _qtyController.text = val!;
+                            _checkExistingPrice();
+                        }
+                    });
+                },
+            ),
           if (_isNewSize || _isNewItem) ...[
-              const SizedBox(height: 8),
+              if (!_isNewItem) const SizedBox(height: 8),
               _buildTextField(_qtyController, "Enter Size (e.g. 50kg)", isNumber: true),
           ],
           if (_isPriceLocked) ...[
@@ -638,7 +654,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
       );
   }
   
-  Widget _buildTextField(TextEditingController controller, String hint, {bool isNumber = false, bool isCurrency = false, double paddingLeft = 16, bool isReadOnly = false, String? suffixText, Widget? prefixIcon}) {
+  Widget _buildTextField(TextEditingController controller, String hint, {bool isNumber = false, bool isCurrency = false, double paddingLeft = 16, bool isReadOnly = false, String? suffixText, Widget? prefixIcon, Widget? suffixIconButton}) {
       return TextField(
           controller: controller,
           readOnly: isReadOnly,
@@ -651,6 +667,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
               hintText: hint,
               fillColor: isReadOnly ? const Color(0xFFF1F5F9) : const Color(0xFFF8FAFC),
               suffixText: suffixText,
+              suffixIcon: suffixIconButton,
               suffixStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal, color: Colors.grey),
               prefixIcon: prefixIcon,
           ),

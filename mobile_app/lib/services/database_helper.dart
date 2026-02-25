@@ -340,7 +340,7 @@ class DatabaseHelper {
   Future<bool> mergeStock(String itemName, String size, String newUnit, double newPrice, String supplier, {bool forceSave = false}) async {
     final db = await instance.database;
     final result = await db.rawQuery(
-      'SELECT id, available_pieces, price FROM stock WHERE item = ? AND quantity = ?',
+      'SELECT id, available_pieces, price, unit FROM stock WHERE item = ? AND quantity = ?',
       [itemName, size]
     );
 
@@ -349,11 +349,17 @@ class DatabaseHelper {
       int id = row['id'] as int;
       double existingPieces = row['available_pieces'] as double;
       double existingCostPerPiece = row['price'] as double;
+      String existingUnit = row['unit'] as String;
 
       double quantityNumber = extractNumericValue(newUnit);
       double multiplier = getUnitMultiplier(newUnit, size);
       double incomingPieces = quantityNumber * multiplier;
       double newCostPerPiece = newPrice / (multiplier > 0 ? multiplier : 1);
+
+      // Logic: Only update the 'unit' label if the new unit has a LARGER multiplier.
+      // This ensures we always format stock using the biggest box size (e.g. *72 vs *12).
+      double existingMultiplier = getUnitMultiplier(existingUnit, size);
+      String unitToKeep = multiplier > existingMultiplier ? cleanUnitLabel(newUnit) : existingUnit;
 
       // --- VALIDATION GATE ---
       if (!forceSave && existingCostPerPiece > 0) {
@@ -370,8 +376,8 @@ class DatabaseHelper {
           existingPieces + incomingPieces,
           ((existingPieces * existingCostPerPiece) + (incomingPieces * newCostPerPiece)) / (existingPieces + incomingPieces),
           supplier,
-          DateTime.now().toString(), // Using full timestamp or just date part? Java uses LocalDate.now()
-          cleanUnitLabel(newUnit),
+          DateTime.now().toString(), 
+          unitToKeep,
           id
         ]
       );
