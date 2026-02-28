@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/history_item.dart';
 import '../services/database_helper.dart';
 import '../services/passcode_service.dart';
+import '../widgets/common_app_bar_actions.dart';
 import '../utils/colors.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -146,11 +147,27 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
              child: Column(
                  crossAxisAlignment: CrossAxisAlignment.stretch,
                  children: [
-                     const Text("Transaction History", style: TextStyle(
-                         color: Color(0xFF111827), // text-primary-light
-                         fontSize: 20, 
-                         fontWeight: FontWeight.bold
-                     )),
+                     Row(
+                       children: [
+                         Container(
+                           padding: const EdgeInsets.all(8),
+                           decoration: BoxDecoration(
+                             color: AppColors.primaryGreen.withValues(alpha: 0.1),
+                             borderRadius: BorderRadius.circular(8),
+                           ),
+                           child: Image.asset('assets/images/app_icon.png', width: 20, height: 20),
+                         ),
+                         const SizedBox(width: 12),
+                         const Text("Transaction History", style: TextStyle(
+                             color: Color(0xFF111827), // text-primary-light
+                             fontSize: 20, 
+                             fontWeight: FontWeight.bold
+                         )),
+                         const Spacer(),
+                         const StandardAppBarActions(),
+                       ],
+                     ),
+
                      const SizedBox(height: 12),
                      Row(
                          children: [
@@ -343,6 +360,8 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                         ),
                         const SizedBox(height: 12),
                         
+                        const SizedBox(height: 12),
+                        
                         // Middle Row: Item & Amount
                         Row(
                              crossAxisAlignment: CrossAxisAlignment.start,
@@ -351,13 +370,26 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                      child: Column(
                                          crossAxisAlignment: CrossAxisAlignment.start,
                                          children: [
-                                             Text(
-                                                 item.item, 
-                                                 style: const TextStyle(
-                                                     fontWeight: FontWeight.bold, 
-                                                     fontSize: 16, 
-                                                     color: Color(0xFF111827) // text-primary
-                                                 )
+                                             Row(
+                                               children: [
+                                                 Expanded(
+                                                   child: Text(
+                                                       item.item, 
+                                                       style: const TextStyle(
+                                                           fontWeight: FontWeight.bold, 
+                                                           fontSize: 16, 
+                                                           color: Color(0xFF111827) // text-primary
+                                                       )
+                                                   ),
+                                                 ),
+                                                 IconButton(
+                                                   icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                                                   onPressed: () => _confirmDeletion(item),
+                                                   padding: EdgeInsets.zero,
+                                                   constraints: const BoxConstraints(),
+                                                   visualDensity: VisualDensity.compact,
+                                                 ),
+                                               ],
                                              ),
                                              const SizedBox(height: 4),
                                              Text(
@@ -376,6 +408,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                          ],
                                      ),
                                  ),
+                                 const SizedBox(width: 8),
                                  Column(
                                      crossAxisAlignment: CrossAxisAlignment.end,
                                      children: [
@@ -410,6 +443,73 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
             ),
           ),
       );
+  }
+
+  void _confirmDeletion(HistoryItem item) {
+    final passcodeController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Confirm Deletion"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Are you sure you want to delete this transaction for '${item.item}'?"),
+            const SizedBox(height: 8),
+            const Text("This will revert the stock quantity.", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+            const SizedBox(height: 16),
+            const Text("Enter Admin Passcode to Confirm:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: passcodeController,
+              obscureText: true,
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              decoration: InputDecoration(
+                hintText: "Passcode",
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                counterText: "",
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final pc = passcodeController.text;
+              final isValid = await PasscodeService.instance.verifyPasscode(pc);
+              
+              if (isValid && pc.isNotEmpty) {
+                if (item.id != null) {
+                  await DatabaseHelper.instance.deleteHistoryItem(item.id!);
+                  if (mounted) {
+                    Navigator.pop(context); // Close dialog
+                    _loadHistory(); // Refresh list
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Transaction deleted and stock reverted."))
+                    );
+                  }
+                }
+              } else {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Incorrect Passcode!"), backgroundColor: Colors.red)
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            child: const Text("Delete"),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showPaymentModal(HistoryItem item) {

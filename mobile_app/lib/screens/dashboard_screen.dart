@@ -4,6 +4,7 @@ import '../utils/colors.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/stock_tile_redesigned.dart';
 import '../widgets/sale_tile_redesigned.dart';
+import '../widgets/common_app_bar_actions.dart';
 import '../screens/login_screen.dart';
 import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
@@ -74,7 +75,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 color: AppColors.primaryGreen.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.inventory_2, color: AppColors.primaryGreen, size: 20),
+              child: Image.asset('assets/images/app_icon.png', width: 20, height: 20),
             ),
             const SizedBox(width: 12),
             const Text(
@@ -94,51 +95,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             preferredSize: const Size.fromHeight(1),
             child: Container(color: AppColors.primaryGreen.withValues(alpha: 0.1), height: 1)
         ),
-        actions: [
-            Stack(
-                alignment: Alignment.center,
-                children: [
-                    IconButton(
-                        icon: const Icon(Icons.notifications_outlined, color: AppColors.textSecondary),
-                        onPressed: () {},
-                    ),
-                    Positioned(
-                        top: 12,
-                        right: 12,
-                        child: Container(width: 8, height: 8, decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.white, width: 1.5))),
-                    )
-                ],
-            ),
-            ValueListenableBuilder<bool>(
-              valueListenable: PasscodeService.instance.isLocked,
-              builder: (context, isLocked, child) {
-                if (isLocked) return const SizedBox.shrink();
-                return IconButton(
-                  icon: const Icon(Icons.lock_outline, color: AppColors.textPrimary),
-                  onPressed: () => PasscodeService.instance.lock(),
-                  tooltip: 'Hide Metrics',
-                );
-              },
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AccountScreen()),
-                );
-              },
-              child: Container(
-                  margin: const EdgeInsets.only(right: 16),
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                      color: AppColors.primaryGreen.withValues(alpha: 0.2),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.primaryGreen.withValues(alpha: 0.3)),
-                  ),
-                  child: const Icon(Icons.person, size: 20, color: AppColors.primaryGreen), 
-              ),
-            ),
+        actions: const [
+          StandardAppBarActions(),
         ],
       ),
       body: RefreshIndicator(
@@ -307,14 +265,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                  ),
                                ],
                              ),
-                             TextButton(
+                             IconButton(
                                  onPressed: () {
                                      setState(() {
                                          _showAllStock = !_showAllStock;
                                      });
                                  },
-                                 child: Text(_showAllStock ? "Show Less" : "View All", style: const TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.w600)),
+                                 icon: Icon(
+                                   _showAllStock ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, 
+                                   color: AppColors.primaryGreen,
+                                   size: 20,
+                                 ),
+                                 tooltip: _showAllStock ? "Show Less" : "View All",
+                                 padding: EdgeInsets.zero,
+                                 constraints: const BoxConstraints(),
                              )
+
+
+
                          ],
                      ),
                  ),

@@ -161,6 +161,26 @@ class DatabaseHelper {
           } catch (e) {
               // Columns might already exist
           }
+
+          // Create deleted_history table if it doesn't exist
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS deleted_history (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              customer TEXT,
+              item TEXT,
+              quantity TEXT,
+              unit TEXT,
+              price REAL,
+              cost_price REAL,
+              base_quantity REAL,
+              amount REAL,
+              type TEXT,
+              date TEXT,
+              is_debt INTEGER,
+              is_paid INTEGER,
+              deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+          ''');
       }
     );
   }
@@ -233,6 +253,26 @@ class DatabaseHelper {
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT
+      )
+    ''');
+
+    // Deleted History Table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS deleted_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer TEXT,
+        item TEXT,
+        quantity TEXT,
+        unit TEXT,
+        price REAL,
+        cost_price REAL,
+        base_quantity REAL,
+        amount REAL,
+        type TEXT,
+        date TEXT,
+        is_debt INTEGER DEFAULT 0,
+        is_paid INTEGER DEFAULT 0,
+        deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     ''');
   }
@@ -563,6 +603,99 @@ class DatabaseHelper {
       return 0.0;
   }
 
+  // --- DELETE & REVERT STOCK ---
+
+  Future<void> deleteHistoryItem(int id) async {
+    final db = await instance.database;
+
+    // 1. Fetch the item to be deleted
+    final List<Map<String, dynamic>> result = await db.query(
+      'sales',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+    if (result.isEmpty) return;
+    final item = result.first;
+
+    // 2. Insert into deleted_history
+    await db.insert('deleted_history', {
+      'customer': item['customer'],
+      'item': item['item'],
+      'quantity': item['quantity'],
+      'unit': item['unit'],
+      'price': item['price'],
+      'cost_price': item['cost_price'],
+      'base_quantity': item['base_quantity'],
+      'amount': item['amount'],
+      'type': item['type'],
+      'date': item['date'],
+      'is_debt': item['is_debt'],
+      'is_paid': item['is_paid'],
+    });
+
+    // 3. Revert stock
+    String itemName = item['item'] as String;
+    String size = item['quantity'] as String;
+    String unit = item['unit'] as String;
+    String type = item['type'] as String;
+
+    double piecesToRevert = extractNumericValue(unit) * getUnitMultiplier(unit, size);
+
+    final stockResult = await db.query(
+      'stock',
+      where: 'item = ? AND quantity = ?',
+      whereArgs: [itemName, size],
+    );
+
+    if (stockResult.isNotEmpty) {
+      int stockId = stockResult.first['id'] as int;
+      double currentPieces = stockResult.first['available_pieces'] as double;
+      double newPieces;
+
+      if (type == 'NEW STOCK') {
+        // Deleting added stock -> Subtract from available
+        newPieces = currentPieces - piecesToRevert;
+      } else {
+        // Deleting a sale -> Add back to available
+        newPieces = currentPieces + piecesToRevert;
+      }
+
+      await db.update(
+        'stock',
+        {'available_pieces': newPieces},
+        where: 'id = ?',
+        whereArgs: [stockId],
+      );
+    }
+
+    // 4. Delete from sales
+    await db.delete('sales', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<List<HistoryItem>> getDeletedHistory() async {
+    final db = await instance.database;
+    final result = await db.rawQuery("SELECT * FROM deleted_history ORDER BY deleted_at DESC");
+
+    return result.map((rs) {
+      return HistoryItem(
+        id: rs['id'] as int,
+        customer: rs['customer'] as String,
+        item: rs['item'] as String,
+        type: rs['type'] as String,
+        quantity: rs['quantity'] as String,
+        unit: rs['unit'] as String,
+        price: (rs['price'] as num).toStringAsFixed(0),
+        amount: (rs['amount'] as num).toDouble().toStringAsFixed(0),
+        profit: "0", // Profit info lost in deleted history for simplicity
+        date: rs['date'] as String,
+        deletedAt: rs['deleted_at'] as String?,
+        isDebt: (rs['is_debt'] as int? ?? 0) == 1,
+        isPaid: (rs['is_paid'] as int? ?? 0) == 1,
+      );
+    }).toList();
+  }
+
   // --- DATA HELPERS ---
 
   /// Ported from Java extractNumericValue
@@ -660,6 +793,14 @@ class DatabaseHelper {
       final db = await instance.database;
       final result = await db.rawQuery("SELECT DISTINCT quantity FROM stock WHERE item = ?", [itemName]);
       return result.map((row) => row['quantity'] as String).toList();
+  }
+
+  Future<List<String>> getRecentCustomers() async {
+      final db = await instance.database;
+      final result = await db.rawQuery(
+          "SELECT DISTINCT customer FROM sales WHERE customer != '' AND customer IS NOT NULL ORDER BY created_at DESC LIMIT 20"
+      );
+      return result.map((row) => row['customer'] as String).toList();
   }
 
   // --- SETTINGS ---

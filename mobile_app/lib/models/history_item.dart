@@ -9,6 +9,7 @@ class HistoryItem {
   final String amount;
   final String profit;
   final String date;
+  final String? deletedAt;
   final bool isDebt;
   final bool isPaid;
 
@@ -23,6 +24,7 @@ class HistoryItem {
     required this.amount, 
     required this.profit, 
     required this.date,
+    this.deletedAt,
     this.isDebt = false,
     this.isPaid = false,
   });

@@ -5,6 +5,7 @@ import '../utils/formatters.dart';
 import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
 import '../models/sale_item.dart';
+import '../widgets/common_app_bar_actions.dart';
 import 'package:intl/intl.dart';
 
 class ProcessSaleScreen extends StatefulWidget {
@@ -18,10 +19,10 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
   final _customerController = TextEditingController();
   final _unitController = TextEditingController(); // Count/Weight input
   final _priceController = TextEditingController();
-
   final List<SaleItem> _cart = [];
   List<String> _availableItems = [];
   List<String> _availableSizes = [];
+  List<String> _recentCustomers = [];
   
   String? _selectedItem;
   String? _selectedSize;
@@ -50,7 +51,15 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
   void initState() {
     super.initState();
     _loadItems();
+    _loadRecentCustomers();
     _unitController.addListener(_updatePieceCount);
+  }
+
+  void _loadRecentCustomers() async {
+      final customers = await DatabaseHelper.instance.getRecentCustomers();
+      setState(() {
+          _recentCustomers = customers;
+      });
   }
 
   void _updatePieceCount() {
@@ -129,8 +138,33 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
       backgroundColor: AppColors.background,
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('Process Sale', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primaryGreen.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Image.asset('assets/images/app_icon.png', width: 20, height: 20),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Process Sale',
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ],
+        ),
+        actions: const [
+          StandardAppBarActions(),
+        ],
         backgroundColor: Colors.white,
+
         elevation: 0,
         bottom: PreferredSize(
             preferredSize: const Size.fromHeight(1),
@@ -192,8 +226,31 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
         _buildLabel("Customer Name"),
         const SizedBox(height: 6),
         TextFormField(
-            controller: _customerController,
-            decoration: _inputDecoration("Search or enter customer name", Icons.person),
+          controller: _customerController,
+          decoration: _inputDecoration("enter customer name", Icons.person).copyWith(
+            suffixIcon: PopupMenuButton<String>(
+              icon: const Icon(Icons.arrow_drop_down, color: Colors.grey),
+              onSelected: (String value) {
+                setState(() {
+                  _customerController.text = value;
+                });
+              },
+              itemBuilder: (BuildContext context) {
+                return [
+                  const PopupMenuItem<String>(
+                    value: "Walk-in Customer",
+                    child: Text("Walk-in Customer"),
+                  ),
+                  ..._recentCustomers
+                      .where((c) => c != "Walk-in Customer")
+                      .map((customer) => PopupMenuItem<String>(
+                            value: customer,
+                            child: Text(customer),
+                          )),
+                ];
+              },
+            ),
+          ),
         ),
         const SizedBox(height: 16),
         
@@ -316,11 +373,12 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
             ],
         ),
         const SizedBox(height: 6),
-        Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-                Container(
-                    width: 180,
+        LayoutBuilder(
+           builder: (context, constraints) {
+             final isWide = constraints.maxWidth > 500;
+             
+             final inputField = Container(
+                    width: isWide ? 160 : double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
                         color: const Color(0xFFF1F5F9), // slate-100
@@ -367,10 +425,9 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                             ),
                         ],
                     ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                    child: Wrap(
+                );
+
+             final buttons = Wrap(
                         spacing: 8.0,
                         runSpacing: 8.0,
                         children: _isBulkItem 
@@ -382,10 +439,31 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                              final isSelected = _isUnitSelected(u['value']);
                              return _buildQuickBtn(u['label']!, isSelected ? Colors.blue.shade50 : AppColors.primaryGreen.withValues(alpha: 0.1), isSelected ? Colors.blue.shade700 : AppColors.primaryGreen, value: u['value'], isSelected: isSelected);
                         }).toList(),
-                    ),
-                ),
-            ],
+                    );
+
+             if (isWide) {
+               return Row(
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 children: [
+                    inputField,
+                    const SizedBox(width: 8),
+                    Expanded(child: buttons),
+                 ],
+               );
+             } else {
+               return Column(
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 children: [
+                    inputField,
+                    const SizedBox(height: 12),
+                    buttons,
+                 ],
+               );
+             }
+           }
         ),
+
+
         
         const SizedBox(height: 32),
         

@@ -5,6 +5,7 @@ import '../utils/formatters.dart';
 import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
 import '../models/stock_item.dart';
+import '../widgets/common_app_bar_actions.dart';
 import 'package:intl/intl.dart';
 
 class NewStockScreen extends StatefulWidget {
@@ -152,14 +153,32 @@ class _NewStockScreenState extends State<NewStockScreen> {
         elevation: 0,
         centerTitle: false,
         automaticallyImplyLeading: false,
-        title: Text(
-          'New Stock Entry',
-          style: TextStyle(
-            color: textDark, 
-            fontWeight: FontWeight.w600,
-            fontSize: 20,
-          ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primaryGreen.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Image.asset('assets/images/app_icon.png', width: 20, height: 20),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'New Stock Entry',
+              style: TextStyle(
+                color: AppColors.textPrimary, 
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+                letterSpacing: -0.5,
+              ),
+            ),
+          ],
         ),
+        actions: const [
+          StandardAppBarActions(),
+        ],
+
 
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(1),
