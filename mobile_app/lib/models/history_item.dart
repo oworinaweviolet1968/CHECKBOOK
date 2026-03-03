@@ -7,11 +7,13 @@ class HistoryItem {
   final String unit;
   final String price;
   final String amount;
+  final String paidAmount;
   final String profit;
   final String date;
   final String? deletedAt;
   final bool isDebt;
   final bool isPaid;
+  final bool isEdited;
 
   HistoryItem({
     this.id,
@@ -22,10 +24,12 @@ class HistoryItem {
     required this.unit, 
     required this.price, 
     required this.amount, 
+    required this.paidAmount,
     required this.profit, 
     required this.date,
     this.deletedAt,
     this.isDebt = false,
     this.isPaid = false,
+    this.isEdited = false,
   });
 }

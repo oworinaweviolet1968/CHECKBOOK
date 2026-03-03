@@ -682,11 +682,12 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
 
      String currentText = _unitController.text;
      double currentNum = DatabaseHelper.instance.extractNumericValue(currentText);
-     if (currentNum <= 0) currentNum = 1;
 
      setState(() {
          _selectedUnitLabel = cleanVal;
-         _unitController.text = currentNum.toStringAsFixed(0);
+         if (currentNum > 0) {
+             _unitController.text = currentNum.toStringAsFixed(0);
+         }
          
          // Update suffix immediately
          double multiplier = DatabaseHelper.instance.getUnitMultiplier(val, _selectedSize ?? "");

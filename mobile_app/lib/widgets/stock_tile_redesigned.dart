@@ -7,6 +7,7 @@ class StockTileRedesigned extends StatelessWidget {
   final String price; // e.g. "UGX 25.00"
   final String quantity; // e.g. "45 pcs"
   final bool isLowStock;
+  final bool isEdited;
 
   const StockTileRedesigned({
     super.key,
@@ -15,6 +16,7 @@ class StockTileRedesigned extends StatelessWidget {
     required this.price,
     required this.quantity,
     this.isLowStock = false,
+    this.isEdited = false,
   });
 
   @override
@@ -38,14 +40,37 @@ class StockTileRedesigned extends StatelessWidget {
                    child: Column(
                      crossAxisAlignment: CrossAxisAlignment.start,
                      children: [
-                       Text(
-                         itemName,
-                         style: const TextStyle(
-                           fontWeight: FontWeight.w600,
-                           fontSize: 14,
-                           color: AppColors.textPrimary,
-                         ),
-                       ),
+                        Row(
+                          children: [
+                            Text(
+                              itemName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            if (isEdited) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
+                                ),
+                                child: const Text(
+                                  "EDITED",
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.orange,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                        const SizedBox(height: 2),
                        Text(
                          "$itemSize • $price",

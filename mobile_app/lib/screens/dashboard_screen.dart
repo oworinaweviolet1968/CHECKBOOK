@@ -325,6 +325,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                          price: "UGX ${_formatter.format(price)}", 
                                          quantity: displayAvail,
                                          isLowStock: isLow,
+                                         isEdited: (item['is_edited'] as int? ?? 0) == 1,
                                      );
                                  }).toList(),
                              );
@@ -482,7 +483,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
-          maxLength: 4,
+          maxLength: 6,
           obscureText: true,
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 24, letterSpacing: 10),

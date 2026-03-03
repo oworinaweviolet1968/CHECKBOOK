@@ -27,17 +27,16 @@ class _NewStockScreenState extends State<NewStockScreen> {
   final List<StockItem> _items = [];
   List<String> _availableItems = [];
   List<String> _availableSizes = [];
+  List<String> _recentSuppliers = [];
   
   String? _selectedItem;
   String? _selectedSize;
   
-  bool _isNewItem = false;
   bool _isNewSize = false;
   bool _isPriceLocked = false;
   String _selectedUnitLabel = "pcs"; // e.g. "Box", "Sack"
   String _totalPiecesSuffix = "pcs"; // e.g. "72 pcs"
   
-  static const String _addNewItemOption = "__NEW_ITEM__";
   static const String _addNewSizeOption = "__NEW_SIZE__";
   
   final _formatter = NumberFormat("#,###");
@@ -60,8 +59,37 @@ class _NewStockScreenState extends State<NewStockScreen> {
   void initState() {
     super.initState();
     _loadItems();
+    _loadRecentSuppliers();
     _unitController.addListener(_updatePieceCount);
+    _itemController.addListener(_onItemChanged);
     _qtyController.addListener(() => setState(() {})); // Trigger rebuild for unit button filtering
+  }
+
+  void _onItemChanged() {
+      String current = _itemController.text.trim();
+      if (_availableItems.contains(current)) {
+          if (_selectedItem != current) {
+              setState(() {
+                  _selectedItem = current;
+                  _loadSizes(current);
+              });
+          }
+      } else {
+          if (_selectedItem != null) {
+              setState(() {
+                  _selectedItem = null;
+                  _availableSizes = [];
+                  _selectedSize = null;
+              });
+          }
+      }
+  }
+
+  void _loadRecentSuppliers() async {
+      final suppliers = await DatabaseHelper.instance.getRecentSuppliers();
+      setState(() {
+          _recentSuppliers = suppliers;
+      });
   }
 
   void _updatePieceCount() {
@@ -80,6 +108,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
   @override
   void dispose() {
     _unitController.removeListener(_updatePieceCount);
+    _itemController.removeListener(_onItemChanged);
     _unitController.dispose();
     _supplierController.dispose();
     _itemController.dispose();
@@ -111,7 +140,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
   }
 
   void _checkExistingPrice() async {
-      if (_selectedItem != null && _selectedItem != _addNewItemOption && 
+      if (_selectedItem != null && 
           _selectedSize != null && _selectedSize != _addNewSizeOption) {
           
           double basePrice = await DatabaseHelper.instance.getLastRecordedPrice(_selectedItem!, _selectedSize!);
@@ -286,71 +315,57 @@ class _NewStockScreenState extends State<NewStockScreen> {
           const SizedBox(height: 24),
           
           _buildLabel("Supplier Name"),
-          _buildTextField(_supplierController, "Enter Supplier Name"),
+          TextFormField(
+            controller: _supplierController,
+            style: TextStyle(color: textDark, fontSize: 15),
+            decoration: _inputDecoration().copyWith(
+              hintText: "Enter Supplier Name",
+              suffixIcon: PopupMenuButton<String>(
+                icon: const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                onSelected: (String value) {
+                  setState(() {
+                    _supplierController.text = value;
+                  });
+                },
+                itemBuilder: (BuildContext context) {
+                  return _recentSuppliers.map((supplier) => PopupMenuItem<String>(
+                    value: supplier,
+                    child: Text(supplier),
+                  )).toList();
+                },
+              ),
+            ),
+          ),
           const SizedBox(height: 20),
           
           _buildLabel("Item Name"),
-          if (!_isNewItem)
-            Container(
-               decoration: BoxDecoration(
-                   color: const Color(0xFFF8FAFC), // gray-50
-                   borderRadius: BorderRadius.circular(8),
-                   border: Border.all(color: Colors.transparent),
-               ),
-               child: DropdownButtonFormField<String>(
-                  value: _selectedItem,
-                  hint: const Text("Select Item"),
-                  isExpanded: true,
-                  style: TextStyle(color: textDark, fontSize: 15),
-                  decoration: _inputDecoration(),
-                  items: [
-                     ..._availableItems.map((item) => DropdownMenuItem(value: item, child: Text(item))),
-                     const DropdownMenuItem(value: _addNewItemOption, child: Text("➕ Add New Item...", style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold))),
-                  ],
-                  onChanged: (val) {
-                     setState(() {
-                        if (val == _addNewItemOption) {
-                            _isNewItem = true;
-                            _selectedItem = _addNewItemOption;
-                            _itemController.clear();
-                            _availableSizes = [];
-                            _selectedSize = null;
-                        } else {
-                            _isNewItem = false;
-                            _selectedItem = val;
-                            _itemController.text = val!;
-                            _loadSizes(val);
-                            _checkExistingPrice();
-                        }
-                     });
-                  },
-               ),
-            )
-          else ...[
-             _buildTextField(
-                _itemController, 
-                "Enter New Item Name",
-                prefixIcon: const Icon(Icons.add_circle_outline, color: AppColors.primaryGreen, size: 20),
-                suffixIconButton: IconButton(
-                    icon: const Icon(Icons.list, color: AppColors.primaryGreen),
-                    onPressed: () {
-                        setState(() {
-                            _isNewItem = false;
-                            _selectedItem = null;
-                            _itemController.clear();
-                            _availableSizes = [];
-                            _selectedSize = null;
-                        });
-                    },
-                ),
-             ),
-             const SizedBox(height: 4),
-             _buildNotice("Adding a NEW Product", Colors.blue),
-          ],
+          TextFormField(
+            controller: _itemController,
+            style: TextStyle(color: textDark, fontSize: 15),
+            decoration: _inputDecoration().copyWith(
+              hintText: "Enter or Select Item",
+              suffixIcon: PopupMenuButton<String>(
+                icon: const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                onSelected: (String value) {
+                  setState(() {
+                    _itemController.text = value;
+                    _selectedItem = value;
+                    _loadSizes(value);
+                  });
+                },
+                itemBuilder: (BuildContext context) {
+                  return _availableItems.map((item) => PopupMenuItem<String>(
+                    value: item,
+                    child: Text(item),
+                  )).toList();
+                },
+              ),
+            ),
+          ),
           const SizedBox(height: 20),
           
           _buildLabel("Item Size / Variant"),
-          if (!_isNewItem)
+          if (_selectedItem != null)
             DropdownButtonFormField<String>(
                 value: _selectedSize,
                 hint: const Text("Select Size"),
@@ -367,6 +382,8 @@ class _NewStockScreenState extends State<NewStockScreen> {
                             _isNewSize = true;
                             _selectedSize = _addNewSizeOption;
                             _qtyController.clear();
+                            _priceController.clear();
+                            _isPriceLocked = false;
                         } else {
                             _isNewSize = false;
                             _selectedSize = val;
@@ -377,8 +394,8 @@ class _NewStockScreenState extends State<NewStockScreen> {
                     });
                 },
             ),
-          if (_isNewSize || _isNewItem) ...[
-              if (!_isNewItem) const SizedBox(height: 8),
+          if (_isNewSize || _selectedItem == null) ...[
+              if (_selectedItem != null) const SizedBox(height: 8),
               _buildTextField(_qtyController, "Enter Size (e.g. 50kg)", isNumber: true),
           ],
           if (_isPriceLocked) ...[
@@ -398,7 +415,37 @@ class _NewStockScreenState extends State<NewStockScreen> {
           ),
           const SizedBox(height: 20),
           
+          _buildLabel("Unit Price"),
+          Stack(
+             children: [
+               _buildTextField(_priceController, "0.00", isCurrency: true, paddingLeft: 60, isReadOnly: _isPriceLocked),
+               Positioned(
+                 left: 16,
+                 top: 0,
+                 bottom: 0,
+                 child: Center(child: Text("UGX", style: TextStyle(color: textGray, fontWeight: FontWeight.bold, fontSize: 12))),
+               )
+             ],
+          ),
+          const SizedBox(height: 20),
+          
           _buildLabel("Quantity / Count"),
+          Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _getFilteredUnitButtons().map((u) {
+                final isSelected = _isUnitSelected(u['value']);
+                final isSack = u['value'] == 'Sack';
+                return _buildQuickButton(
+                  u['label']!, 
+                  () => _appendUnit(u['value']!), 
+                  isBlue: !isSack && isSelected,
+                  isSelected: isSelected,
+                  customColor: isSack ? Colors.orange : null,
+                );
+              }).toList(),
+          ),
+          const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
@@ -447,36 +494,6 @@ class _NewStockScreenState extends State<NewStockScreen> {
                     ),
                 ],
             ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _getFilteredUnitButtons().map((u) {
-                final isSelected = _isUnitSelected(u['value']);
-                final isSack = u['value'] == 'Sack';
-                return _buildQuickButton(
-                  u['label']!, 
-                  () => _appendUnit(u['value']!), 
-                  isBlue: !isSack && isSelected,
-                  isSelected: isSelected,
-                  customColor: isSack ? Colors.orange : null,
-                );
-              }).toList(),
-          ),
-          const SizedBox(height: 20),
-          
-          _buildLabel("Unit Price"),
-          Stack(
-             children: [
-               _buildTextField(_priceController, "0.00", isCurrency: true, paddingLeft: 60, isReadOnly: _isPriceLocked),
-               Positioned(
-                 left: 16,
-                 top: 0,
-                 bottom: 0,
-                 child: Center(child: Text("UGX", style: TextStyle(color: textGray, fontWeight: FontWeight.bold, fontSize: 12))),
-               )
-             ],
           ),
           
           const SizedBox(height: 24),
@@ -803,7 +820,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
               children: [
                   Icon(Icons.info_outline, size: 16, color: color),
                   const SizedBox(width: 8),
-                  Text(message, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+                  Expanded(child: Text(message, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))),
               ],
           ),
       );
@@ -863,11 +880,12 @@ class _NewStockScreenState extends State<NewStockScreen> {
 
      String currentText = _unitController.text;
      double currentNum = DatabaseHelper.instance.extractNumericValue(currentText);
-     if (currentNum <= 0) currentNum = 1;
 
      setState(() {
          _selectedUnitLabel = cleanVal;
-         _unitController.text = currentNum.toStringAsFixed(0);
+         if (currentNum > 0) {
+             _unitController.text = currentNum.toStringAsFixed(0);
+         }
          _updatePieceCount();
      });
      _checkExistingPrice();
@@ -914,7 +932,6 @@ class _NewStockScreenState extends State<NewStockScreen> {
           _selectedItem = null;
           _selectedSize = null;
           _availableSizes = [];
-          _isNewItem = false;
           _isNewSize = false;
           _selectedUnitLabel = "pcs";
           _totalPiecesSuffix = "pcs";
@@ -955,12 +972,12 @@ class _NewStockScreenState extends State<NewStockScreen> {
                   _selectedItem = null;
                   _selectedSize = null;
                   _availableSizes = [];
-                  _isNewItem = false;
                   _isNewSize = false;
                   _selectedUnitLabel = "pcs";
                   _totalPiecesSuffix = "pcs";
               });
               _loadItems();
+              _loadRecentSuppliers();
           }
       } catch (e) {
          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving: $e')));

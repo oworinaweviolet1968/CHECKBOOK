@@ -52,7 +52,7 @@ class DatabaseHelper {
 
   Future<List<HistoryItem>> getHistory(String filter) async {
     final db = await instance.database;
-    String sql = "SELECT id, customer, item, type, quantity, unit, price, cost_price, base_quantity, amount, date, is_debt, is_paid FROM sales WHERE 1=1";
+    String sql = "SELECT id, customer, item, type, quantity, unit, price, cost_price, base_quantity, amount, paid_amount, is_edited, date, is_debt, is_paid FROM sales WHERE 1=1";
 
     List<dynamic> args = [];
     if (filter.isNotEmpty && filter != "ALL") {
@@ -69,6 +69,7 @@ class DatabaseHelper {
     
     return result.map((rs) {
         double amount = (rs['amount'] as num).toDouble();
+        double paidAmount = (rs['paid_amount'] as num? ?? 0).toDouble();
         double cost = (rs['cost_price'] as num).toDouble();
         double baseQty = (rs['base_quantity'] as num).toDouble();
         double profitVal = amount - (cost * baseQty);
@@ -82,12 +83,14 @@ class DatabaseHelper {
             unit: rs['unit'] as String,
             price: (rs['price'] as num).toStringAsFixed(0),
             amount: amount.toStringAsFixed(0),
+            paidAmount: paidAmount.toStringAsFixed(0),
             profit: profitVal.toStringAsFixed(0),
             date: rs['date'] as String,
             isDebt: (rs['is_debt'] as int? ?? 0) == 1,
             isPaid: (rs['is_paid'] as int? ?? 0) == 1,
+            isEdited: (rs['is_edited'] as int? ?? 0) == 1,
         );
-    }).toList();
+    }).toList().cast<HistoryItem>();
   }
 
   Future<List<HistoryItem>> getTodaysSales() async {
@@ -95,7 +98,7 @@ class DatabaseHelper {
       final today = DateTime.now().toIso8601String().split('T')[0];
       
       final result = await db.rawQuery(
-          "SELECT id, customer, item, type, quantity, unit, price, amount, cost_price, base_quantity, date, is_debt, is_paid FROM sales WHERE date = ? AND type != 'NEW STOCK' ORDER BY created_at DESC",
+          "SELECT id, customer, item, type, quantity, unit, price, amount, paid_amount, cost_price, base_quantity, is_edited, date, is_debt, is_paid FROM sales WHERE date = ? AND type != 'NEW STOCK' ORDER BY created_at DESC",
           [today]
       );
 
@@ -114,12 +117,14 @@ class DatabaseHelper {
               unit: rs['unit'] as String,
               price: (rs['price'] as num).toStringAsFixed(0),
               amount: amount.toStringAsFixed(0),
+              paidAmount: (rs['paid_amount'] as num? ?? 0).toStringAsFixed(0),
               profit: profitVal.toStringAsFixed(0),
               date: rs['date'] as String,
               isDebt: (rs['is_debt'] as int? ?? 0) == 1,
               isPaid: (rs['is_paid'] as int? ?? 0) == 1,
+              isEdited: (rs['is_edited'] as int? ?? 0) == 1,
           );
-      }).toList();
+      }).toList().cast<HistoryItem>();
   }
 
 
@@ -154,13 +159,17 @@ class DatabaseHelper {
             )
           ''');
 
-          // Migration for Debts
-          try {
-              await db.execute("ALTER TABLE sales ADD COLUMN is_debt INTEGER DEFAULT 0");
-              await db.execute("ALTER TABLE sales ADD COLUMN is_paid INTEGER DEFAULT 0");
-          } catch (e) {
-              // Columns might already exist
-          }
+          // Migration for Debts & Edits
+          try { await db.execute("ALTER TABLE sales ADD COLUMN is_debt INTEGER DEFAULT 0"); } catch (e) { print("Migration error (sales.is_debt): $e"); }
+          try { await db.execute("ALTER TABLE sales ADD COLUMN is_paid INTEGER DEFAULT 0"); } catch (e) { print("Migration error (sales.is_paid): $e"); }
+          try { await db.execute("ALTER TABLE sales ADD COLUMN paid_amount REAL DEFAULT 0"); } catch (e) { print("Migration error (sales.paid_amount): $e"); }
+          try { await db.execute("ALTER TABLE sales ADD COLUMN is_edited INTEGER DEFAULT 0"); } catch (e) { print("Migration error (sales.is_edited): $e"); }
+          try { await db.execute("ALTER TABLE stock ADD COLUMN is_edited INTEGER DEFAULT 0"); } catch (e) { print("Migration error (stock.is_edited): $e"); }
+
+          try { await db.execute("ALTER TABLE deleted_history ADD COLUMN is_debt INTEGER DEFAULT 0"); } catch (e) { print("Migration error (deleted_history.is_debt): $e"); }
+          try { await db.execute("ALTER TABLE deleted_history ADD COLUMN is_paid INTEGER DEFAULT 0"); } catch (e) { print("Migration error (deleted_history.is_paid): $e"); }
+          try { await db.execute("ALTER TABLE deleted_history ADD COLUMN paid_amount REAL DEFAULT 0"); } catch (e) { print("Migration error (deleted_history.paid_amount): $e"); }
+          try { await db.execute("ALTER TABLE deleted_history ADD COLUMN is_edited INTEGER DEFAULT 0"); } catch (e) { print("Migration error (deleted_history.is_edited): $e"); }
 
           // Create deleted_history table if it doesn't exist
           await db.execute('''
@@ -178,6 +187,8 @@ class DatabaseHelper {
               date TEXT,
               is_debt INTEGER,
               is_paid INTEGER,
+              paid_amount REAL DEFAULT 0,
+              is_edited INTEGER DEFAULT 0,
               deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
           ''');
@@ -213,6 +224,7 @@ class DatabaseHelper {
         unit $textType,
         price $realType,
         available_pieces $realDefault0,
+        is_edited INTEGER DEFAULT 0,
         date $dateType,
         created_at $dateTimeDefault
       )
@@ -234,6 +246,8 @@ class DatabaseHelper {
         date $dateType,
         is_debt INTEGER DEFAULT 0,
         is_paid INTEGER DEFAULT 0,
+        paid_amount $realDefault0,
+        is_edited INTEGER DEFAULT 0,
         created_at $dateTimeDefault
       )
     ''');
@@ -272,6 +286,7 @@ class DatabaseHelper {
         date TEXT,
         is_debt INTEGER DEFAULT 0,
         is_paid INTEGER DEFAULT 0,
+        is_edited INTEGER DEFAULT 0,
         deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     ''');
@@ -576,19 +591,32 @@ class DatabaseHelper {
       }
 
       await db.rawInsert(
-          'INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
               customer, item, size, unit, sellingPrice, 
               costPrice, baseQty, totalAmount, type, 
               DateTime.now().toIso8601String().split('T')[0],
-              isDebt ? 1 : 0, 0
+              isDebt ? 1 : 0, 0, 0
           ]
       );
   }
 
-  Future<void> markSaleAsPaid(int id) async {
+  Future<void> markSaleAsPaid(int id, double newPayment) async {
       final db = await instance.database;
-      await db.rawUpdate('UPDATE sales SET is_paid = 1 WHERE id = ?', [id]);
+      
+      // Get current totals
+      final result = await db.rawQuery('SELECT amount, paid_amount FROM sales WHERE id = ?', [id]);
+      if (result.isNotEmpty) {
+          double totalAmount = (result.first['amount'] as num).toDouble();
+          double currentPaid = (result.first['paid_amount'] as num? ?? 0).toDouble();
+          double updatedPaid = currentPaid + newPayment;
+          
+          if (updatedPaid >= totalAmount) {
+              await db.rawUpdate('UPDATE sales SET paid_amount = amount, is_paid = 1 WHERE id = ?', [id]);
+          } else {
+              await db.rawUpdate('UPDATE sales SET paid_amount = ? WHERE id = ?', [updatedPaid, id]);
+          }
+      }
   }
 
   Future<double> getLastRecordedPrice(String item, String size) async {
@@ -632,6 +660,7 @@ class DatabaseHelper {
       'date': item['date'],
       'is_debt': item['is_debt'],
       'is_paid': item['is_paid'],
+      'paid_amount': item['paid_amount'],
     });
 
     // 3. Revert stock
@@ -656,6 +685,9 @@ class DatabaseHelper {
       if (type == 'NEW STOCK') {
         // Deleting added stock -> Subtract from available
         newPieces = currentPieces - piecesToRevert;
+        if (newPieces < 0) {
+            throw Exception('Cannot delete this entry. It would result in negative stock since some of these pieces have already been sold.');
+        }
       } else {
         // Deleting a sale -> Add back to available
         newPieces = currentPieces + piecesToRevert;
@@ -673,6 +705,127 @@ class DatabaseHelper {
     await db.delete('sales', where: 'id = ?', whereArgs: [id]);
   }
 
+  Future<void> updateNewStockQuantity(int saleId, String newUnitLabel) async {
+      final db = await instance.database;
+
+      // 1. Fetch sales entry
+      final List<Map<String, dynamic>> salesResult = await db.query(
+          'sales',
+          where: 'id = ?',
+          whereArgs: [saleId],
+      );
+      if (salesResult.isEmpty) throw Exception('Entry not found');
+      final saleRow = salesResult.first;
+
+      String itemName = saleRow['item'] as String;
+      String size = saleRow['quantity'] as String;
+      String oldUnit = saleRow['unit'] as String;
+      double costAtEntry = saleRow['price'] as double; // This is price per unit (e.g. per box)
+
+      // 2. Fetch stock item
+      final List<Map<String, dynamic>> stockResult = await db.query(
+          'stock',
+          where: 'item = ? AND quantity = ?',
+          whereArgs: [itemName, size],
+      );
+      if (stockResult.isEmpty) throw Exception('Stock item not found');
+      final stockRow = stockResult.first;
+      int stockId = stockRow['id'] as int;
+      double availablePieces = stockRow['available_pieces'] as double;
+      double avgCostPerPiece = stockRow['price'] as double; // current weighted average cost per base piece
+
+      // 3. Calculate piece difference
+      double oldMultiplier = getUnitMultiplier(oldUnit, size);
+      double oldPieces = extractNumericValue(oldUnit) * oldMultiplier;
+      
+      double newMultiplier = getUnitMultiplier(newUnitLabel, size);
+      double newPieces = extractNumericValue(newUnitLabel) * newMultiplier;
+
+      double diff = newPieces - oldPieces;
+
+      // 4. Safety Check
+      if (availablePieces + diff < 0) {
+          throw Exception('Stock below zero error. Current available stock is lower than your requested reduction.');
+      }
+
+      // 5. Update Stock Table
+      // Note: Recalculating weighted average is tricky if we don't have all historic entries properly.
+      // But typically we do: TotalValue = (CurrentAvailable * AvgCost) + DiffInPieces * (EntryCostPerPiece)
+      // Actually, since we are EDITING an existing entry, the piece cost from that entry is already in the average.
+      // So NewAvg = (CurrentPieces * AvgPrice + DiffPieces * EntryPieceCost) / (CurrentPieces + DiffPieces)
+      double entryPieceCost = costAtEntry / (oldMultiplier > 0 ? oldMultiplier : 1);
+      double newAvgPrice = avgCostPerPiece;
+      if (availablePieces + diff > 0) {
+          newAvgPrice = ((availablePieces * avgCostPerPiece) + (diff * entryPieceCost)) / (availablePieces + diff);
+      }
+
+      await db.update(
+          'stock',
+          {
+              'available_pieces': availablePieces + diff,
+              'price': newAvgPrice,
+              'is_edited': 1
+          },
+          where: 'id = ?',
+          whereArgs: [stockId],
+      );
+
+      // 6. Update Sales Table
+      double newAmount = extractNumericValue(newUnitLabel) * costAtEntry;
+      double baseQuantity = newPieces;
+      
+      // Normalize cost basis for Bulk Items just like addSaleWithProfit
+      double sizeVal = extractNumericValue(size);
+      bool isBulk = size.toLowerCase().contains("kg") && sizeVal >= 10.0;
+      if (isBulk && sizeVal > 0) {
+           baseQuantity = baseQuantity / sizeVal;
+      }
+
+      await db.update(
+          'sales',
+          {
+              'unit': newUnitLabel,
+              'amount': newAmount,
+              'base_quantity': baseQuantity,
+              'is_edited': 1
+          },
+          where: 'id = ?',
+          whereArgs: [saleId],
+      );
+  }
+
+  Future<bool> isStockEntryDeletable(int saleId) async {
+      final db = await instance.database;
+
+      // 1. Fetch sales entry
+      final List<Map<String, dynamic>> salesResult = await db.query(
+          'sales',
+          where: 'id = ?',
+          whereArgs: [saleId],
+      );
+      if (salesResult.isEmpty) return false;
+      final saleRow = salesResult.first;
+
+      String itemName = saleRow['item'] as String;
+      String size = saleRow['quantity'] as String;
+      String unitText = saleRow['unit'] as String;
+
+      // 2. Fetch stock item
+      final List<Map<String, dynamic>> stockResult = await db.query(
+          'stock',
+          where: 'item = ? AND quantity = ?',
+          whereArgs: [itemName, size],
+      );
+      if (stockResult.isEmpty) return false;
+      final stockRow = stockResult.first;
+      double availablePieces = stockRow['available_pieces'] as double;
+
+      // 3. Calculate piece reduction
+      double piecesInEntry = extractNumericValue(unitText) * getUnitMultiplier(unitText, size);
+
+      return (availablePieces - piecesInEntry) >= 0;
+  }
+
   Future<List<HistoryItem>> getDeletedHistory() async {
     final db = await instance.database;
     final result = await db.rawQuery("SELECT * FROM deleted_history ORDER BY deleted_at DESC");
@@ -687,13 +840,15 @@ class DatabaseHelper {
         unit: rs['unit'] as String,
         price: (rs['price'] as num).toStringAsFixed(0),
         amount: (rs['amount'] as num).toDouble().toStringAsFixed(0),
-        profit: "0", // Profit info lost in deleted history for simplicity
+        paidAmount: (rs['paid_amount'] as num? ?? 0).toDouble().toStringAsFixed(0),
+        profit: "0", 
         date: rs['date'] as String,
         deletedAt: rs['deleted_at'] as String?,
         isDebt: (rs['is_debt'] as int? ?? 0) == 1,
         isPaid: (rs['is_paid'] as int? ?? 0) == 1,
+        isEdited: (rs['is_edited'] as int? ?? 0) == 1,
       );
-    }).toList();
+    }).toList().cast<HistoryItem>();
   }
 
   // --- DATA HELPERS ---
@@ -793,6 +948,14 @@ class DatabaseHelper {
       final db = await instance.database;
       final result = await db.rawQuery("SELECT DISTINCT quantity FROM stock WHERE item = ?", [itemName]);
       return result.map((row) => row['quantity'] as String).toList();
+  }
+
+  Future<List<String>> getRecentSuppliers() async {
+      final db = await instance.database;
+      final result = await db.rawQuery(
+          "SELECT DISTINCT supplier FROM stock WHERE supplier IS NOT NULL AND supplier != '' ORDER BY created_at DESC LIMIT 10"
+      );
+      return result.map((row) => row['supplier'] as String).toList();
   }
 
   Future<List<String>> getRecentCustomers() async {
