@@ -383,7 +383,8 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getAvailableStock() async {
     final db = await instance.database;
     // Java: SELECT item, quantity, available_pieces, price, supplier, date FROM stock ORDER BY item
-    return await db.rawQuery('SELECT * FROM stock WHERE available_pieces > 0 ORDER BY item');
+    // Changed to include 0 available_pieces items
+    return await db.rawQuery('SELECT * FROM stock ORDER BY item');
   }
   
   // Dashboard: Today's Sales List
@@ -408,6 +409,14 @@ class DatabaseHelper {
       return (result.first['count'] as num) > 0;
     }
     return false;
+  }
+
+  Future<void> updateItemPrice(int id, double newPrice) async {
+    final db = await instance.database;
+    await db.rawUpdate(
+      'UPDATE stock SET price = ?, is_edited = 1 WHERE id = ?',
+      [newPrice, id]
+    );
   }
 
   Future<bool> mergeStock(String itemName, String size, String newUnit, double newPrice, String supplier, {bool forceSave = false}) async {
@@ -532,7 +541,7 @@ class DatabaseHelper {
   }
 
   String formatStockForDisplay(double availablePieces, String unitLabel, String size) {
-      if (availablePieces <= 0) return "0";
+      if (availablePieces <= 0) return "0 pcs";
 
       double multiplier = getUnitMultiplier(unitLabel, size);
       String sizeLower = size.toLowerCase();
@@ -699,132 +708,36 @@ class DatabaseHelper {
         where: 'id = ?',
         whereArgs: [stockId],
       );
+
+      // If we just deleted the ONLY stock entry that existed (e.g. initial stock) 
+      // and it results in 0 pieces, we might want to remove it entirely.
+      // The user requested: "unless if its new stock is deleted entirely."
+      if (type == 'NEW STOCK' && newPieces <= 0) {
+          await db.delete('stock', where: 'id = ?', whereArgs: [stockId]);
+      }
     }
 
     // 4. Delete from sales
     await db.delete('sales', where: 'id = ?', whereArgs: [id]);
   }
 
-  Future<void> updateNewStockQuantity(int saleId, String newUnitLabel) async {
-      final db = await instance.database;
 
-      // 1. Fetch sales entry
-      final List<Map<String, dynamic>> salesResult = await db.query(
-          'sales',
-          where: 'id = ?',
-          whereArgs: [saleId],
-      );
-      if (salesResult.isEmpty) throw Exception('Entry not found');
-      final saleRow = salesResult.first;
-
-      String itemName = saleRow['item'] as String;
-      String size = saleRow['quantity'] as String;
-      String oldUnit = saleRow['unit'] as String;
-      double costAtEntry = saleRow['price'] as double; // This is price per unit (e.g. per box)
-
-      // 2. Fetch stock item
-      final List<Map<String, dynamic>> stockResult = await db.query(
-          'stock',
-          where: 'item = ? AND quantity = ?',
-          whereArgs: [itemName, size],
-      );
-      if (stockResult.isEmpty) throw Exception('Stock item not found');
-      final stockRow = stockResult.first;
-      int stockId = stockRow['id'] as int;
-      double availablePieces = stockRow['available_pieces'] as double;
-      double avgCostPerPiece = stockRow['price'] as double; // current weighted average cost per base piece
-
-      // 3. Calculate piece difference
-      double oldMultiplier = getUnitMultiplier(oldUnit, size);
-      double oldPieces = extractNumericValue(oldUnit) * oldMultiplier;
-      
-      double newMultiplier = getUnitMultiplier(newUnitLabel, size);
-      double newPieces = extractNumericValue(newUnitLabel) * newMultiplier;
-
-      double diff = newPieces - oldPieces;
-
-      // 4. Safety Check
-      if (availablePieces + diff < 0) {
-          throw Exception('Stock below zero error. Current available stock is lower than your requested reduction.');
-      }
-
-      // 5. Update Stock Table
-      // Note: Recalculating weighted average is tricky if we don't have all historic entries properly.
-      // But typically we do: TotalValue = (CurrentAvailable * AvgCost) + DiffInPieces * (EntryCostPerPiece)
-      // Actually, since we are EDITING an existing entry, the piece cost from that entry is already in the average.
-      // So NewAvg = (CurrentPieces * AvgPrice + DiffPieces * EntryPieceCost) / (CurrentPieces + DiffPieces)
-      double entryPieceCost = costAtEntry / (oldMultiplier > 0 ? oldMultiplier : 1);
-      double newAvgPrice = avgCostPerPiece;
-      if (availablePieces + diff > 0) {
-          newAvgPrice = ((availablePieces * avgCostPerPiece) + (diff * entryPieceCost)) / (availablePieces + diff);
-      }
-
-      await db.update(
-          'stock',
-          {
-              'available_pieces': availablePieces + diff,
-              'price': newAvgPrice,
-              'is_edited': 1
-          },
-          where: 'id = ?',
-          whereArgs: [stockId],
-      );
-
-      // 6. Update Sales Table
-      double newAmount = extractNumericValue(newUnitLabel) * costAtEntry;
-      double baseQuantity = newPieces;
-      
-      // Normalize cost basis for Bulk Items just like addSaleWithProfit
-      double sizeVal = extractNumericValue(size);
-      bool isBulk = size.toLowerCase().contains("kg") && sizeVal >= 10.0;
-      if (isBulk && sizeVal > 0) {
-           baseQuantity = baseQuantity / sizeVal;
-      }
-
-      await db.update(
-          'sales',
-          {
-              'unit': newUnitLabel,
-              'amount': newAmount,
-              'base_quantity': baseQuantity,
-              'is_edited': 1
-          },
-          where: 'id = ?',
-          whereArgs: [saleId],
-      );
+  Future<void> cleanupZombieStock() async {
+    final db = await instance.database;
+    // Delete from stock where available_pieces <= 0 AND no active NEW STOCK history persists
+    // This cleans up items whose stock history was deleted entirely before the previous fix.
+    await db.rawDelete('''
+      DELETE FROM stock 
+      WHERE available_pieces <= 0 
+      AND NOT EXISTS (
+        SELECT 1 FROM sales 
+        WHERE sales.item = stock.item 
+        AND sales.quantity = stock.quantity 
+        AND sales.type = 'NEW STOCK'
+      )
+    ''');
   }
 
-  Future<bool> isStockEntryDeletable(int saleId) async {
-      final db = await instance.database;
-
-      // 1. Fetch sales entry
-      final List<Map<String, dynamic>> salesResult = await db.query(
-          'sales',
-          where: 'id = ?',
-          whereArgs: [saleId],
-      );
-      if (salesResult.isEmpty) return false;
-      final saleRow = salesResult.first;
-
-      String itemName = saleRow['item'] as String;
-      String size = saleRow['quantity'] as String;
-      String unitText = saleRow['unit'] as String;
-
-      // 2. Fetch stock item
-      final List<Map<String, dynamic>> stockResult = await db.query(
-          'stock',
-          where: 'item = ? AND quantity = ?',
-          whereArgs: [itemName, size],
-      );
-      if (stockResult.isEmpty) return false;
-      final stockRow = stockResult.first;
-      double availablePieces = stockRow['available_pieces'] as double;
-
-      // 3. Calculate piece reduction
-      double piecesInEntry = extractNumericValue(unitText) * getUnitMultiplier(unitText, size);
-
-      return (availablePieces - piecesInEntry) >= 0;
-  }
 
   Future<List<HistoryItem>> getDeletedHistory() async {
     final db = await instance.database;

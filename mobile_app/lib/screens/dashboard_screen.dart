@@ -16,10 +16,10 @@ class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  State<DashboardScreen> createState() => DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class DashboardScreenState extends State<DashboardScreen> {
   late Future<double> _totalStockValue;
   late Future<double> _yearlyProfit;
   late Future<Map<String, double>> _todaysStats;
@@ -37,15 +37,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    _refreshData();
+    refreshData();
   }
 
-  void _refreshData() {
+  void refreshData() {
+    PasscodeService.instance.lock();
     setState(() {
       _totalStockValue = DatabaseHelper.instance.getTotalStockValue();
       _yearlyProfit = DatabaseHelper.instance.getYearlyProfit();
       _todaysStats = DatabaseHelper.instance.getTodaysStats();
-      _availableStock = DatabaseHelper.instance.getAvailableStock();
+      _availableStock = DatabaseHelper.instance.cleanupZombieStock().then((_) => DatabaseHelper.instance.getAvailableStock());
       _todaysSales = DatabaseHelper.instance.getTodaysSalesList();
       
       _yesterdaysProfit = DatabaseHelper.instance.getYesterdaysProfit();
@@ -95,13 +96,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
             preferredSize: const Size.fromHeight(1),
             child: Container(color: AppColors.primaryGreen.withValues(alpha: 0.1), height: 1)
         ),
-        actions: const [
-          StandardAppBarActions(),
+        actions: [
+          StandardAppBarActions(onRefresh: refreshData),
         ],
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-            _refreshData();
+            refreshData();
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
@@ -202,13 +203,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
                      child: Row(
                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                          children: [
-                             Row(
+                             Flexible(
+                               child: Row(
+                                 mainAxisSize: MainAxisSize.min,
                                children: [
-                                 const Text("In Stock Inventory", style: TextStyle(
-                                     fontSize: 18, 
-                                     fontWeight: FontWeight.bold, 
-                                     color: AppColors.textPrimary
-                                 )),
+                                 const Flexible(
+                                   child: Text(
+                                     "In Stock Inventory", 
+                                     overflow: TextOverflow.ellipsis,
+                                     style: TextStyle(
+                                         fontSize: 18, 
+                                         fontWeight: FontWeight.bold, 
+                                         color: AppColors.textPrimary
+                                     ),
+                                   ),
+                                 ),
                                  const SizedBox(width: 8),
                                  ValueListenableBuilder<SyncStatus>(
                                    valueListenable: SupasService.instance.syncStatus,
@@ -262,9 +271,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                        ),
                                      );
                                    },
-                                 ),
-                               ],
-                             ),
+                                  ),
+                                ],
+                              ),
+                            ),
                              IconButton(
                                  onPressed: () {
                                      setState(() {
@@ -312,6 +322,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                      double price = (item['price'] as num).toDouble();
                                      
                                      bool isLow = avail < 12;
+                                     double multiplier = DatabaseHelper.instance.getUnitMultiplier(item['unit'] ?? "pcs", size);
+                                     double unitPrice = price * multiplier;
                                      
                                      String displayAvail = DatabaseHelper.instance.formatStockForDisplay(
                                          avail, 
@@ -322,7 +334,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                      return StockTileRedesigned(
                                          itemName: item['item'], 
                                          itemSize: "Size: $size", 
-                                         price: "UGX ${_formatter.format(price)}", 
+                                         price: "UGX ${_formatter.format(unitPrice)} / ${item['unit'] ?? 'pc'}", 
                                          quantity: displayAvail,
                                          isLowStock: isLow,
                                          isEdited: (item['is_edited'] as int? ?? 0) == 1,
@@ -476,37 +488,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _showPasscodeDialog() {
     final controller = TextEditingController();
+    String? errorMessage;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Enter Passcode'),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          maxLength: 6,
-          obscureText: true,
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 24, letterSpacing: 10),
-          decoration: const InputDecoration(border: OutlineInputBorder(), counterText: ""),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          TextButton(
-            onPressed: () async {
-              bool success = await PasscodeService.instance.verifyPasscode(controller.text);
-              if (mounted) {
-                if (success) {
-                  Navigator.pop(context);
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Invalid passcode'), backgroundColor: Colors.red),
-                  );
-                }
-              }
-            },
-            child: const Text('Unlock'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          title: const Text('Enter Passcode'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                obscureText: true,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 24, letterSpacing: 10),
+                decoration: const InputDecoration(border: OutlineInputBorder(), counterText: ""),
+                onChanged: (_) {
+                  if (errorMessage != null) setModalState(() => errorMessage = null);
+                },
+              ),
+              if (errorMessage != null) ...[
+                const SizedBox(height: 8),
+                Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
+              ],
+            ],
           ),
-        ],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () async {
+                bool success = await PasscodeService.instance.verifyPasscode(controller.text);
+                if (mounted) {
+                  if (success) {
+                    Navigator.pop(context);
+                  } else {
+                    setModalState(() => errorMessage = "Incorrect Passcode!");
+                  }
+                }
+              },
+              child: const Text('Unlock'),
+            ),
+          ],
+        ),
       ),
     );
   }

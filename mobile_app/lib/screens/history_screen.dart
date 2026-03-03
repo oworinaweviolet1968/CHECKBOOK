@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/history_item.dart';
 import '../services/database_helper.dart';
 import '../services/passcode_service.dart';
+import '../services/supabase_service.dart';
 import '../widgets/common_app_bar_actions.dart';
 import '../screens/passcode_setup_screen.dart';
 import '../utils/colors.dart';
@@ -181,7 +182,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                fontWeight: FontWeight.bold
                            )),
                          ),
-                         const StandardAppBarActions(),
+                          StandardAppBarActions(onRefresh: _loadHistory),
                        ],
                      ),
 
@@ -417,12 +418,12 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                                  ),
                                                  if (_canDelete(item.date))
                                                    IconButton(
-                                                     icon: Icon(
-                                                       isStock ? Icons.edit_outlined : Icons.delete_outline, 
-                                                       color: isStock ? Colors.orange : Colors.red, 
+                                                     icon: const Icon(
+                                                       Icons.delete_outline,
+                                                       color: Colors.red,
                                                        size: 20
                                                      ),
-                                                     onPressed: () => isStock ? _showEditStockModal(item) : _confirmDeletion(item),
+                                                     onPressed: () => _confirmDeletion(item),
                                                      padding: EdgeInsets.zero,
                                                      constraints: const BoxConstraints(),
                                                      visualDensity: VisualDensity.compact,
@@ -485,67 +486,84 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
 
   void _confirmDeletion(HistoryItem item) {
     final passcodeController = TextEditingController();
+    String? errorMessage;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Confirm Deletion"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text("Are you sure you want to delete this transaction for '${item.item}'?"),
-            const SizedBox(height: 8),
-            const Text("This will revert the stock quantity.", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
-            const SizedBox(height: 16),
-            const Text("Enter Admin Passcode to Confirm:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: passcodeController,
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              maxLength: 4,
-              decoration: InputDecoration(
-                hintText: "Passcode",
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                counterText: "",
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => AlertDialog(
+          title: const Text("Confirm Deletion"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text("Are you sure you want to delete this transaction for '${item.item}'?"),
+              const SizedBox(height: 8),
+              const Text("This will revert the stock quantity.", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+              const SizedBox(height: 16),
+              const Text("Enter 6-digit Admin Passcode to Confirm:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: passcodeController,
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                decoration: InputDecoration(
+                  hintText: "6-digit Passcode",
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  counterText: "",
+                ),
+                onChanged: (_) {
+                  if (errorMessage != null) setModalState(() => errorMessage = null);
+                },
               ),
+              if (errorMessage != null) ...[
+                const SizedBox(height: 8),
+                Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final pc = passcodeController.text;
+                final isValid = await PasscodeService.instance.verifyPasscode(pc);
+                
+                if (isValid && pc.isNotEmpty) {
+                  if (item.id != null) {
+                    try {
+                      await DatabaseHelper.instance.deleteHistoryItem(item.id!);
+                      // Trigger background upload
+                      SupasService.instance.uploadDatabase();
+                      
+                      if (mounted) {
+                        Navigator.pop(context); // Close dialog
+                        _loadHistory(); // Refresh list
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Transaction deleted and stock reverted."), backgroundColor: AppColors.primaryGreen)
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red)
+                        );
+                      }
+                    }
+                  }
+                } else {
+                  setModalState(() => errorMessage = "Incorrect Passcode!");
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+              child: const Text("Delete"),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final pc = passcodeController.text;
-              final isValid = await PasscodeService.instance.verifyPasscode(pc);
-              
-              if (isValid && pc.isNotEmpty) {
-                if (item.id != null) {
-                  await DatabaseHelper.instance.deleteHistoryItem(item.id!);
-                  if (mounted) {
-                    Navigator.pop(context); // Close dialog
-                    _loadHistory(); // Refresh list
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Transaction deleted and stock reverted."))
-                    );
-                  }
-                }
-              } else {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Incorrect Passcode!"), backgroundColor: Colors.red)
-                  );
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-            child: const Text("Delete"),
-          ),
-        ],
       ),
     );
   }
@@ -554,6 +572,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
       final amountController = TextEditingController();
       final passcodeController = TextEditingController();
       bool isVerifyingPasscode = false;
+      String? errorMessage;
 
       showModalBottomSheet(
           context: context,
@@ -623,19 +642,26 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                               ),
                           ] else ...[
                               if (PasscodeService.instance.hasPasscode) ...[
-                                  const Text("Enter Passcode to Confirm Payment", style: TextStyle(fontWeight: FontWeight.w600)),
+                                  const Text("Enter 6-digit Passcode to Confirm Payment", style: TextStyle(fontWeight: FontWeight.w600)),
                                   const SizedBox(height: 12),
                                   TextField(
                                       controller: passcodeController,
                                       obscureText: true,
                                       keyboardType: TextInputType.number,
-                                      maxLength: 4,
+                                      maxLength: 6,
                                       decoration: InputDecoration(
-                                          labelText: "Passcode",
+                                          labelText: "6-digit Passcode",
                                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                                           counterText: "",
                                       ),
+                                      onChanged: (_) {
+                                           if (errorMessage != null) setModalState(() => errorMessage = null);
+                                      },
                                   ),
+                                  if (errorMessage != null) ...[
+                                      const SizedBox(height: 8),
+                                      Center(child: Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold))),
+                                  ],
                                   const SizedBox(height: 24),
                                   ElevatedButton(
                                       onPressed: () async {
@@ -651,6 +677,8 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                                   double finalRemaining = currentRemaining - entered;
                                                   
                                                   await DatabaseHelper.instance.markSaleAsPaid(item.id!, entered);
+                                                  // Trigger background upload
+                                                  SupasService.instance.uploadDatabase();
                                                   
                                                   if (mounted) {
                                                       Navigator.pop(context); // Close modal
@@ -664,9 +692,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                                   }
                                               }
                                           } else {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                  const SnackBar(content: Text("Incorrect Passcode!"), backgroundColor: Colors.red)
-                                              );
+                                               setModalState(() => errorMessage = "Incorrect Passcode!");
                                           }
                                       },
                                       style: ElevatedButton.styleFrom(
@@ -699,250 +725,11 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                   child: const Text("Back"),
                               ),
                           ],
-                          const SizedBox(height: 32),
+                           const SizedBox(height: 32),
                       ],
                   ),
               )
           ),
       );
-  }
-
-  void _showEditStockModal(HistoryItem item) {
-    String selectedUnit = DatabaseHelper.instance.cleanUnitLabel(item.unit);
-    final qtyController = TextEditingController(text: DatabaseHelper.instance.extractNumericValue(item.unit).toInt().toString());
-    final passcodeController = TextEditingController();
-    bool isVerifyingPasscode = false;
-    bool isDeleteOperation = false;
-    bool? isDeletable; 
-    String? errorMessage;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) {
-          // Check deletability if not yet known
-          if (isDeletable == null) {
-              DatabaseHelper.instance.isStockEntryDeletable(item.id!).then((val) {
-                  setModalState(() => isDeletable = val);
-              });
-          }
-          return Padding(
-            padding: EdgeInsets.only(
-              bottom: MediaQuery.of(context).viewInsets.bottom,
-              left: 24, right: 24, top: 24
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(isDeleteOperation ? Icons.delete_forever : Icons.edit_outlined, 
-                             color: isDeleteOperation ? Colors.red : Colors.orange),
-                        const SizedBox(width: 12),
-                        Text(isDeleteOperation ? "Delete Stock Entry" : "Edit Stock Entry", 
-                             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
-                    if (!isVerifyingPasscode && !isDeleteOperation)
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline, color: Colors.grey),
-                        onPressed: () => setModalState(() => isDeleteOperation = true),
-                      )
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(isDeleteOperation 
-                    ? "Are you sure you want to remove this entry?" 
-                    : "Correcting quantity or unit for ${item.item}", 
-                    style: const TextStyle(color: Colors.grey)),
-                const Divider(height: 32),
-                
-                if (!isVerifyingPasscode) ...[
-                  if (isDeleteOperation) ...[
-                     const Text("Deleting this entry will revert the stock added. This action cannot be undone.", 
-                                style: TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500)),
-                     const SizedBox(height: 24),
-                     ElevatedButton(
-                        onPressed: () => setModalState(() => isVerifyingPasscode = true),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: const Text("Next: Verify Passcode", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                     ),
-                     TextButton(
-                        onPressed: () => setModalState(() => isDeleteOperation = false),
-                        child: const Text("Cancel"),
-                     ),
-                  ] else ...[
-                    const Text("Current Unit", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
-                    const SizedBox(height: 8),
-                    Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        decoration: BoxDecoration(
-                            color: AppColors.primaryGreen.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: AppColors.primaryGreen.withOpacity(0.3), width: 2),
-                        ),
-                        child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                                const Icon(Icons.inventory_2_outlined, size: 18, color: AppColors.primaryGreen),
-                                const SizedBox(width: 10),
-                                Text(
-                                    selectedUnit.toUpperCase(), 
-                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.primaryGreen, letterSpacing: 1.0)
-                                ),
-                            ],
-                        ),
-                    ),
-                    const SizedBox(height: 24),
-                    TextField(
-                      controller: qtyController,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                      decoration: InputDecoration(
-                        labelText: "Quantity (Whole Number)",
-                        suffixText: selectedUnit,
-                        fillColor: Colors.grey[50],
-                        filled: true,
-                        prefixIcon: const Icon(Icons.numbers, color: Colors.orange),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    ElevatedButton(
-                      onPressed: () {
-                        final val = qtyController.text;
-                        if (val.isEmpty) {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter a quantity.")));
-                          return;
-                        }
-                        setModalState(() => isVerifyingPasscode = true);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Text("Next: Verify Passcode", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ] else ...[
-                  Text("Enter Admin Passcode to ${isDeleteOperation ? 'Delete' : 'Confirm Edit'}:", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: passcodeController,
-                    obscureText: true,
-                    keyboardType: TextInputType.number,
-                    maxLength: 6,
-                    onChanged: (_) {
-                      if (errorMessage != null) setModalState(() => errorMessage = null);
-                    },
-                    decoration: InputDecoration(
-                      labelText: "Passcode",
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      counterText: "",
-                    ),
-                  ),
-                  if (errorMessage != null) ...[
-                    const SizedBox(height: 8),
-                    Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
-                  ],
-                  const SizedBox(height: 24),
-                  if (isDeleteOperation && isDeletable == false) ...[
-                      Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                              color: Colors.red.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.red.withOpacity(0.3)),
-                          ),
-                          child: const Row(
-                              children: [
-                                  Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                      child: Text(
-                                          "This entry cannot be deleted because some of the stock has already been sold.",
-                                          style: TextStyle(color: Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
-                                      ),
-                                  ),
-                              ],
-                          ),
-                      ),
-                      const SizedBox(height: 24),
-                  ],
-                  ElevatedButton(
-                    onPressed: (isDeleteOperation && isDeletable == false) ? null : () async {
-                      final pc = passcodeController.text;
-                      final isValid = await PasscodeService.instance.verifyPasscode(pc);
-                      
-                      if (isValid && pc.isNotEmpty) {
-                        try {
-                          if (isDeleteOperation) {
-                             await DatabaseHelper.instance.deleteHistoryItem(item.id!);
-                          } else {
-                             final newFullUnit = "${qtyController.text} $selectedUnit";
-                             await DatabaseHelper.instance.updateNewStockQuantity(item.id!, newFullUnit);
-                          }
-                          
-                          if (mounted) {
-                            Navigator.pop(context);
-                            _loadHistory();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(isDeleteOperation ? "Entry deleted successfully." : "Stock entry updated successfully!"), 
-                                backgroundColor: AppColors.primaryGreen
-                              )
-                            );
-                          }
-                        } catch (e) {
-                           if (mounted) {
-                             ScaffoldMessenger.of(context).showSnackBar(
-                               SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red)
-                             );
-                           }
-                        }
-                      } else {
-                        setModalState(() {
-                          if (pc.isEmpty) {
-                            errorMessage = "Please enter passcode";
-                          } else if (pc.length < 6) {
-                            errorMessage = "Passcode must be 6 digits";
-                          } else {
-                            errorMessage = "Incorrect Passcode!";
-                          }
-                        });
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isDeleteOperation ? Colors.red : Colors.orange,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: Text(isDeleteOperation ? "Confirm Delete" : "Save Changes", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: () => setModalState(() => isVerifyingPasscode = false),
-                    child: const Text("Back"),
-                  ),
-                ],
-                const SizedBox(height: 32),
-              ],
-            ),
-          );
-        }
-      ),
-    );
   }
 }

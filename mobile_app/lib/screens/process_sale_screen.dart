@@ -160,8 +160,8 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
             ),
           ],
         ),
-        actions: const [
-          StandardAppBarActions(),
+        actions: [
+          StandardAppBarActions(onRefresh: _loadItems),
         ],
         backgroundColor: Colors.white,
 

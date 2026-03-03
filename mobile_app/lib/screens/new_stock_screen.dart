@@ -204,8 +204,8 @@ class _NewStockScreenState extends State<NewStockScreen> {
             ),
           ],
         ),
-        actions: const [
-          StandardAppBarActions(),
+        actions: [
+          StandardAppBarActions(onRefresh: _loadItems),
         ],
 
 

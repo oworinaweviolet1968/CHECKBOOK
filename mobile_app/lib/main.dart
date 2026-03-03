@@ -77,11 +77,20 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
-  int _selectedIndex = 2; // Default to Dashboard
+  int _selectedIndex = 0; // Default to Dashboard (In Stock)
+  final GlobalKey<DashboardScreenState> _dashboardKey = GlobalKey<DashboardScreenState>();
+
+  late List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
+    _screens = [
+      DashboardScreen(key: _dashboardKey),
+      NewStockScreen(),
+      ProcessSaleScreen(),
+      HistoryScreen(),
+    ];
     _initDatabase();
   }
 
@@ -96,14 +105,16 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  final List<Widget> _screens = [
-    NewStockScreen(),
-    ProcessSaleScreen(),
-    DashboardScreen(),
-    HistoryScreen(),
-  ];
 
   void _onItemTapped(int index) {
+    if (index == 0 && _selectedIndex == 0) {
+      // Already on dashboard, maybe force refresh?
+      _dashboardKey.currentState?.refreshData();
+    } else if (index == 0) {
+      // Navigating TO dashboard
+      _dashboardKey.currentState?.refreshData();
+    }
+
     setState(() {
         _selectedIndex = index;
     });
@@ -112,7 +123,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     // If index is out of bounds (e.g. initial), safe check
-    final safeIndex = (_selectedIndex >= 0 && _selectedIndex < _screens.length) ? _selectedIndex : 2;
+    final safeIndex = (_selectedIndex >= 0 && _selectedIndex < _screens.length) ? _selectedIndex : 0;
 
     return ValueListenableBuilder<Map<String, dynamic>?>(
       valueListenable: SupasService.instance.userMetadata,
@@ -160,6 +171,11 @@ class _MainScreenState extends State<MainScreen> {
           bottomNavigationBar: BottomNavigationBar(
             items: const <BottomNavigationBarItem>[
               BottomNavigationBarItem(
+                icon: Icon(Icons.inventory_2_outlined),
+                activeIcon: Icon(Icons.inventory_2),
+                label: 'In Stock',
+              ),
+              BottomNavigationBarItem(
                 icon: Icon(Icons.add_box_outlined),
                 activeIcon: Icon(Icons.add_box),
                 label: 'New Stock',
@@ -168,11 +184,6 @@ class _MainScreenState extends State<MainScreen> {
                 icon: Icon(Icons.shopping_cart_outlined),
                 activeIcon: Icon(Icons.shopping_cart),
                 label: 'Sales',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.inventory_2_outlined),
-                activeIcon: Icon(Icons.inventory_2),
-                label: 'In Stock',
               ),
               BottomNavigationBarItem(
                 icon: Icon(Icons.history),
