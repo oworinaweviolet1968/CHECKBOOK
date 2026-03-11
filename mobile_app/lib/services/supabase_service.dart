@@ -222,4 +222,29 @@ class SupasService {
   Future<String> _getLocalDbPath() async {
       return await DatabaseHelper.instance.getDbPath();
   }
+
+  // --- PUSH-TO-LOGIN ---
+
+  Stream<List<Map<String, dynamic>>> getLoginRequestsStream() {
+    final email = client.auth.currentUser?.email;
+    if (userId == null || email == null) return const Stream.empty();
+    
+    // Note: RLS should already filter by email. 
+    // We filter by status='pending' here manually to avoid .eq() build issues.
+    return client
+        .from('login_requests')
+        .stream(primaryKey: ['id'])
+        .map((list) => list.where((item) => item['status'] == 'pending').toList());
+  }
+
+  Future<void> updateLoginRequestStatus(String requestId, String status) async {
+    final updates = {
+      'status': status,
+    };
+    if (status == 'approved') {
+      updates['refresh_token'] = client.auth.currentSession?.refreshToken ?? '';
+    }
+
+    await client.from('login_requests').update(updates).eq('id', requestId);
+  }
 }

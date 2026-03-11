@@ -372,11 +372,43 @@ class DatabaseHelper {
     return 0.0;
   }
 
-  // Dashboard: Previous Year Profit (Placeholder for % calc)
-  Future<double> getPrevYearProfit() async {
-      // In a real app with historical data, query for (Year - 1)
-      // For now, return a mock small number to show increase, or 0.
-      return 1.0; 
+  // Dashboard: Weekly Profit (Last 7 Days)
+  Future<double> getWeeklyProfit() async {
+    final db = await instance.database;
+    final now = DateTime.now();
+    // 7 days including today (e.g., today is Sunday, range is last Monday to today)
+    final sevenDaysAgo = now.subtract(const Duration(days: 6)).toIso8601String().split('T')[0];
+    final today = now.toIso8601String().split('T')[0];
+    
+    final result = await db.rawQuery('''
+      SELECT SUM(amount - (cost_price * base_quantity)) as total_profit
+      FROM sales 
+      WHERE date >= ? AND date <= ? AND type != 'NEW STOCK'
+    ''', [sevenDaysAgo, today]);
+
+    if (result.isNotEmpty && result.first['total_profit'] != null) {
+      return (result.first['total_profit'] as num).toDouble();
+    }
+    return 0.0;
+  }
+
+  // Dashboard: Previous Weekly Profit (7-13 days ago)
+  Future<double> getPrevWeeklyProfit() async {
+    final db = await instance.database;
+    final now = DateTime.now();
+    final thirteenDaysAgo = now.subtract(const Duration(days: 13)).toIso8601String().split('T')[0];
+    final sevenDaysAgo = now.subtract(const Duration(days: 7)).toIso8601String().split('T')[0];
+    
+    final result = await db.rawQuery('''
+      SELECT SUM(amount - (cost_price * base_quantity)) as total_profit
+      FROM sales 
+      WHERE date >= ? AND date <= ? AND type != 'NEW STOCK'
+    ''', [thirteenDaysAgo, sevenDaysAgo]);
+
+    if (result.isNotEmpty && result.first['total_profit'] != null) {
+      return (result.first['total_profit'] as num).toDouble();
+    }
+    return 1.0; // Return 1.0 to avoid division by zero and show some change if no data
   }
   
   // Dashboard: Available Stock List

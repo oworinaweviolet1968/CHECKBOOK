@@ -21,14 +21,14 @@ class DashboardScreen extends StatefulWidget {
 
 class DashboardScreenState extends State<DashboardScreen> {
   late Future<double> _totalStockValue;
-  late Future<double> _yearlyProfit;
+  late Future<double> _weeklyProfit;
   late Future<Map<String, double>> _todaysStats;
   late Future<List<Map<String, dynamic>>> _availableStock;
   late Future<List<Map<String, dynamic>>> _todaysSales;
   
   // New Futures for % change
   late Future<double> _yesterdaysProfit;
-  late Future<double> _prevYearProfit;
+  late Future<double> _prevWeeklyProfit;
 
   bool _showAllStock = false;
 
@@ -44,13 +44,13 @@ class DashboardScreenState extends State<DashboardScreen> {
     PasscodeService.instance.lock();
     setState(() {
       _totalStockValue = DatabaseHelper.instance.getTotalStockValue();
-      _yearlyProfit = DatabaseHelper.instance.getYearlyProfit();
+      _weeklyProfit = DatabaseHelper.instance.getWeeklyProfit();
       _todaysStats = DatabaseHelper.instance.getTodaysStats();
       _availableStock = DatabaseHelper.instance.cleanupZombieStock().then((_) => DatabaseHelper.instance.getAvailableStock());
       _todaysSales = DatabaseHelper.instance.getTodaysSalesList();
       
       _yesterdaysProfit = DatabaseHelper.instance.getYesterdaysProfit();
-      _prevYearProfit = DatabaseHelper.instance.getPrevYearProfit();
+      _prevWeeklyProfit = DatabaseHelper.instance.getPrevWeeklyProfit();
     });
   }
 
@@ -134,15 +134,15 @@ class DashboardScreenState extends State<DashboardScreen> {
                                  );
                                  
                                  final card2 = FutureBuilder<double>(
-                                    future: _yearlyProfit,
+                                    future: _weeklyProfit,
                                     builder: (ctx, snap) {
                                         final current = snap.data ?? 0.0;
                                         return FutureBuilder<double>(
-                                            future: _prevYearProfit,
+                                            future: _prevWeeklyProfit,
                                             builder: (ctx2, snap2) {
                                                 final prev = snap2.data ?? 0.0;
                                                 return _buildSummaryCard(
-                                                    "Yearly Profit", 
+                                                    "Weekly Profit", 
                                                     current, 
                                                     prev, 
                                                     true

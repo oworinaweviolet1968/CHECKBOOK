@@ -487,39 +487,46 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
   void _confirmDeletion(HistoryItem item) {
     final passcodeController = TextEditingController();
     String? errorMessage;
+    bool hasPasscode = PasscodeService.instance.hasPasscode;
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setModalState) => AlertDialog(
-          title: const Text("Confirm Deletion"),
+          title: Text(hasPasscode ? "Confirm Deletion" : "Security Passcode Required"),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Are you sure you want to delete this transaction for '${item.item}'?"),
-              const SizedBox(height: 8),
-              const Text("This will revert the stock quantity.", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
-              const SizedBox(height: 16),
-              const Text("Enter 6-digit Admin Passcode to Confirm:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: passcodeController,
-                obscureText: true,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                decoration: InputDecoration(
-                  hintText: "6-digit Passcode",
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  counterText: "",
-                ),
-                onChanged: (_) {
-                  if (errorMessage != null) setModalState(() => errorMessage = null);
-                },
-              ),
-              if (errorMessage != null) ...[
+              if (hasPasscode) ...[
+                Text("Are you sure you want to delete this transaction for '${item.item}'?"),
                 const SizedBox(height: 8),
-                Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
+                const Text("This will revert the stock quantity.", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+                const SizedBox(height: 16),
+                const Text("Enter 6-digit Admin Passcode to Confirm:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: passcodeController,
+                  obscureText: true,
+                  keyboardType: TextInputType.number,
+                  maxLength: 6,
+                  decoration: InputDecoration(
+                    hintText: "6-digit Passcode",
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    counterText: "",
+                  ),
+                  onChanged: (_) {
+                    if (errorMessage != null) setModalState(() => errorMessage = null);
+                  },
+                ),
+                if (errorMessage != null) ...[
+                  const SizedBox(height: 8),
+                  Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
+                ],
+              ] else ...[
+                const Text("A security passcode is required to delete transactions and revert stock."),
+                const SizedBox(height: 8),
+                const Text("Please create a passcode in the Account section first.", style: TextStyle(color: Colors.grey, fontSize: 13)),
               ],
             ],
           ),
@@ -528,40 +535,50 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
               onPressed: () => Navigator.pop(context),
               child: const Text("Cancel"),
             ),
-            ElevatedButton(
-              onPressed: () async {
-                final pc = passcodeController.text;
-                final isValid = await PasscodeService.instance.verifyPasscode(pc);
-                
-                if (isValid && pc.isNotEmpty) {
-                  if (item.id != null) {
-                    try {
-                      await DatabaseHelper.instance.deleteHistoryItem(item.id!);
-                      // Trigger background upload
-                      SupasService.instance.uploadDatabase();
-                      
-                      if (mounted) {
-                        Navigator.pop(context); // Close dialog
-                        _loadHistory(); // Refresh list
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Transaction deleted and stock reverted."), backgroundColor: AppColors.primaryGreen)
-                        );
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red)
-                        );
+            if (hasPasscode)
+              ElevatedButton(
+                onPressed: () async {
+                  final pc = passcodeController.text;
+                  final isValid = await PasscodeService.instance.verifyPasscode(pc);
+                  
+                  if (isValid && pc.isNotEmpty) {
+                    if (item.id != null) {
+                      try {
+                        await DatabaseHelper.instance.deleteHistoryItem(item.id!);
+                        // Trigger background upload
+                        SupasService.instance.uploadDatabase();
+                        
+                        if (mounted) {
+                          Navigator.pop(context); // Close dialog
+                          _loadHistory(); // Refresh list
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text("Transaction deleted and stock reverted."), backgroundColor: AppColors.primaryGreen)
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red)
+                          );
+                        }
                       }
                     }
+                  } else {
+                    setModalState(() => errorMessage = "Incorrect Passcode!");
                   }
-                } else {
-                  setModalState(() => errorMessage = "Incorrect Passcode!");
-                }
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-              child: const Text("Delete"),
-            ),
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                child: const Text("Delete"),
+              )
+            else
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context); // Close dialog
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const PasscodeSetupScreen()));
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryGreen, foregroundColor: Colors.white),
+                child: const Text("Create Passcode"),
+              ),
           ],
         ),
       ),

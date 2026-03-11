@@ -29,6 +29,7 @@ public class SupabaseService {
     private static SupabaseService instance;
     private final HttpClient client;
     private String currentAccessToken;
+    private String currentRefreshToken;
     private String currentUserId;
     private java.util.List<java.util.function.Consumer<String>> statusListeners = new java.util.ArrayList<>();
 
@@ -163,6 +164,7 @@ public class SupabaseService {
 
         if (response.statusCode() == 200) {
             parseAuthResponse(response.body());
+            saveSession();
             // Ensure metadata exists (in case user was created in dashboard or signUp
             // failed to create it)
             ensureUserMetadataExists(email);
@@ -173,10 +175,73 @@ public class SupabaseService {
         }
     }
 
+    public boolean signInWithRefreshToken(String refreshToken) throws IOException, InterruptedException {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("refresh_token", refreshToken);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(AUTH_URL + "/token?grant_type=refresh_token"))
+                .header("apikey", SUPABASE_KEY)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() == 200) {
+            parseAuthResponse(response.body());
+            saveSession();
+            return true;
+        } else {
+            clearSession();
+            return false;
+        }
+    }
+
+    public void logout() {
+        this.currentAccessToken = null;
+        this.currentRefreshToken = null;
+        this.currentUserId = null;
+        clearSession();
+    }
+
+    private void saveSession() {
+        if (currentRefreshToken != null) {
+            try {
+                Files.writeString(Path.of("user_session.txt"), currentRefreshToken);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public String loadSession() {
+        try {
+            Path path = Path.of("user_session.txt");
+            if (Files.exists(path)) {
+                return Files.readString(path).trim();
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    private void clearSession() {
+        try {
+            Files.deleteIfExists(Path.of("user_session.txt"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     private void parseAuthResponse(String body) {
         JsonObject json = JsonParser.parseString(body).getAsJsonObject();
         if (json.has("access_token")) {
             this.currentAccessToken = json.get("access_token").getAsString();
+        }
+        if (json.has("refresh_token")) {
+            this.currentRefreshToken = json.get("refresh_token").getAsString();
         }
         if (json.has("user")) {
             this.currentUserId = json.getAsJsonObject("user").get("id").getAsString();
@@ -524,5 +589,64 @@ public class SupabaseService {
 
     public boolean isLoggedIn() {
         return currentUserId != null;
+    }
+
+    // --- PUSH-TO-LOGIN ---
+
+    public String createLoginRequest(String email) throws IOException, InterruptedException {
+        JsonObject row = new JsonObject();
+        row.addProperty("email", email);
+        row.addProperty("status", "pending");
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(REST_URL + "/login_requests"))
+                .header("apikey", SUPABASE_KEY)
+                .header("Authorization", "Bearer " + SUPABASE_KEY) // Use anon key for insertion if RLS allows
+                .header("Content-Type", "application/json")
+                .header("Prefer", "return=representation")
+                .POST(HttpRequest.BodyPublishers.ofString(row.toString()))
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() == 201) {
+            JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
+            return arr.get(0).getAsJsonObject().get("id").getAsString();
+        } else {
+            throw new IOException("Failed to create login request: " + response.body());
+        }
+    }
+
+    public JsonObject pollLoginRequest(String requestId) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(REST_URL + "/login_requests?id=eq." + requestId + "&select=*"))
+                .header("apikey", SUPABASE_KEY)
+                .header("Authorization", "Bearer " + SUPABASE_KEY)
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() == 200) {
+            JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
+            if (arr.size() > 0) {
+                return arr.get(0).getAsJsonObject();
+            }
+        }
+        return null;
+    }
+
+    public void deleteLoginRequest(String requestId) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/login_requests?id=eq." + requestId))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + SUPABASE_KEY)
+                    .DELETE()
+                    .build();
+            client.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

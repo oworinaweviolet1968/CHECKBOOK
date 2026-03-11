@@ -49,6 +49,12 @@
         
         <Button fx:id="loginButton" text="Login" maxWidth="Infinity" style="-fx-background-color: #2196F3; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 10; -fx-cursor: hand;"/>
         
+        <HBox alignment="CENTER" spacing="10">
+            <Label text="OR" style="-fx-text-fill: #999; -fx-font-size: 10;"/>
+        </HBox>
+
+        <Button fx:id="mobileLoginButton" text="Login via Mobile App" maxWidth="Infinity" style="-fx-background-color: white; -fx-text-fill: #2196F3; -fx-font-weight: bold; -fx-padding: 10; -fx-border-color: #2196F3; -fx-border-radius: 4; -fx-background-radius: 4; -fx-cursor: hand;"/>
+        
         
     </VBox>
     

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
@@ -79,6 +80,7 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0; // Default to Dashboard (In Stock)
   final GlobalKey<DashboardScreenState> _dashboardKey = GlobalKey<DashboardScreenState>();
+  StreamSubscription? _loginRequestSubscription;
 
   late List<Widget> _screens;
 
@@ -92,6 +94,7 @@ class _MainScreenState extends State<MainScreen> {
       HistoryScreen(),
     ];
     _initDatabase();
+    _listenForLoginRequests();
   }
 
   Future<void> _initDatabase() async {
@@ -105,6 +108,52 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  void _listenForLoginRequests() {
+    _loginRequestSubscription = SupasService.instance.getLoginRequestsStream().listen((requests) {
+      if (requests.isNotEmpty) {
+        final request = requests.first;
+        _showLoginApprovalDialog(request);
+      }
+    });
+  }
+
+  void _showLoginApprovalDialog(Map<String, dynamic> request) {
+    if (_isDialogOpen) return;
+    _isDialogOpen = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Login Approval'),
+        content: Text('Approve login request for ${request['email']} on desktop application?'),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await SupasService.instance.updateLoginRequestStatus(request['id'], 'rejected');
+              if (mounted) Navigator.of(context).pop();
+              _isDialogOpen = false;
+            },
+            child: const Text('Reject', style: TextStyle(color: Colors.red)),
+          ),
+          TextButton(
+            onPressed: () async {
+              await SupasService.instance.updateLoginRequestStatus(request['id'], 'approved');
+              if (mounted) Navigator.of(context).pop();
+              _isDialogOpen = false;
+            },
+            child: const Text('Approve', style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _loginRequestSubscription?.cancel();
+    super.dispose();
+  }
 
   void _onItemTapped(int index) {
     if (index == 0 && _selectedIndex == 0) {

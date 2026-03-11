@@ -42,7 +42,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
   final _formatter = NumberFormat("#,###");
 
   // Data from Mockup
-  final List<String> _qtyQuickButtons = ["None", "g", "kg", "ml", "l", "50kg", "25kg", "10kg"];
+  final List<String> _qtyQuickButtons = ["None", "g", "kg", "ml", "l", "inch", "50kg", "25kg", "10kg"];
   final List<Map<String, String>> _unitQuickButtons = [
     {"label": "pcs * 1", "value": "pcs"},
     {"label": "Sack", "value": "Sack"},
@@ -902,7 +902,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
       String item = _itemController.text;
       String quantity = _qtyController.text;
       // Unit Validation: ensure it has kg, g, ml, l or is "None"
-      final hasUnit = RegExp(r'(kg|g|ml|l)$', caseSensitive: false).hasMatch(quantity) || quantity == "None";
+      final hasUnit = RegExp(r'(kg|g|ml|l|inch)$', caseSensitive: false).hasMatch(quantity) || quantity == "None";
       if (!hasUnit) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please specify a unit (e.g. kg, g, ml, l) for size')));
           return;

@@ -23,6 +23,8 @@ public class LoginController {
     @FXML
     private Button loginButton;
     @FXML
+    private Button mobileLoginButton;
+    @FXML
     private Label statusLabel;
 
     @FXML
@@ -31,6 +33,7 @@ public class LoginController {
     @FXML
     public void initialize() {
         loginButton.setOnAction(e -> handleLogin());
+        mobileLoginButton.setOnAction(e -> handleMobileLogin());
 
         // Listen for progress updates
         SupabaseService.getInstance().addProgressListener(progress -> {
@@ -439,5 +442,78 @@ public class LoginController {
             e.printStackTrace();
             statusLabel.setText("Failed to load application.");
         }
+    }
+
+    private void handleMobileLogin() {
+        String email = emailField.getText().trim();
+        if (email.isEmpty()) {
+            statusLabel.setText("Please enter your email first.");
+            return;
+        }
+
+        setLoading(true);
+        statusLabel.setText("Check your mobile app for a login prompt...");
+        statusLabel.setStyle("-fx-text-fill: #2196F3;");
+
+        new Thread(() -> {
+            String requestId = null;
+            try {
+                SupabaseService service = SupabaseService.getInstance();
+                requestId = service.createLoginRequest(email);
+
+                long startTime = System.currentTimeMillis();
+                boolean approved = false;
+                String refreshToken = null;
+
+                while (System.currentTimeMillis() - startTime < 120000) {
+                    com.google.gson.JsonObject request = service.pollLoginRequest(requestId);
+                    if (request != null) {
+                        String status = request.get("status").getAsString();
+                        if ("approved".equals(status)) {
+                            approved = true;
+                            if (request.has("refresh_token") && !request.get("refresh_token").isJsonNull()) {
+                                refreshToken = request.get("refresh_token").getAsString();
+                            }
+                            break;
+                        } else if ("rejected".equals(status)) {
+                            break;
+                        }
+                    }
+                    Thread.sleep(3000);
+                }
+
+                if (approved && refreshToken != null) {
+                    boolean success = service.signInWithRefreshToken(refreshToken);
+                    if (success) {
+                        Platform.runLater(() -> {
+                            statusLabel.setText("Login approved! Syncing...");
+                            statusLabel.setStyle("-fx-text-fill: green;");
+                            startSyncProcess();
+                        });
+                    } else {
+                        Platform.runLater(() -> {
+                            statusLabel.setText("Login failed after approval.");
+                            setLoading(false);
+                        });
+                    }
+                } else {
+                    Platform.runLater(() -> {
+                        statusLabel.setText("Login request timed out or was rejected.");
+                        setLoading(false);
+                    });
+                }
+
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                Platform.runLater(() -> {
+                    statusLabel.setText("Mobile login error: " + ex.getMessage());
+                    setLoading(false);
+                });
+            } finally {
+                if (requestId != null) {
+                    SupabaseService.getInstance().deleteLoginRequest(requestId);
+                }
+            }
+        }).start();
     }
 }
