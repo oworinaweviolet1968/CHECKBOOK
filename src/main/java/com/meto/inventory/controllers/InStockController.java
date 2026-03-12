@@ -7,30 +7,20 @@ import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 
-import java.time.LocalDate;
-
 public class InStockController implements DataManager.DataChangeListener {
 
     // InStock Table
     @FXML
     private TableView<StockItem> inStockTable;
     @FXML
-    private TableColumn<StockItem, String> itemCol, qtyCol, unitCol, priceCol, totalValueCol;
-    @FXML
-    private Label stockTotalLabel;
+    private TableColumn<StockItem, String> itemCol, qtyCol, unitCol;
     // Daily Sales Table
     @FXML
     private TableView<HistoryItem> dailySalesTable;
     @FXML
     private TableColumn<HistoryItem, String> salesItemCol, salesQtyCol, salesUnitCol, salesCustomerCol, salesAmountCol;
     @FXML
-    private TableColumn<HistoryItem, String> salesProfitCol; // Add this FXML link
-    @FXML
-    private Label yearlyProfitLabel; // Add a label in your FXML for this
-    @FXML
     private Button refreshBtn;
-    @FXML
-    private Label dailyTotalLabel;
     @FXML
     private Label dailySaleLabel; // Make sure this matches your fx:id in Scene Builder
 
@@ -54,12 +44,6 @@ public class InStockController implements DataManager.DataChangeListener {
         itemCol.setCellValueFactory(data -> data.getValue().itemsProperty());
         qtyCol.setCellValueFactory(data -> data.getValue().qtyProperty()); // This is 'SIZE' in your UI
         unitCol.setCellValueFactory(data -> data.getValue().unitProperty()); // This is 'AVAILABLE' in UI
-
-        // Change this to use the price directly loaded from DB
-        priceCol.setCellValueFactory(data -> data.getValue().priceProperty());
-
-        // Use amountProperty which now contains (total * dbPrice)
-        totalValueCol.setCellValueFactory(data -> data.getValue().amountProperty());
     }
 
     private void setupDailySalesTable() {
@@ -68,34 +52,6 @@ public class InStockController implements DataManager.DataChangeListener {
         salesUnitCol.setCellValueFactory(data -> data.getValue().unitProperty());
         salesCustomerCol.setCellValueFactory(data -> data.getValue().nameProperty());
         salesAmountCol.setCellValueFactory(data -> data.getValue().amountProperty());
-        // Add the Profit Column
-        salesProfitCol.setCellValueFactory(data -> data.getValue().profitProperty());
-
-        // Color Code Profit
-        salesProfitCol.setCellFactory(column -> new TableCell<HistoryItem, String>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                    setStyle("");
-                } else {
-                    setText(item);
-                    try {
-                        double val = Double.parseDouble(item.replaceAll("[^0-9.-]", ""));
-                        if (val < 0) {
-                            setStyle("-fx-text-fill: -fx-red; -fx-font-weight: bold;");
-                        } else if (val > 0) {
-                            setStyle("-fx-text-fill: -fx-primary; -fx-font-weight: bold;");
-                        } else {
-                            setStyle("-fx-text-fill: -fx-text-muted;");
-                        }
-                    } catch (Exception e) {
-                        setStyle("");
-                    }
-                }
-            }
-        });
     }
 
     @Override
@@ -107,19 +63,6 @@ public class InStockController implements DataManager.DataChangeListener {
     private void loadInStock() {
         ObservableList<StockItem> stock = dataManager.getDbHelper().getInStock();
         inStockTable.setItems(stock);
-
-        double grandTotal = stock.stream()
-                .mapToDouble(item -> {
-                    try {
-                        // Pull the pre-calculated amount from the StockItem
-                        return Double.parseDouble(item.getAmount().replaceAll("[^0-9.]", ""));
-                    } catch (Exception e) {
-                        return 0.0;
-                    }
-                })
-                .sum();
-
-        stockTotalLabel.setText(String.format("Total Stock Value: UGX %,.0f", grandTotal));
     }
 
     private void loadDailySales() {
@@ -127,32 +70,18 @@ public class InStockController implements DataManager.DataChangeListener {
         dailySalesTable.setItems(todaySales);
 
         double totalRevenue = 0;
-        double totalProfit = 0;
 
         for (HistoryItem item : todaySales) {
             try {
                 // Amount is the total money collected
                 totalRevenue += Double.parseDouble(item.getAmount().replaceAll("[^0-9.]", ""));
-                // Profit is what you actually earned after cost
-                totalProfit += Double.parseDouble(item.getProfit().replaceAll("[^0-9.]", ""));
             } catch (Exception e) {
                 e.printStackTrace();
             }
         }
 
-        // FIX: Update the dailySaleLabel with the total revenue
-        dailyTotalLabel.setText(String.format("Today's Profit: UGX %,.0f", totalProfit));
-
         // Ensure this fx:id matches exactly what you have in your FXML
-        dailySaleLabel.setText(String.format("Today's Sales: UGX %,.0f", totalRevenue));
-
-        // Get the current year dynamically
-        int currentYear = LocalDate.now().getYear();
-
-        double ytdProfit = dataManager.getDbHelper().getCurrentYearProfit();
-
-        // Use the variable in the string format instead of hardcoded "2026"
-        yearlyProfitLabel.setText(String.format("%d Profit (YTD): UGX %,.0f", currentYear, ytdProfit));
+        dailySaleLabel.setText(String.format("Today's Total Sales: UGX %,.0f", totalRevenue));
     }
 
     public void destroy() {

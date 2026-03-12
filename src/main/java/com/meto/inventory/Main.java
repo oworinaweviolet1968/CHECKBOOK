@@ -82,7 +82,7 @@ public class Main extends Application {
                         .getInstance();
                 String currentUid = service.getCurrentUserId();
                 if (currentUid != null) {
-                    com.meto.inventory.DataManager.getInstance().resetDatabase(currentUid);
+                    com.meto.inventory.DataManager.getInstance().switchDatabaseOnly(currentUid);
 
                     // Standard Sync
                     boolean localHasData = com.meto.inventory.DataManager.getInstance().getDbHelper().hasData();
@@ -92,6 +92,9 @@ public class Main extends Application {
 
                     com.meto.inventory.DataManager.getInstance().getDbHelper().connect();
                     com.meto.inventory.DataManager.getInstance().getDbHelper().initializeDatabase();
+
+                    // Notify UI after everything is ready
+                    com.meto.inventory.DataManager.getInstance().notifyDataChanged();
                 }
             } catch (Exception e) {
                 e.printStackTrace();

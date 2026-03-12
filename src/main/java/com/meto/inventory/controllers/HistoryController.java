@@ -11,6 +11,10 @@ public class HistoryController implements DataManager.DataChangeListener {
     @FXML
     private ComboBox<String> historyFilterCombo;
     @FXML
+    private TextField searchField;
+    @FXML
+    private DatePicker datePicker;
+    @FXML
     private TableView<HistoryItem> historyTable;
     @FXML
     private TableColumn<HistoryItem, String> nameCol;
@@ -23,13 +27,12 @@ public class HistoryController implements DataManager.DataChangeListener {
     @FXML
     private TableColumn<HistoryItem, String> unitCol;
     @FXML
-    private TableColumn<HistoryItem, String> priceCol;
-    @FXML
     private TableColumn<HistoryItem, String> amountCol;
     @FXML
     private TableColumn<HistoryItem, String> dateCol;
 
     private final DataManager dataManager = DataManager.getInstance();
+    private javafx.collections.transformation.FilteredList<HistoryItem> filteredData;
 
     @FXML
     public void initialize() {
@@ -40,7 +43,11 @@ public class HistoryController implements DataManager.DataChangeListener {
         historyFilterCombo.setValue("ALL");
         setupTableColumns();
         loadHistory();
-        historyFilterCombo.setOnAction(e -> loadHistory());
+
+        // Listeners for real-time filtering
+        historyFilterCombo.setOnAction(e -> applyFilters());
+        searchField.textProperty().addListener((obs, oldVal, newVal) -> applyFilters());
+        datePicker.valueProperty().addListener((obs, oldVal, newVal) -> applyFilters());
     }
 
     @Override
@@ -55,7 +62,6 @@ public class HistoryController implements DataManager.DataChangeListener {
         typeCol.setCellValueFactory(data -> data.getValue().typeUnitProperty());
         qtyCol.setCellValueFactory(data -> data.getValue().qtyProperty());
         unitCol.setCellValueFactory(data -> data.getValue().unitProperty());
-        priceCol.setCellValueFactory(data -> data.getValue().priceProperty());
         amountCol.setCellValueFactory(data -> data.getValue().amountProperty());
         dateCol.setCellValueFactory(data -> data.getValue().dateProperty());
 
@@ -64,7 +70,6 @@ public class HistoryController implements DataManager.DataChangeListener {
         centerColumn(itemCol);
         centerColumn(qtyCol);
         centerColumn(unitCol);
-        centerColumn(priceCol);
         centerColumn(amountCol);
         centerColumn(dateCol);
 
@@ -116,7 +121,52 @@ public class HistoryController implements DataManager.DataChangeListener {
             filter = null;
         }
         ObservableList<HistoryItem> list = dataManager.getDbHelper().getHistory(filter);
-        historyTable.setItems(list);
+        filteredData = new javafx.collections.transformation.FilteredList<>(list, p -> true);
+        historyTable.setItems(filteredData);
+        applyFilters();
+    }
+
+    private void applyFilters() {
+        if (filteredData == null)
+            return;
+
+        String typeFilter = historyFilterCombo.getValue();
+        String searchText = searchField.getText() == null ? "" : searchField.getText().toLowerCase().trim();
+        java.time.LocalDate selectedDate = datePicker.getValue();
+
+        filteredData.setPredicate(item -> {
+            // 1. Type Filter
+            if (typeFilter != null && !"ALL".equals(typeFilter)) {
+                if (!item.getTypeUnit().equalsIgnoreCase(typeFilter))
+                    return false;
+            }
+
+            // 2. Search Filter (Item or Customer)
+            if (!searchText.isEmpty()) {
+                boolean matchesItem = item.getItem() != null && item.getItem().toLowerCase().contains(searchText);
+                boolean matchesCustomer = item.getName() != null && item.getName().toLowerCase().contains(searchText);
+                if (!matchesItem && !matchesCustomer)
+                    return false;
+            }
+
+            // 3. Date Filter
+            if (selectedDate != null) {
+                String itemDateStr = item.getDate();
+                if (itemDateStr != null) {
+                    try {
+                        java.time.LocalDate itemDate = java.time.LocalDate.parse(itemDateStr);
+                        if (!itemDate.equals(selectedDate))
+                            return false;
+                    } catch (Exception e) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+
+            return true;
+        });
     }
 
     // Clean up when controller is destroyed (optional but recommended)

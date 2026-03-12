@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class NewStockController {
+public class NewStockController implements DataManager.DataChangeListener {
 
     @FXML
     private TextField supplierNameField;
@@ -56,6 +56,9 @@ public class NewStockController {
         createUnitQuickButtons();
         setupTableColumns();
         setupAutoPriceCalculation();
+
+        // Register for data changes (sync/updates)
+        dataManager.addDataChangeListener(this);
 
         // --- SECURITY: BLOCK FORBIDDEN CHARACTERS & LIMIT LENGTH ---
         java.util.function.UnaryOperator<TextFormatter.Change> filter = change -> {
@@ -121,7 +124,7 @@ public class NewStockController {
         // --- STEP 2: QTY VALIDATION (The Enforcer) ---
         qtyComboBox.getEditor().textProperty().addListener((obs, old, newVal) -> {
             // 1. Basic Flow Logic
-            String sizePattern = ".*\\d+(g|kg|ml|l)$|^none$";
+            String sizePattern = ".*\\d+(g|kg|ml|l|inch)$|^none$";
             if (newVal != null && newVal.toLowerCase().matches(sizePattern)) {
                 filterUnitButtons(newVal);
                 setFlowLevel(2);
@@ -162,7 +165,7 @@ public class NewStockController {
                 priceField.clear();
             }
 
-            String countPattern = ".*\\d+.*(pc|pcs|doz|carton|box|sack|dozen|crate).*";
+            String countPattern = ".*\\d+.*(pc|pcs|doz|carton|box|sack|dozen|crate|box\\*10|box\\*12|box\\*20|box\\*24|box\\*72).*";
             if (newVal.toLowerCase().matches(countPattern)) {
                 setFlowLevel(3);
             } else {
@@ -367,7 +370,7 @@ public class NewStockController {
     }
 
     private void createQtyQuickButtons() {
-        String[] quick = { "None", "g", "kg", "ml", "l" };
+        String[] quick = { "None", "g", "kg", "ml", "l", "inch", "50kg", "25kg", "10kg" };
         for (String q : quick) {
             Button b = new Button(q);
             b.getStyleClass().add("pill");
@@ -387,30 +390,40 @@ public class NewStockController {
     }
 
     private void createUnitQuickButtons() {
-        Map<String, Integer> unitData = Map.of(
+        Map<String, String> unitLabels = Map.of(
+                "pcs", "pcs * 1", "sack", "Sack", "half doz", "Half Doz * 6",
+                "dozen", "Box * 12", "box*10", "Box * 10", "box*12", "Box * 12",
+                "box*20", "Box * 20", "box*24", "Box * 24", "crate", "Crate * 25",
+                "box*72", "Box * 72");
+
+        Map<String, Integer> unitMultipliers = Map.of(
                 "pcs", 1, "sack", 1, "half doz", 6,
-                "carton", 24, "dozen", 12, "box", 20, "crate", 25);
+                "dozen", 12, "box*10", 10, "box*12", 12,
+                "box*20", 20, "box*24", 24, "crate", 25, "box*72", 72);
 
-        String[] order = { "pcs", "sack", "half doz", "dozen", "box", "carton", "crate" };
+        String[] order = { "pcs", "sack", "half doz", "box*10", "box*12", "box*20", "box*24", "crate", "box*72" };
 
-        for (String unitName : order) {
-            Integer val = unitData.get(unitName);
-            Button b = new Button(unitName);
+        for (String unitKey : order) {
+            String labelText = unitLabels.get(unitKey);
+            Integer val = unitMultipliers.get(unitKey);
+            Button b = new Button(labelText);
 
-            if (unitName.equals("sack")) {
+            if (unitKey.equals("sack")) {
                 b.setStyle("-fx-background-color: #2196F3; -fx-text-fill: white;");
             } else {
                 Label valLabel = new Label("*" + val);
                 valLabel.setStyle("-fx-text-fill: red; -fx-font-weight: bold; -fx-padding: 0 0 0 5;");
-                b.setGraphic(valLabel);
-                b.setContentDisplay(ContentDisplay.RIGHT);
+                // Note: valLabel is redundant if labelText already has *X, but keeping for
+                // styling
+                // Actually, let's just use the mobile labels directly for unity.
+                b.setGraphic(null);
             }
 
             b.getStyleClass().add("pill");
-            b.setOnAction(evt -> appendUnit(unitName));
+            b.setOnAction(evt -> appendUnit(unitKey));
 
             // STORE REFERENCE and add to box
-            unitButtonsMap.put(unitName, b);
+            unitButtonsMap.put(unitKey, b);
             unitButtonsBox.getChildren().add(b);
         }
     }
@@ -431,18 +444,20 @@ public class NewStockController {
             // WEIGHT-BASED: Only allow 'sack'
             // This prevents "pcs" math errors for bulk goods
             showButton("sack");
-        } else if (s.contains("ml") || s.contains("l") || s.contains("g")) {
-            // VOLUME-BASED: Soda, Beer, etc.
+        } else if (s.contains("ml") || s.contains("l") || s.contains("g") || s.contains("inch")) {
+            // VOLUME-BASED or measurement-based
             showButton("pcs");
             showButton("half doz");
-            showButton("dozen");
-            showButton("box");
-            showButton("carton");
+            showButton("box*10");
+            showButton("box*12");
+            showButton("box*20");
+            showButton("box*24");
             showButton("crate");
+            showButton("box*72");
         } else {
             // DEFAULT/OTHER: Show pcs and standard units
             showButton("pcs");
-            showButton("dozen");
+            showButton("box*12");
         }
     }
 
@@ -537,7 +552,7 @@ public class NewStockController {
     }
 
     private void onAdd() {
-        String supplier = supplierNameField.getText().trim();
+        supplierNameField.getText().trim();
         itemErrorLabel.setVisible(false);
         itemErrorLabel.setManaged(false);
         qtyErrorLabel.setVisible(false);
@@ -572,11 +587,12 @@ public class NewStockController {
         }
 
         // 2. Define allowed patterns
-        // Matches numbers followed by g, kg, ml, or l (e.g., 500ml, 1.5l) OR "None"
-        String sizePattern = ".*\\d+(g|kg|ml|l)$|^none$";
-        // Added "crate" to the regex pattern
+        // Matches numbers followed by g, kg, ml, l or inch (e.g., 500ml, 1.5l, 10inch)
+        // OR "None"
+        String sizePattern = ".*\\d+(g|kg|ml|l|inch)$|^none$";
+        // Added specialized box units to the regex pattern
         // Update the regex to accept 'pc' (without the s)
-        String countPattern = ".*\\d+.*(pc|pcs|doz|carton|box|sack|dozen|crate).*";
+        String countPattern = ".*\\d+.*(pc|pcs|doz|carton|box|sack|dozen|crate|box\\*10|box\\*12|box\\*20|box\\*24|box\\*72).*";
 
         boolean hasError = false;
 
@@ -587,7 +603,7 @@ public class NewStockController {
         }
         // 3. Validate QTY (Size)
         if (!qtyRaw.matches(sizePattern)) {
-            qtyErrorLabel.setText("* Missing size unit (e.g., 500ml, 1kg)");
+            qtyErrorLabel.setText("* Missing size unit (e.g., 500ml, 1kg, 12inch)");
             qtyErrorLabel.setVisible(true);
             qtyErrorLabel.setManaged(true);
             hasError = true;
@@ -687,7 +703,7 @@ public class NewStockController {
                 totalAmount = Double.parseDouble(s.getAmount().replaceAll("[^0-9.]", ""));
             } catch (Exception e) {
                 // If parsing fails, fall back to calculating it manually
-                double count = extractNumericValue(unit); // Note: This might return the 1.5 logic...
+                extractNumericValue(unit); // Note: This might return the 1.5 logic...
                 // Ideally we trust the input Price as Total Price if Unit is singular?
                 // But in NewStockController logic (line 614), totalAmount = count * inputPrice.
                 // So let's just rely on the stored Amount string which computed it correctly
@@ -707,5 +723,10 @@ public class NewStockController {
 
     private void showAlert(String text) {
         com.meto.inventory.utils.DialogHelper.showAlert(text);
+    }
+
+    @Override
+    public void onDataChanged() {
+        javafx.application.Platform.runLater(this::refreshDropdowns);
     }
 }

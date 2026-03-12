@@ -27,12 +27,12 @@
         <VBox styleClass="card" VBox.vgrow="ALWAYS" spacing="16">
             
             <!-- Toolbar -->
-            <HBox spacing="10" alignment="CENTER_RIGHT">
-                <Label text="Filter by type:" style="-fx-font-weight: 600;"/>
-                <ComboBox fx:id="historyFilterCombo" prefWidth="100" promptText="All Transactions"/>
-                <Button text="Export" styleClass="pill">
-                    <!-- Icon placeholder -->
-                </Button>
+            <HBox spacing="15" alignment="CENTER_LEFT">
+                <TextField fx:id="searchField" prefWidth="250" promptText="Search item or customer..."/>
+                <DatePicker fx:id="datePicker" prefWidth="150" promptText="Filter by date"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Label text="Type:" style="-fx-font-weight: 600;"/>
+                <ComboBox fx:id="historyFilterCombo" prefWidth="120" promptText="All"/>
             </HBox>
 
             <!-- Table -->
@@ -43,7 +43,6 @@
                     <TableColumn fx:id="typeCol" text="TYPE" prefWidth="100"/>
                     <TableColumn fx:id="qtyCol" text="QTY" prefWidth="80"/>
                     <TableColumn fx:id="unitCol" text="UNIT" prefWidth="80"/>
-                    <TableColumn fx:id="priceCol" text="PRICE" prefWidth="100"/>
                     <TableColumn fx:id="amountCol" text="AMOUNT" prefWidth="120"/>
                     <TableColumn fx:id="dateCol" text="DATE" prefWidth="120"/>
                 </columns>

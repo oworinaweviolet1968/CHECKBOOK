@@ -26,13 +26,17 @@ public class DataManager {
     }
 
     public void resetDatabase(String userId) {
+        switchDatabaseOnly(userId);
+        // FORCE a refresh of all data listeners (UI)
+        notifyDataChanged();
+    }
+
+    public void switchDatabaseOnly(String userId) {
         // Sanitize userId just in case (e.g. email or uuid)
         String cleanId = userId.replaceAll("[^a-zA-Z0-9]", "_");
         String dbName = "inventory_" + cleanId + ".db";
         System.out.println("Switching database to: " + dbName);
         dbHelper.setDatabaseName(dbName);
-        // FORCE a refresh of all data listeners (UI)
-        notifyDataChanged();
     }
 
     public String getCurrentDbName() {

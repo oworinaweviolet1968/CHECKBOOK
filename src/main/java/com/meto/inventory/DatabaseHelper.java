@@ -193,10 +193,16 @@ public class DatabaseHelper {
             return 6.0;
 
         // GENERAL SECOND
-        if (cleanUnit.contains("dozen") || cleanUnit.contains("doz"))
+        if (cleanUnit.contains("box*10"))
+            return 10.0;
+        if (cleanUnit.contains("box*12") || cleanUnit.contains("dozen") || cleanUnit.contains("doz"))
             return 12.0;
-        if (cleanUnit.contains("carton"))
+        if (cleanUnit.contains("box*20") || cleanUnit.equals("box"))
+            return 20.0;
+        if (cleanUnit.contains("box*24") || cleanUnit.contains("carton"))
             return 24.0;
+        if (cleanUnit.contains("box*72"))
+            return 72.0;
         if (cleanUnit.contains("crate"))
             return 25.0;
         if (cleanUnit.contains("box"))
@@ -660,11 +666,17 @@ public class DatabaseHelper {
             return 6.0;
 
         // 2. Check for the shorter/general strings last
-        if (type.contains("dozen") || type.contains("doz"))
+        if (type.contains("box*10"))
+            return 10.0;
+        if (type.contains("box*12") || type.contains("dozen") || type.contains("doz"))
             return 12.0;
-        if (type.contains("carton"))
+        if (type.contains("box*20") || type.equals("box"))
+            return 20.0;
+        if (type.contains("box*24") || type.contains("carton"))
             return 24.0;
-        if (type.contains("crate"))
+        if (type.contains("box*72"))
+            return 72.0;
+        if (type.contains("crate") || type.contains("crate*25"))
             return 25.0;
         if (type.contains("box"))
             return 20.0;

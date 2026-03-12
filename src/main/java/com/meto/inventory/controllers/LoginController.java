@@ -278,7 +278,7 @@ public class LoginController {
 
                     // PERFORM THE SWITCH
                     System.out.println("Switching database to: " + newDbName);
-                    com.meto.inventory.DataManager.getInstance().resetDatabase(currentUid); // This sets the name
+                    com.meto.inventory.DataManager.getInstance().switchDatabaseOnly(currentUid); // This sets the name
                 } catch (Exception e) {
                     e.printStackTrace();
                     System.out.println("Critical Error switching database. Falling back to default.");
@@ -289,9 +289,13 @@ public class LoginController {
                     System.out.println("Backup disabled logic triggered. Skipping cloud sync.");
                     Platform.runLater(() -> statusLabel.setText("Cloud Backup Disabled. Using Local Data."));
 
-                    // Re-initialize DB connection immediately since we closed it (and resetDatabase
+                    // Re-initialize DB connection immediately since we closed it (and
+                    // switchDatabaseOnly
                     // might have touched it)
                     com.meto.inventory.DataManager.getInstance().getDbHelper().initializeDatabase();
+
+                    // NOTIFY UI NOW since we are done with the DB logic
+                    com.meto.inventory.DataManager.getInstance().notifyDataChanged();
 
                     Platform.runLater(() -> {
                         setLoading(false);
@@ -302,10 +306,6 @@ public class LoginController {
 
                 // 4. SYNC (If permitted)
                 // Attempt Sync (Smart Restore)
-                // CRITICAL FIX: Close the DB connection BEFORE syncing!
-                // Attempting to overwrite a file while SQLite has it open causes
-                // locks/corruption.
-
                 // DATA CHECK: Must check if local data exists BEFORE closing connection
                 java.io.File dbFile = new java.io.File(com.meto.inventory.DataManager.getInstance().getCurrentDbName());
                 boolean localHasData = com.meto.inventory.DataManager.getInstance().getDbHelper().hasData();
@@ -332,7 +332,10 @@ public class LoginController {
                 // 4. Re-initialize DB connection
                 com.meto.inventory.DataManager.getInstance().getDbHelper().initializeDatabase();
 
-                // 5. Load UI
+                // 5. NOTIFY UI LATE: Now that the DB is open and data is synced
+                com.meto.inventory.DataManager.getInstance().notifyDataChanged();
+
+                // 6. Load UI
                 Platform.runLater(() -> {
                     setLoading(false);
                     loadMainView();
@@ -344,6 +347,7 @@ public class LoginController {
                     setLoading(false);
                     statusLabel.setText("Sync Error: " + e.getMessage());
                     com.meto.inventory.DataManager.getInstance().getDbHelper().initializeDatabase();
+                    com.meto.inventory.DataManager.getInstance().notifyDataChanged();
                     loadMainView();
                 });
             }
