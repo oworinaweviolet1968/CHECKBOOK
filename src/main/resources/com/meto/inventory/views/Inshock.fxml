@@ -9,79 +9,113 @@
             stylesheets="@styles/style.css">
 
     <!-- Global Vertical ScrollPane -->
-    <ScrollPane fitToWidth="true" fitToHeight="false" style="-fx-background-color: transparent;" 
+    <ScrollPane fitToWidth="true" fitToHeight="true" style="-fx-background-color: transparent;" 
                 AnchorPane.topAnchor="0.0" AnchorPane.bottomAnchor="0.0" 
                 AnchorPane.leftAnchor="0.0" AnchorPane.rightAnchor="0.0">
-        <VBox spacing="20">
+        <VBox spacing="30">
             <padding>
-                <Insets top="0" right="0" bottom="0" left="0"/>
+                <Insets top="0" right="10" bottom="20" left="0"/>
             </padding>
     
-            <!-- Header -->
-            <VBox spacing="4">
-                <Label text="Inventory &amp; Sales Dashboard" styleClass="header-title">
-                    <graphic>
-                        <Region styleClass="icon, icon-check" style="-fx-background-color: -fx-text-main;"/>
-                    </graphic>
-                </Label>
-                <Label text="Real-time tracking of your stock levels and daily transactions." styleClass="header-subtitle"/>
-            </VBox>
-    
-            <!-- Main Card -->
-            <VBox styleClass="card" VBox.vgrow="ALWAYS" spacing="24">
+            <!-- Top Header Action Bar -->
+            <HBox alignment="CENTER_LEFT" spacing="20">
+                <VBox spacing="4" HBox.hgrow="ALWAYS">
+                    <Label text="Dashboard" styleClass="header-title" style="-fx-font-size: 24px;"/>
+                    <Label text="Real-time tracking of your stock levels and daily transactions" styleClass="header-subtitle" style="-fx-padding: 0;"/>
+                </VBox>
                 
-                <!-- Metrics Row (Simulated Cards) -->
-                <HBox spacing="16" alignment="CENTER_LEFT">
-                    <!-- Metric 3: Today's Sales -->
-                    <VBox spacing="4" HBox.hgrow="ALWAYS" minWidth="200" style="-fx-border-color: -fx-color-border; -fx-border-radius: 8; -fx-padding: 16;">
-                        <Label text="TODAY'S TOTAL SALES" style="-fx-font-size: 10px; -fx-text-fill: -fx-text-muted; -fx-font-weight: 700;"/>
-                        <Label fx:id="dailySaleLabel" text="UGX 0" style="-fx-font-size: 16px; -fx-font-weight: 700; -fx-text-fill: -fx-primary;"/>
-                    </VBox>
+                <HBox alignment="CENTER_RIGHT" spacing="12">
+                     <HBox alignment="CENTER_LEFT" styleClass="card" style="-fx-padding: 6 12; -fx-background-radius: 8;">
+                        <Region styleClass="icon, icon-box" style="-fx-scale-x: 0.8; -fx-scale-y: 0.8; -fx-background-color: #9CA3AF;"/>
+                        <TextField fx:id="searchField" promptText="Search inventory..." style="-fx-background-color: transparent; -fx-border-color: transparent; -fx-padding: 0 5; -fx-pref-width: 200;"/>
+                    </HBox>
+                    <Button fx:id="addItemBtn" text="+ Add Item" styleClass="btn-green" style="-fx-background-radius: 8; -fx-padding: 8 16;"/>
                 </HBox>
+            </HBox>
     
-                <Separator orientation="HORIZONTAL" />
+            <!-- Metrics Row -->
+            <HBox spacing="20" alignment="CENTER_LEFT">
+                <VBox styleClass="metric-card, metric-card-green" HBox.hgrow="ALWAYS" spacing="12">
+                    <Label text="Today's Total Sales" style="-fx-font-size: 11px; -fx-text-fill: #6B7280; -fx-font-weight: 600;"/>
+                    <Label fx:id="dailySaleLabel" text="UGX 0" style="-fx-font-size: 22px; -fx-font-weight: 800; -fx-text-fill: -fx-primary;"/>
+                    <Label text="+12.5% from yesterday" style="-fx-font-size: 11px; -fx-text-fill: -fx-primary; -fx-font-weight: 600;">
+                        <graphic><Region styleClass="icon, icon-clock" style="-fx-scale-x: 0.6; -fx-scale-y: 0.6; -fx-background-color: -fx-primary;"/></graphic>
+                    </Label>
+                </VBox>
+                
+                <VBox styleClass="metric-card, metric-card-blue" HBox.hgrow="ALWAYS" spacing="12">
+                    <Label text="Items in Stock" style="-fx-font-size: 11px; -fx-text-fill: #6B7280; -fx-font-weight: 600;"/>
+                    <Label fx:id="stockCountLabel" text="0" style="-fx-font-size: 22px; -fx-font-weight: 800; -fx-text-fill: #2563EB;"/>
+                    <Label fx:id="lowStockNoticeLabel" text="0 items running low" style="-fx-font-size: 11px; -fx-text-fill: #3B82F6; -fx-font-weight: 600;">
+                        <graphic><Region styleClass="icon, icon-check" style="-fx-scale-x: 0.6; -fx-scale-y: 0.6; -fx-background-color: #3B82F6;"/></graphic>
+                    </Label>
+                </VBox>
+
+                <VBox styleClass="metric-card, metric-card-orange" HBox.hgrow="ALWAYS" spacing="12">
+                    <Label text="Transactions Today" style="-fx-font-size: 11px; -fx-text-fill: #6B7280; -fx-font-weight: 600;"/>
+                    <Label fx:id="transactionCountLabel" text="0" style="-fx-font-size: 22px; -fx-font-weight: 800; -fx-text-fill: #D97706;"/>
+                    <Label text="All completed" style="-fx-font-size: 11px; -fx-text-fill: #F59E0B; -fx-font-weight: 600;">
+                        <graphic><Label text="\$" style="-fx-text-fill: #F59E0B; -fx-font-weight: 900;"/></graphic>
+                    </Label>
+                </VBox>
+            </HBox>
     
-                <!-- In Stock Table Section -->
-                <VBox spacing="10" VBox.vgrow="ALWAYS">
+            <!-- Content Row: In Stock Table and Daily Sales -->
+            <HBox spacing="20" VBox.vgrow="ALWAYS">
+                <!-- Left: In Stock Inventory -->
+                <VBox styleClass="card" HBox.hgrow="ALWAYS" spacing="16" maxWidth="Infinity">
                     <HBox alignment="CENTER_LEFT" spacing="10">
-                        <!-- Icon placeholder -->
-                        <Label text="IN STOCK INVENTORY" style="-fx-font-weight: 700; -fx-font-size: 14px;"/>
-                        <Label text="(All items in pieces)" style="-fx-text-fill: -fx-text-muted;"/>
+                        <VBox spacing="2">
+                             <HBox alignment="CENTER_LEFT" spacing="6">
+                                <Region styleClass="icon, icon-check" style="-fx-scale-x: 0.8; -fx-scale-y: 0.8; -fx-background-color: #10B981;"/>
+                                <Label text="In Stock Inventory" style="-fx-font-weight: 800; -fx-font-size: 14px;"/>
+                             </HBox>
+                             <Label fx:id="inventorySublabel" text="Smart Units • 0 items" style="-fx-font-size: 11px; -fx-text-fill: #9CA3AF;"/>
+                        </VBox>
                         <Region HBox.hgrow="ALWAYS"/>
-                        <Button fx:id="refreshBtn" text="Refresh Data" styleClass="btn-green"/>
+                        <Button fx:id="refreshBtn" text="Refresh" styleClass="pill" style="-fx-background-color: #F9FAFB; -fx-border-color: #E5E7EB; -fx-border-radius: 6; -fx-padding: 4 12;"/>
                     </HBox>
     
-                    <TableView fx:id="inStockTable" VBox.vgrow="ALWAYS" prefHeight="250">
+                    <TableView fx:id="inStockTable" VBox.vgrow="ALWAYS" prefHeight="350">
                         <columns>
-                            <TableColumn fx:id="itemCol" text="ITEM" prefWidth="250"/>
-                            <TableColumn fx:id="qtyCol" text="SIZE" prefWidth="100"/>
-                            <TableColumn fx:id="unitCol" text="AVAILABLE" prefWidth="150"/>
+                            <TableColumn fx:id="itemCol" text="Item" prefWidth="160"/>
+                            <TableColumn fx:id="qtyCol" text="Size" prefWidth="120"/>
+                            <TableColumn fx:id="unitCol" text="Available" prefWidth="170"/>
+                            <TableColumn fx:id="statusCol" text="Status" prefWidth="110"/>
                         </columns>
                         <columnResizePolicy>
                             <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
                         </columnResizePolicy>
                     </TableView>
                 </VBox>
-    
-                <!-- Daily Sales Table Section -->
-                <VBox spacing="10" VBox.vgrow="ALWAYS">
-                    <Label text="TODAY'S SALES LOG" style="-fx-font-weight: 700; -fx-font-size: 14px;"/>
+
+                <!-- Right: Daily Sales Log -->
+                <VBox styleClass="card" HBox.hgrow="ALWAYS" spacing="16" maxWidth="Infinity">
+                    <HBox alignment="CENTER_LEFT" spacing="10">
+                         <VBox spacing="2">
+                             <HBox alignment="CENTER_LEFT" spacing="6">
+                                <Region styleClass="icon, icon-cart" style="-fx-scale-x: 0.8; -fx-scale-y: 0.8; -fx-background-color: #10B981;"/>
+                                <Label text="Today's Sales Log" style="-fx-font-weight: 800; -fx-font-size: 14px;"/>
+                             </HBox>
+                             <Label fx:id="salesSublabel" text="0 transactions • UGX 0" style="-fx-font-size: 11px; -fx-text-fill: #9CA3AF;"/>
+                        </VBox>
+                        <Region HBox.hgrow="ALWAYS"/>
+                        <Button fx:id="viewAllBtn" text="View All" styleClass="pill" style="-fx-background-color: #F9FAFB; -fx-border-color: #E5E7EB; -fx-border-radius: 6; -fx-padding: 4 12;"/>
+                    </HBox>
                     
-                    <TableView fx:id="dailySalesTable" VBox.vgrow="ALWAYS" prefHeight="200">
+                    <TableView fx:id="dailySalesTable" VBox.vgrow="ALWAYS" prefHeight="350">
                         <columns>
-                            <TableColumn fx:id="salesItemCol" text="ITEM" prefWidth="250"/>
-                            <TableColumn fx:id="salesQtyCol" text="QTY" prefWidth="80"/>
-                            <TableColumn fx:id="salesUnitCol" text="UNIT" prefWidth="80"/>
-                            <TableColumn fx:id="salesCustomerCol" text="CUSTOMER" prefWidth="200"/>
-                            <TableColumn fx:id="salesAmountCol" text="AMOUNT PAID" prefWidth="150"/>
+                            <TableColumn fx:id="salesItemCol" text="Item" prefWidth="180"/>
+                            <TableColumn fx:id="salesAmountCol" text="Amount" prefWidth="140"/>
+                            <TableColumn fx:id="salesQtyCol" text="Qty" prefWidth="80"/>
+                            <TableColumn fx:id="salesCustomerCol" text="Customer" prefWidth="140"/>
                         </columns>
                         <columnResizePolicy>
                             <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
                         </columnResizePolicy>
                     </TableView>
                 </VBox>
-    
-            </VBox>
+            </HBox>
         </VBox>
     </ScrollPane>
 </AnchorPane>

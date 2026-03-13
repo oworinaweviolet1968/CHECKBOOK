@@ -8,43 +8,50 @@
             fx:controller="com.meto.inventory.controllers.HistoryController"
             stylesheets="@styles/style.css">
 
-    <VBox spacing="20" AnchorPane.topAnchor="0" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0" AnchorPane.bottomAnchor="0">
+    <VBox spacing="30" AnchorPane.topAnchor="0" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0" AnchorPane.bottomAnchor="0">
         <padding>
-            <Insets top="0" right="0" bottom="0" left="0"/>
+            <Insets top="0" right="10" bottom="20" left="0"/>
         </padding>
 
         <!-- Header -->
-        <VBox spacing="4">
-            <Label text="Transaction History" styleClass="header-title">
-                <graphic>
-                    <Region styleClass="icon, icon-clock" style="-fx-background-color: -fx-text-main;"/>
-                </graphic>
-            </Label>
-            <Label text="View and filter all previous inventory movements" styleClass="header-subtitle"/>
+        <HBox alignment="CENTER_LEFT" spacing="20">
+            <VBox spacing="4" HBox.hgrow="ALWAYS">
+                <Label text="Transaction History" styleClass="header-title" style="-fx-font-size: 24px;"/>
+                <Label text="View and filter all previous inventory movements and sales" styleClass="header-subtitle" style="-fx-padding: 0;"/>
+            </VBox>
+        </HBox>
+
+        <!-- Filters Card -->
+        <VBox styleClass="card" spacing="16">
+            <HBox spacing="20" alignment="CENTER_LEFT">
+                <HBox alignment="CENTER_LEFT" HBox.hgrow="ALWAYS" style="-fx-background-color: transparent; -fx-padding: 8 16; -fx-background-radius: 8; -fx-border-color: -fx-color-border; -fx-border-radius: 8;">
+                    <Region styleClass="icon, icon-box" style="-fx-scale-x: 0.7; -fx-scale-y: 0.7; -fx-background-color: #9CA3AF;"/>
+                    <TextField fx:id="searchField" promptText="Search item or customer..." style="-fx-background-color: transparent; -fx-border-color: transparent; -fx-padding: 0 10;" HBox.hgrow="ALWAYS"/>
+                </HBox>
+                
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Date:" style="-fx-font-size: 12px; -fx-font-weight: 700; -fx-text-fill: #374151;"/>
+                    <DatePicker fx:id="datePicker" prefWidth="150" promptText="Filter by date"/>
+                </HBox>
+
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Type:" style="-fx-font-size: 12px; -fx-font-weight: 700; -fx-text-fill: #374151;"/>
+                    <ComboBox fx:id="historyFilterCombo" prefWidth="120" promptText="All Transactions"/>
+                </HBox>
+            </HBox>
         </VBox>
 
-        <!-- Main Card -->
+        <!-- History Table Card -->
         <VBox styleClass="card" VBox.vgrow="ALWAYS" spacing="16">
-            
-            <!-- Toolbar -->
-            <HBox spacing="15" alignment="CENTER_LEFT">
-                <TextField fx:id="searchField" prefWidth="250" promptText="Search item or customer..."/>
-                <DatePicker fx:id="datePicker" prefWidth="150" promptText="Filter by date"/>
-                <Region HBox.hgrow="ALWAYS"/>
-                <Label text="Type:" style="-fx-font-weight: 600;"/>
-                <ComboBox fx:id="historyFilterCombo" prefWidth="120" promptText="All"/>
-            </HBox>
-
-            <!-- Table -->
             <TableView fx:id="historyTable" VBox.vgrow="ALWAYS">
                 <columns>
-                    <TableColumn fx:id="nameCol" text="NAME" prefWidth="120"/>
-                    <TableColumn fx:id="itemCol" text="ITEM" prefWidth="150"/>
-                    <TableColumn fx:id="typeCol" text="TYPE" prefWidth="100"/>
-                    <TableColumn fx:id="qtyCol" text="QTY" prefWidth="80"/>
-                    <TableColumn fx:id="unitCol" text="UNIT" prefWidth="80"/>
-                    <TableColumn fx:id="amountCol" text="AMOUNT" prefWidth="120"/>
-                    <TableColumn fx:id="dateCol" text="DATE" prefWidth="120"/>
+                    <TableColumn fx:id="nameCol" text="Customer/Supplier" prefWidth="180"/>
+                    <TableColumn fx:id="itemCol" text="Item" prefWidth="180"/>
+                    <TableColumn fx:id="typeCol" text="Type" prefWidth="100"/>
+                    <TableColumn fx:id="amountCol" text="Amount" prefWidth="120"/>
+                    <TableColumn fx:id="qtyCol" text="Size" prefWidth="80"/>
+                    <TableColumn fx:id="unitCol" text="Qty/Units" prefWidth="100"/>
+                    <TableColumn fx:id="dateCol" text="Date" prefWidth="140"/>
                 </columns>
                 <columnResizePolicy>
                     <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>

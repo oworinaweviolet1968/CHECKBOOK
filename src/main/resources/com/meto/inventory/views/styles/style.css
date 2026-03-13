@@ -6,18 +6,22 @@
     /* Emerald 500 */
     -fx-primary-dark: #059669;
     /* Emerald 600 */
-    -fx-bg-body: #F3F4F6;
-    /* Gray 100 */
+    -fx-secondary: #3B82F6;
+    /* Blue 500 */
+    -fx-bg-body: #F9FAFB;
+    /* Gray 50 - Lighter background */
     -fx-bg-surface: #FFFFFF;
     /* White */
     -fx-text-main: #111827;
     /* Gray 900 */
     -fx-text-muted: #6B7280;
     /* Gray 500 */
-    -fx-color-border: #E5E7EB;
-    /* Gray 200 */
+    -fx-color-border: #F3F4F6;
+    /* Gray 100 - Subtler border */
     -fx-red: #EF4444;
     /* Red 500 */
+    -fx-orange: #F59E0B;
+    /* Amber 500 */
     -fx-font-base: "Inter", "Segoe UI", sans-serif;
 }
 
@@ -56,9 +60,35 @@
 .card {
     -fx-background-color: -fx-bg-surface;
     -fx-background-radius: 12;
-    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.05), 10, 0, 0, 4);
+    -fx-border-color: -fx-color-border;
+    -fx-border-radius: 12;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.03), 10, 0, 0, 2);
     -fx-padding: 24;
-    /* -fx-max-width: 1000; removed to allow full width */
+}
+
+.metric-card {
+    -fx-background-color: -fx-bg-surface;
+    -fx-background-radius: 12;
+    -fx-border-color: -fx-color-border;
+    -fx-border-radius: 12;
+    -fx-padding: 24;
+    -fx-min-height: 120;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.02), 8, 0, 0, 1);
+}
+
+.metric-card-green {
+    -fx-border-color: transparent transparent transparent -fx-primary;
+    -fx-border-width: 0 0 0 4;
+}
+
+.metric-card-blue {
+    -fx-border-color: transparent transparent transparent -fx-secondary;
+    -fx-border-width: 0 0 0 4;
+}
+
+.metric-card-orange {
+    -fx-border-color: transparent transparent transparent -fx-orange;
+    -fx-border-width: 0 0 0 4;
 }
 
 /* Header/Title styles */
@@ -158,6 +188,7 @@ Label.header-title {
     -fx-min-width: 16;
     -fx-min-height: 16;
 }
+
 /* =========================================
    4. FORMS & INPUTS
    ========================================= */
@@ -267,10 +298,38 @@ Label.header-title {
     -fx-background-color: #FED7AA;
 }
 
-/* History Badges */
+/* Status Badges */
+.status-badge {
+    -fx-background-radius: 20;
+    -fx-padding: 4 12;
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+}
+
+.status-low {
+    -fx-background-color: #FEF2F2;
+    -fx-text-fill: #991B1B;
+    -fx-border-color: #FEE2E2;
+    -fx-border-radius: 20;
+}
+
+.status-in-stock {
+    -fx-background-color: #ECFDF5;
+    -fx-text-fill: #065F46;
+    -fx-border-color: #D1FAE5;
+    -fx-border-radius: 20;
+}
+
+.status-medium {
+    -fx-background-color: #FFF7ED;
+    -fx-text-fill: #9A3412;
+    -fx-border-color: #FFEDD5;
+    -fx-border-radius: 20;
+}
+
 .badge-stock {
-    -fx-background-color: #DBEAFE;
-    -fx-text-fill: #1E40AF;
+    -fx-background-color: #F0F9FF;
+    -fx-text-fill: #075985;
     -fx-background-radius: 4;
     -fx-padding: 2 6;
     -fx-font-size: 11px;
@@ -278,8 +337,8 @@ Label.header-title {
 }
 
 .badge-wholesale {
-    -fx-background-color: #F3E8FF;
-    -fx-text-fill: #6B21A8;
+    -fx-background-color: #FDF4FF;
+    -fx-text-fill: #701A75;
     -fx-background-radius: 4;
     -fx-padding: 2 6;
     -fx-font-size: 11px;
@@ -287,8 +346,8 @@ Label.header-title {
 }
 
 .badge-retail {
-    -fx-background-color: #D1FAE5;
-    -fx-text-fill: #065F46;
+    -fx-background-color: #F5F3FF;
+    -fx-text-fill: #4C1D95;
     -fx-background-radius: 4;
     -fx-padding: 2 6;
     -fx-font-size: 11px;
@@ -311,15 +370,19 @@ Label.header-title {
    6. TABLES
    ========================================= */
 .table-view {
-    -fx-background-color: -fx-bg-surface;
-    -fx-border-color: -fx-color-border;
-    -fx-border-radius: 8;
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
     -fx-padding: 0;
 }
 
 .table-view .column-header-background {
-    -fx-background-color: #F9FAFB;
-    /* Gray 50 */
+    -fx-background-color: white;
+    -fx-border-width: 0 0 1 0;
+    -fx-border-color: -fx-color-border;
+}
+
+.table-view .column-header {
+    -fx-background-color: white;
     -fx-border-width: 0 0 1 0;
     -fx-border-color: -fx-color-border;
 }
@@ -380,24 +443,69 @@ Label.header-title {
     -fx-alignment: CENTER_LEFT;
 }
 
-.table-cell {
+/* Header Alignment Overrides */
+.column-header.col-center .label {
     -fx-alignment: CENTER;
 }
 
+.column-header.col-right .label {
+    -fx-alignment: CENTER_RIGHT;
+}
+
+.table-cell {
+    -fx-padding: 0 12;
+}
+
+.table-cell.col-center {
+    -fx-alignment: CENTER;
+}
+
+.table-cell.col-right {
+    -fx-alignment: CENTER_RIGHT;
+}
+
 .table-row-cell {
-    -fx-background-color: -fx-bg-surface;
+    -fx-background-color: white;
     -fx-border-width: 0 0 1 0;
-    -fx-border-color: #F3F4F6;
-    -fx-cell-size: 48px;
-    /* Taller rows */
+    -fx-border-color: #E5E7EB; /* Gray 200 for better visibility */
+    -fx-cell-size: 60px;
 }
 
 .table-row-cell:odd {
-    -fx-background-color: -fx-bg-surface;
+    -fx-background-color: #fafafa;
 }
 
 .table-row-cell:selected {
-    -fx-background-color: #ECFDF5;
+    -fx-background-color: -fx-primary-light;
+    /* Use AtlantaFX light primary if available, or just a light emerald */
+}
+
+/* History Row Coloring */
+.history-row-new-stock {
+    -fx-background-color: #ecfdf5 !important;
+    /* Emerald 50 */
+}
+
+.history-row-new-stock:odd {
+    -fx-background-color: #f0fdf4 !important;
+}
+
+.history-row-retail {
+    -fx-background-color: #f5f3ff !important;
+    /* Violet 50 */
+}
+
+.history-row-retail:odd {
+    -fx-background-color: #faf5ff !important;
+}
+
+.history-row-wholesale {
+    -fx-background-color: #fff1f2 !important;
+    /* Rose 50 or light red */
+}
+
+.history-row-wholesale:odd {
+    -fx-background-color: #fff5f5 !important;
 }
 
 /* Hides the empty table rows */
@@ -450,6 +558,32 @@ Label.header-title {
 /* =========================================
    7. UTILITIES
    ========================================= */
+.bold-label {
+    -fx-font-weight: 800;
+    -fx-text-fill: -fx-text-main;
+}
+
+.size-pill {
+    -fx-background-color: #F3F4F6;
+    -fx-text-fill: -fx-text-muted;
+    -fx-background-radius: 12;
+    -fx-padding: 2 10;
+    -fx-font-size: 11px;
+    -fx-font-weight: 600;
+}
+
+.amount-vibrant {
+    -fx-text-fill: #059669;
+    -fx-font-weight: 900;
+    -fx-font-size: 14px;
+}
+
+.sub-detail {
+    -fx-font-size: 10px;
+    -fx-text-fill: -fx-text-muted;
+    -fx-opacity: 0.8;
+}
+
 .separator-horizontal {
     -fx-background-color: -fx-color-border;
 }

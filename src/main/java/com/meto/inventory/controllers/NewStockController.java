@@ -8,6 +8,7 @@ import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 
 import java.time.LocalDate;
@@ -34,9 +35,9 @@ public class NewStockController implements DataManager.DataChangeListener {
     @FXML
     private Label totalAmountLabel;
     @FXML
-    private HBox qtyButtonsBox;
+    private FlowPane qtyButtonsBox;
     @FXML
-    private HBox unitButtonsBox;
+    private FlowPane unitButtonsBox;
     @FXML
     private Label supplierErrorLabel, itemErrorLabel, qtyErrorLabel, unitErrorLabel, priceErrorLabel;
     @FXML
@@ -159,12 +160,6 @@ public class NewStockController implements DataManager.DataChangeListener {
 
         // --- STEP 3: UNIT VALIDATION ---
         unitField.textProperty().addListener((obs, old, newVal) -> {
-            // If Unit changes manually or via button, clear Price to force recalculation
-            // Note: We don't clear if newVal is empty to avoid infinite loops
-            if (old != null && !old.isEmpty() && !newVal.equals(old)) {
-                priceField.clear();
-            }
-
             String countPattern = ".*\\d+.*(pc|pcs|doz|carton|box|sack|dozen|crate|box\\*10|box\\*12|box\\*20|box\\*24|box\\*72).*";
             if (newVal.toLowerCase().matches(countPattern)) {
                 setFlowLevel(3);
@@ -267,7 +262,7 @@ public class NewStockController implements DataManager.DataChangeListener {
         unitField.setDisable(level < 2);
         unitButtonsBox.setDisable(level < 2);
 
-        priceField.setDisable(level < 3);
+        priceField.setDisable(level < 2);
         addButton.setDisable(level < 3);
     }
 
@@ -281,16 +276,16 @@ public class NewStockController implements DataManager.DataChangeListener {
             if (lastPrice > 0) {
                 priceField.setText(String.format("%.2f", lastPrice));
 
-                // LOCK EVERYTHING TO PREVENT ERRORS
-                priceField.setEditable(false);
-                priceField.setMouseTransparent(true);
-                priceField.setStyle("-fx-background-color: #eeeeee; -fx-text-fill: #444444;");
+                // ALLOW MANUAL EDITS AS REQUESTED
+                priceField.setEditable(true);
+                priceField.setMouseTransparent(false);
+                priceField.setStyle("");
 
-                // DISABLE THE QUICK BUTTONS
-                qtyButtonsBox.setDisable(true);
-                qtyButtonsBox.setOpacity(0.5);
+                // KEEP QUICK BUTTONS ENABLED
+                qtyButtonsBox.setDisable(false);
+                qtyButtonsBox.setOpacity(1.0);
 
-                qtyErrorLabel.setText("* Record found: Manual edits locked");
+                qtyErrorLabel.setText("* Record found: Auto-filled price");
                 qtyErrorLabel.setVisible(true);
                 qtyErrorLabel.setStyle("-fx-text-fill: #2e7d32;"); // Success green
             } else {
@@ -338,28 +333,16 @@ public class NewStockController implements DataManager.DataChangeListener {
                     double totalAmount = count * multiplier * costPerPiece;
                     priceField.setText(String.format("%.2f", totalAmount));
 
-                    // Keep it locked if we are auto-calculating from existing records
-                    priceField.setEditable(false);
-                    priceField.setStyle("-fx-background-color: #e1f5fe; -fx-text-fill: #01579b;");
+                    // Keep it editable even if auto-calculating
+                    priceField.setEditable(true);
+                    priceField.setStyle("");
                 }
             }
         });
     }
 
     private double extractNumericValue(String text) {
-        if (text == null || text.isEmpty())
-            return 1.0;
-        try {
-            // This regex finds the first number in the string (e.g. "4 sacks" -> 4)
-            Pattern p = Pattern.compile("(\\d+(\\.\\d+)?)");
-            Matcher m = p.matcher(text);
-            if (m.find()) {
-                return Double.parseDouble(m.group(1));
-            }
-        } catch (Exception e) {
-            return 1.0;
-        }
-        return 1.0;
+        return dataManager.getDbHelper().extractNumericValue(text);
     }
 
     private void refreshDropdowns() {

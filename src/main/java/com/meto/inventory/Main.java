@@ -7,10 +7,13 @@ import javafx.scene.Scene;
 import javafx.stage.Stage;
 
 import javafx.scene.image.Image;
+import atlantafx.base.theme.PrimerLight;
 
 public class Main extends Application {
     @Override
     public void start(Stage primaryStage) throws Exception {
+        Application.setUserAgentStylesheet(new PrimerLight().getUserAgentStylesheet());
+
         com.meto.inventory.services.SupabaseService service = com.meto.inventory.services.SupabaseService.getInstance();
         String savedToken = service.loadSession();
 

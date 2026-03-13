@@ -59,21 +59,76 @@ public class HistoryController implements DataManager.DataChangeListener {
     private void setupTableColumns() {
         nameCol.setCellValueFactory(data -> data.getValue().nameProperty());
         itemCol.setCellValueFactory(data -> data.getValue().itemProperty());
+        itemCol.setCellFactory(col -> new TableCell<HistoryItem, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setGraphic(null);
+                    setText(null);
+                } else {
+                    Label label = new Label(item);
+                    label.getStyleClass().add("bold-label");
+                    setGraphic(label);
+                    setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+                }
+            }
+        });
+
         typeCol.setCellValueFactory(data -> data.getValue().typeUnitProperty());
         qtyCol.setCellValueFactory(data -> data.getValue().qtyProperty());
+        qtyCol.setCellFactory(col -> new TableCell<HistoryItem, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setGraphic(null);
+                    setText(null);
+                } else {
+                    Label label = new Label(item);
+                    label.getStyleClass().add("size-pill");
+                    setGraphic(label);
+                    setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+                }
+            }
+        });
+
         unitCol.setCellValueFactory(data -> data.getValue().unitProperty());
         amountCol.setCellValueFactory(data -> data.getValue().amountProperty());
+        amountCol.setCellFactory(col -> new TableCell<HistoryItem, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setGraphic(null);
+                    setText(null);
+                } else {
+                    Label label = new Label("UGX " + item);
+                    label.getStyleClass().add("amount-vibrant");
+                    setGraphic(label);
+                    setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+                }
+            }
+        });
+
         dateCol.setCellValueFactory(data -> data.getValue().dateProperty());
 
-        // Center all columns
-        centerColumn(nameCol);
-        centerColumn(itemCol);
-        centerColumn(qtyCol);
+        // Apply alignment classes for CSS header/cell alignment
+        nameCol.getStyleClass().add("col-left");
+        itemCol.getStyleClass().add("col-left");
+        qtyCol.getStyleClass().add("col-right");
+        unitCol.getStyleClass().add("col-center");
+        amountCol.getStyleClass().add("col-right");
+        dateCol.getStyleClass().add("col-right");
+
+        // Align remaining columns' data
+        leftAlignColumn(nameCol);
         centerColumn(unitCol);
-        centerColumn(amountCol);
-        centerColumn(dateCol);
+        rightAlignColumn(dateCol);
+        rightAlignColumn(qtyCol);
 
         // Custom Cell Factory for TYPE column (Badges + Centered)
+        typeCol.getStyleClass().add("col-center");
         typeCol.setCellFactory(column -> new TableCell<>() {
             @Override
             protected void updateItem(String item, boolean empty) {
@@ -98,6 +153,44 @@ public class HistoryController implements DataManager.DataChangeListener {
                 }
             }
         });
+
+        // Row Factory for background coloring
+        historyTable.setRowFactory(tv -> new TableRow<HistoryItem>() {
+            @Override
+            protected void updateItem(HistoryItem item, boolean empty) {
+                super.updateItem(item, empty);
+                if (item == null || empty) {
+                    getStyleClass().removeAll("history-row-new-stock", "history-row-retail", "history-row-wholesale");
+                } else {
+                    String type = item.getTypeUnit();
+                    getStyleClass().removeAll("history-row-new-stock", "history-row-retail", "history-row-wholesale");
+                    if (type != null) {
+                        if (type.equalsIgnoreCase("NEW STOCK")) {
+                            getStyleClass().add("history-row-new-stock");
+                        } else if (type.equalsIgnoreCase("RETAIL")) {
+                            getStyleClass().add("history-row-retail");
+                        } else if (type.equalsIgnoreCase("WHOLESALE")) {
+                            getStyleClass().add("history-row-wholesale");
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    private <T> void leftAlignColumn(TableColumn<HistoryItem, T> column) {
+        column.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(T item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    setText(item.toString());
+                    setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+                }
+            }
+        });
     }
 
     private <T> void centerColumn(TableColumn<HistoryItem, T> column) {
@@ -110,6 +203,21 @@ public class HistoryController implements DataManager.DataChangeListener {
                 } else {
                     setText(item.toString());
                     setAlignment(javafx.geometry.Pos.CENTER);
+                }
+            }
+        });
+    }
+
+    private <T> void rightAlignColumn(TableColumn<HistoryItem, T> column) {
+        column.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(T item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                } else {
+                    setText(item.toString());
+                    setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
                 }
             }
         });

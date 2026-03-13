@@ -220,19 +220,48 @@ public class DatabaseHelper {
         return count * getUnitMultiplier(unitCount, size);
     }
 
-    private String formatStockForDisplay(double totalBase, String size) {
-        if (size.toLowerCase().contains("kg")) {
+    private String formatStockForDisplay(double totalBase, String size, String bulkUnit) {
+        String sizeLower = size.toLowerCase();
+        String bulkLower = bulkUnit.toLowerCase();
+
+        if (sizeLower.contains("kg")) {
             double kgPerSack = extractNumericValue(size);
-            if (kgPerSack <= 0)
-                return String.format("%.2f kg", totalBase);
-            int sacks = (int) (totalBase / kgPerSack);
-            double remainingKg = totalBase % kgPerSack;
-            if (sacks > 0 && remainingKg > 0)
-                return String.format("%d Sacks, %.2f kg", sacks, remainingKg);
-            if (sacks > 0)
-                return String.format("%d Sacks", sacks);
-            return String.format("%.2f kg", remainingKg);
+            // Only use Sack logic if it's actually a bulk sack (>= 10kg)
+            if (kgPerSack >= 10.0) {
+                int sacks = (int) (totalBase / kgPerSack);
+                double remainingKg = totalBase % kgPerSack;
+                if (sacks > 0 && remainingKg > 0)
+                    return String.format("%d Sacks, %.2f kg", sacks, remainingKg);
+                if (sacks > 0)
+                    return String.format("%d Sacks", sacks);
+                return String.format("%.2f kg", remainingKg);
+            } else {
+                return String.format("%,.2f kg", totalBase);
+            }
         }
+
+        // --- BULK UNIT LOGIC (Boxes, Dozens, etc.) ---
+        // Use the actual unit it was added in (bulkUnit) to determine the multiplier
+        double multiplier = getUnitMultiplier(bulkUnit, size);
+        if (multiplier > 1.0) {
+            int bulkCount = (int) (totalBase / multiplier);
+            int remainder = (int) (totalBase % multiplier);
+
+            String unitName = "Boxes";
+            if (bulkLower.contains("doz") || bulkLower.contains("dozen"))
+                unitName = "Dozens";
+            else if (bulkLower.contains("carton"))
+                unitName = "Cartons";
+            else if (bulkLower.contains("crate"))
+                unitName = "Crates";
+
+            if (bulkCount > 0 && remainder > 0) {
+                return String.format("%d %s, %d pcs (of %.0f pcs)", bulkCount, unitName, remainder, multiplier);
+            } else if (bulkCount > 0) {
+                return String.format("%d %s (of %.0f pcs)", bulkCount, unitName, multiplier);
+            }
+        }
+
         // Use decimals for pieces if not a whole number
         if (totalBase % 1 == 0) {
             return String.format("%,.0f pcs", totalBase);
@@ -333,8 +362,8 @@ public class DatabaseHelper {
 
     public ObservableList<StockItem> getInStock() {
         ObservableList<StockItem> stockList = FXCollections.observableArrayList();
-        // Fetch directly from our numeric column
-        String sql = "SELECT item, quantity, available_pieces, price, supplier, date FROM stock ORDER BY item";
+        // Fetch unit column too!
+        String sql = "SELECT item, quantity, unit, available_pieces, price, supplier, date FROM stock ORDER BY item";
 
         try (Statement stmt = connection.createStatement();
                 ResultSet rs = stmt.executeQuery(sql)) {
@@ -342,11 +371,12 @@ public class DatabaseHelper {
                 double totalPieces = rs.getDouble("available_pieces");
                 double costPerPiece = rs.getDouble("price");
                 String itemSize = rs.getString("quantity");
+                String bulkUnit = rs.getString("unit");
 
                 stockList.add(new StockItem(
                         rs.getString("item"),
                         itemSize,
-                        formatStockForDisplay(totalPieces, itemSize), // This will now show "180 pcs" or "180.50 pcs"
+                        formatStockForDisplay(totalPieces, itemSize, bulkUnit),
                         String.format("%,.2f", costPerPiece),
                         String.format("%,.2f", totalPieces * costPerPiece),
                         rs.getString("supplier"),
@@ -383,7 +413,7 @@ public class DatabaseHelper {
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
                 double total = calculateTotalBaseStock(rs.getString("unit"), rs.getString("quantity"));
-                return formatStockForDisplay(total, rs.getString("quantity"));
+                return formatStockForDisplay(total, rs.getString("quantity"), rs.getString("unit"));
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -608,27 +638,23 @@ public class DatabaseHelper {
         else if (lowercaseText.contains("1/2"))
             fractionValue = 0.5;
 
-        // 2. Extract the whole number (the "2" in "2 1/2 kg")
-        String numbersOnly = lowercaseText
-                .replace("1/4", "")
-                .replace("1/2", "")
-                .replaceAll("[^0-9.]", "")
-                .trim();
+        // 2. Extract the FIRST whole number (e.g., the "12" in "12 box*12")
+        // Use regex to find the first sequence of digits and dots
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(\\d+\\.?\\d*)");
+        java.util.regex.Matcher matcher = pattern.matcher(lowercaseText.replace("1/4", "").replace("1/2", ""));
 
-        if (!numbersOnly.isEmpty()) {
+        if (matcher.find()) {
             try {
-                double wholeNumber = Double.parseDouble(numbersOnly);
-                // FIX: User intends "2 1/2 kg" to mean "2 UNITS of 1/2 kg" (2 * 0.5 = 1.0)
-                // NOT "2 and a half" (2.5)
+                double wholeNumber = Double.parseDouble(matcher.group(1));
                 if (fractionValue > 0) {
-                    return wholeNumber * fractionValue; // 2 * 0.5 = 1.0
+                    return wholeNumber * fractionValue;
                 }
                 return wholeNumber;
             } catch (NumberFormatException e) {
                 return fractionValue;
             }
         }
-        return fractionValue; // Return 0.25 or 0.5 if no leading number exists
+        return fractionValue;
     }
 
     public double getExistingPrice(String item, String size) {
@@ -662,6 +688,19 @@ public class DatabaseHelper {
         if (type.contains("sack") || (isBulkSack && type.contains("pc"))) {
             return sizeNum;
         }
+
+        // --- IMPROVED: Extract from * notation if present (e.g. box*12 -> 12) ---
+        if (type.contains("*")) {
+            try {
+                String afterStar = type.substring(type.lastIndexOf("*") + 1).trim();
+                double val = extractNumericValue(afterStar);
+                if (val > 0)
+                    return val;
+            } catch (Exception e) {
+                // fall through
+            }
+        }
+
         if (type.contains("half doz"))
             return 6.0;
 

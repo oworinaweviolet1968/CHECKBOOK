@@ -11,10 +11,16 @@ import java.io.IOException;
 
 public class MainController {
 
+    private static MainController instance;
+
     @FXML
     private Button navNewStock, navRetail, navHistory, navInshock;
     @FXML
     private StackPane contentPane;
+
+    public static MainController getInstance() {
+        return instance;
+    }
 
     private Node newStockView, retailView, historyView, inShockView;
 
@@ -23,6 +29,7 @@ public class MainController {
 
     @FXML
     public void initialize() throws IOException {
+        instance = this;
         // Load views
         newStockView = FXMLLoader.load(getClass().getResource("/com/meto/inventory/views/NewStock.fxml"));
         retailView = FXMLLoader.load(getClass().getResource("/com/meto/inventory/views/Retail.fxml"));
@@ -30,7 +37,7 @@ public class MainController {
         inShockView = FXMLLoader.load(getClass().getResource("/com/meto/inventory/views/Inshock.fxml"));
 
         // Set default view and default active button style
-        setView(newStockView, navNewStock);
+        setView(inShockView, navInshock);
 
         // Wire nav actions
         navNewStock.setOnAction(e -> setView(newStockView, navNewStock));
@@ -62,6 +69,23 @@ public class MainController {
         contentPane.getChildren().clear();
         contentPane.getChildren().add(node);
         updateNavStyles(activeBtn);
+    }
+
+    public void navigateTo(String viewName) {
+        switch (viewName.toLowerCase()) {
+            case "newstock":
+                setView(newStockView, navNewStock);
+                break;
+            case "retail":
+                setView(retailView, navRetail);
+                break;
+            case "history":
+                setView(historyView, navHistory);
+                break;
+            case "inshock":
+                setView(inShockView, navInshock);
+                break;
+        }
     }
 
     private void updateNavStyles(Button selectedBtn) {

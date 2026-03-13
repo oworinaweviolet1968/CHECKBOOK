@@ -257,7 +257,7 @@ public class SalesController implements DataManager.DataChangeListener {
         if (weightButtonsBox != null)
             weightButtonsBox.setDisable(!unitEnabled);
 
-        priceField.setDisable(level < 4);
+        priceField.setDisable(level < 3);
         addButton.setDisable(level < 5);
     }
 

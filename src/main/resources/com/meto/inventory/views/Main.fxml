@@ -17,13 +17,20 @@
             </padding>
             <children>
                 <!-- Logo / Header Area -->
-                <Label text="METO IMS" styleClass="header-title">
+                <VBox spacing="4" alignment="CENTER_LEFT">
                     <padding>
-                        <Insets bottom="30" left="10"/>
+                        <Insets bottom="30" left="10" top="10"/>
                     </padding>
-                </Label>
+                    <Label text="METO IMS" style="-fx-font-size: 20px; -fx-font-weight: 900; -fx-text-fill: #111827;"/>
+                    <Label text="Inventory Management System" style="-fx-font-size: 11px; -fx-text-fill: #9CA3AF;"/>
+                </VBox>
 
                 <!-- Navigation Links -->
+                <Button fx:id="navInshock" text="In-Stock Inventory" styleClass="nav-button" maxWidth="Infinity">
+                     <graphic>
+                         <Region styleClass="icon, icon-check"/>
+                     </graphic>
+                </Button>
                 <Button fx:id="navNewStock" text="New Stock" styleClass="nav-button" maxWidth="Infinity">
                     <graphic>
                         <Region styleClass="icon, icon-box"/>
@@ -37,11 +44,6 @@
                 <Button fx:id="navHistory" text="History" styleClass="nav-button" maxWidth="Infinity">
                      <graphic>
                          <Region styleClass="icon, icon-clock"/>
-                    </graphic>
-                </Button>
-                <Button fx:id="navInshock" text="In-Stock Inventory" styleClass="nav-button" maxWidth="Infinity">
-                     <graphic>
-                         <Region styleClass="icon, icon-check"/>
                     </graphic>
                 </Button>
                 

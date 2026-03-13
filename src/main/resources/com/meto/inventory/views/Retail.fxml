@@ -54,8 +54,14 @@
                         <ComboBox fx:id="qtyComboBox" promptText="Select size" maxWidth="Infinity"/>
                     </VBox>
 
-                    <!-- Quantity/Unit Input -->
+                    <!-- Price Input -->
                     <VBox spacing="6" GridPane.rowIndex="1" GridPane.columnIndex="0" GridPane.columnSpan="2">
+                        <Label text="Price (UGX)"/>
+                        <TextField fx:id="priceField" promptText="0"/>
+                    </VBox>
+                    
+                    <!-- Quantity/Unit Input -->
+                    <VBox spacing="6" GridPane.rowIndex="1" GridPane.columnIndex="2">
                         <Label text="Quantity / Unit"/>
                         <TextField fx:id="unitField" promptText="e.g., 10 pcs"/>
                         <Label fx:id="unitErrorLabel" text="* Missing units" style="-fx-text-fill: -fx-red; -fx-font-size: 11px;" visible="false" managed="false"/>
@@ -80,12 +86,6 @@
                             </FlowPane>
                         </VBox>
                     </VBox>
-
-                    <!-- Price Input -->
-                    <VBox spacing="6" GridPane.rowIndex="1" GridPane.columnIndex="2">
-                        <Label text="Price (UGX)"/>
-                        <TextField fx:id="priceField" promptText="0"/>
-                    </VBox>
                     
                     <!-- Add Button -->
                     <VBox alignment="BOTTOM_RIGHT" spacing="6" GridPane.rowIndex="1" GridPane.columnIndex="3">
@@ -106,10 +106,10 @@
             <TableView fx:id="salesTable" VBox.vgrow="ALWAYS">
                 <columns>
                     <TableColumn fx:id="itemCol" text="Item Name" prefWidth="200"/>
-                    <TableColumn fx:id="qtyCol" text="Size" prefWidth="100"/>
-                    <TableColumn fx:id="unitCol" text="Unit" prefWidth="100"/>
                     <TableColumn fx:id="priceCol" text="Price" prefWidth="120"/>
                     <TableColumn fx:id="amountCol" text="Amount" prefWidth="150"/>
+                    <TableColumn fx:id="qtyCol" text="Size" prefWidth="100"/>
+                    <TableColumn fx:id="unitCol" text="Unit" prefWidth="100"/>
                     <TableColumn fx:id="deleteCol" text="Action" prefWidth="80"/>
                 </columns>
                 <columnResizePolicy>
