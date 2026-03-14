@@ -14,7 +14,7 @@ import java.util.function.UnaryOperator;
 public class SalesController implements DataManager.DataChangeListener {
 
     @FXML
-    private TextField customerNameField;
+    private ComboBox<String> customerNameComboBox;
     @FXML
     private ComboBox<String> itemsComboBox;
     @FXML
@@ -93,7 +93,7 @@ public class SalesController implements DataManager.DataChangeListener {
             }
             return null; // Block otherwise
         };
-        customerNameField.setTextFormatter(new TextFormatter<>(filter));
+        customerNameComboBox.getEditor().setTextFormatter(new TextFormatter<>(filter));
 
         // --- INPUT VALIDATION FIX ---
 
@@ -117,7 +117,8 @@ public class SalesController implements DataManager.DataChangeListener {
             // 3. Strict Button-Only Logic:
             // We strip out all allowed numeric/symbol chars.
             // The remaining text (if any) MUST be one of the known units EXACTLY.
-            String textContent = newText.replaceAll("[0-9 ./-]", "").trim();
+            // Note: including '*' in removal so 'Box * 10' becomes 'box'
+            String textContent = newText.replaceAll("[0-9 ./*-]", "").trim();
 
             if (textContent.isEmpty())
                 return change; // Just numbers is fine
@@ -144,7 +145,7 @@ public class SalesController implements DataManager.DataChangeListener {
 
         // --- FLOW CONTROL LISTENERS ---
 
-        customerNameField.textProperty().addListener((obs, oldVal, newVal) -> {
+        customerNameComboBox.getEditor().textProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal.trim().isEmpty()) {
                 setFlowLevel(0);
                 itemsComboBox.setValue(null);
@@ -152,10 +153,16 @@ public class SalesController implements DataManager.DataChangeListener {
                 setFlowLevel(1);
             }
         });
+        // Also react if user picks from the dropdown
+        customerNameComboBox.valueProperty().addListener((obs, old, newVal) -> {
+            if (newVal != null && !newVal.trim().isEmpty()) {
+                setFlowLevel(1);
+            }
+        });
 
         itemsComboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal == null) {
-                if (!customerNameField.getText().trim().isEmpty())
+                if (!customerNameComboBox.getEditor().getText().trim().isEmpty())
                     setFlowLevel(1);
                 qtyComboBox.setValue(null);
             } else {
@@ -188,7 +195,12 @@ public class SalesController implements DataManager.DataChangeListener {
                     setFlowLevel(3);
                 priceField.clear();
             } else {
-                setFlowLevel(4);
+                // Only downgrade level if price is empty
+                if (priceField.getText().trim().isEmpty()) {
+                    setFlowLevel(4);
+                } else {
+                    setFlowLevel(5);
+                }
             }
         });
 
@@ -299,6 +311,12 @@ public class SalesController implements DataManager.DataChangeListener {
         ObservableList<String> availableItems = dataManager.getDbHelper().getAvailableItems();
         itemsComboBox.setItems(availableItems);
         qtyComboBox.setItems(FXCollections.observableArrayList());
+
+        // Populate customer dropdown: Walk-in Customer first, then past customers
+        ObservableList<String> customers = FXCollections.observableArrayList();
+        customers.add("Walk-in Customer");
+        customers.addAll(dataManager.getDbHelper().getDistinctCustomers());
+        customerNameComboBox.setItems(customers);
     }
 
     private void refreshSizesDropdown(String itemName) {
@@ -344,35 +362,55 @@ public class SalesController implements DataManager.DataChangeListener {
         addButton.setOnAction(e -> addItem());
         saveButton.setOnAction(e -> saveSale());
 
+        // Collect all weight buttons and unit buttons for selection tracking
+        java.util.List<Button> wBtns = java.util.List.of(quarterKgBtn, halfKgBtn, kgBtn, sackBtn);
+        java.util.List<Button> uBtns = java.util.List.of(pcsBtn, box10Btn, box12Btn, box20Btn, box24Btn, box72Btn, crateBtn, sackUnitBtn);
+
         quarterKgBtn.setOnAction(e -> {
-            String existingNumbers = unitField.getText().replaceAll("[^0-9.]", "").trim();
-            unitField.setText(existingNumbers.isEmpty() ? "1/4 kg" : existingNumbers + " 1/4 kg");
+            selectQuickBtn(quarterKgBtn, wBtns);
+            String n = unitField.getText().replaceAll("[^0-9.]", "").trim();
+            unitField.setText(n.isEmpty() ? "1/4 kg" : n + " 1/4 kg");
         });
 
         halfKgBtn.setOnAction(e -> {
-            String existingNumbers = unitField.getText().replaceAll("[^0-9.]", "").trim();
-            unitField.setText(existingNumbers.isEmpty() ? "1/2 kg" : existingNumbers + " 1/2 kg");
+            selectQuickBtn(halfKgBtn, wBtns);
+            String n = unitField.getText().replaceAll("[^0-9.]", "").trim();
+            unitField.setText(n.isEmpty() ? "1/2 kg" : n + " 1/2 kg");
         });
 
         kgBtn.setOnAction(e -> {
-            String existingNumbers = unitField.getText().replaceAll("[^0-9.]", "").trim();
-            unitField.setText(existingNumbers.isEmpty() ? "1 kg" : existingNumbers + " kg");
+            selectQuickBtn(kgBtn, wBtns);
+            String n = unitField.getText().replaceAll("[^0-9.]", "").trim();
+            unitField.setText(n.isEmpty() ? "1 kg" : n + " kg");
         });
 
         sackBtn.setOnAction(e -> {
-            String existingNumbers = unitField.getText().replaceAll("[^0-9.]", "").trim();
-            unitField.setText(existingNumbers.isEmpty() ? "1 sack" : existingNumbers + " sack");
+            selectQuickBtn(sackBtn, wBtns);
+            String n = unitField.getText().replaceAll("[^0-9.]", "").trim();
+            unitField.setText(n.isEmpty() ? "1 sack" : n + " sack");
         });
 
         // UNIT buttons (packaging units)
-        pcsBtn.setOnAction(e -> appendToUnit("pcs"));
-        box10Btn.setOnAction(e -> appendToUnit("Box * 10"));
-        box12Btn.setOnAction(e -> appendToUnit("Box * 12"));
-        box20Btn.setOnAction(e -> appendToUnit("Box * 20"));
-        box24Btn.setOnAction(e -> appendToUnit("Box * 24"));
-        box72Btn.setOnAction(e -> appendToUnit("Box * 72"));
-        crateBtn.setOnAction(event -> appendToUnit("Crate * 25"));
-        sackUnitBtn.setOnAction(e -> appendToUnit("Sack"));
+        pcsBtn.setOnAction(e    -> { selectQuickBtn(pcsBtn,    uBtns); appendToUnit("pcs"); });
+        box10Btn.setOnAction(e  -> { selectQuickBtn(box10Btn,  uBtns); appendToUnit("Box * 10"); });
+        box12Btn.setOnAction(e  -> { selectQuickBtn(box12Btn,  uBtns); appendToUnit("Box * 12"); });
+        box20Btn.setOnAction(e  -> { selectQuickBtn(box20Btn,  uBtns); appendToUnit("Box * 20"); });
+        box24Btn.setOnAction(e  -> { selectQuickBtn(box24Btn,  uBtns); appendToUnit("Box * 24"); });
+        box72Btn.setOnAction(e  -> { selectQuickBtn(box72Btn,  uBtns); appendToUnit("Box * 72"); });
+        crateBtn.setOnAction(e  -> { selectQuickBtn(crateBtn,  uBtns); appendToUnit("Crate * 25"); });
+        sackUnitBtn.setOnAction(e -> { selectQuickBtn(sackUnitBtn, uBtns); appendToUnit("Sack"); });
+    }
+
+    /** Marks btn as selected (green fill) and deselects all others in the group. */
+    private void selectQuickBtn(Button btn, java.util.List<Button> group) {
+        for (Button b : group) {
+            b.getStyleClass().remove("pill-quick-selected");
+            if (!b.getStyleClass().contains("pill-quick"))
+                b.getStyleClass().add("pill-quick");
+        }
+        btn.getStyleClass().remove("pill-quick");
+        if (!btn.getStyleClass().contains("pill-quick-selected"))
+            btn.getStyleClass().add("pill-quick-selected");
     }
 
     private void appendToUnit(String unit) {
@@ -506,7 +544,9 @@ public class SalesController implements DataManager.DataChangeListener {
     }
 
     private void saveSale() {
-        String customer = customerNameField.getText().trim();
+        String customer = customerNameComboBox.getEditor().getText().trim();
+        if (customer.isEmpty() && customerNameComboBox.getValue() != null)
+            customer = customerNameComboBox.getValue().trim();
         if (customer.isEmpty() || items.isEmpty()) {
             showAlert("Customer name and items required");
             return;
@@ -533,7 +573,8 @@ public class SalesController implements DataManager.DataChangeListener {
 
         showAlert("Sale saved successfully! Stock updated.");
         items.clear();
-        customerNameField.clear();
+        customerNameComboBox.getEditor().clear();
+        customerNameComboBox.setValue(null);
         itemsComboBox.setValue(null);
         qtyComboBox.setValue(null);
         unitField.clear();
@@ -580,8 +621,8 @@ public class SalesController implements DataManager.DataChangeListener {
     }
 
     private boolean isValidExactUnit(String text) {
-        String[] allowed = { "kg", "pcs", "sack", "doz", "dozen", "box*10", "box*12", "box*20", "box*24", "box*72",
-                "carton", "crate", "ml", "l", "halfdoz" };
+        String[] allowed = { "kg", "pcs", "sack", "doz", "dozen", "box",
+                "carton", "crate", "ml", "l", "halfdoz", "inch" };
         for (String unit : allowed) {
             if (text.equals(unit))
                 return true;

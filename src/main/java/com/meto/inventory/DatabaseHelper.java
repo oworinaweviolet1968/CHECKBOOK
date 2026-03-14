@@ -223,7 +223,31 @@ public class DatabaseHelper {
     private String formatStockForDisplay(double totalBase, String size, String bulkUnit) {
         String sizeLower = size.toLowerCase();
         String bulkLower = bulkUnit.toLowerCase();
+        double multiplier = getUnitMultiplier(bulkUnit, size);
 
+        // 1. PRIORITIZE SPECIFIC BULK UNITS (Boxes, Dozens, etc.)
+        // This ensures "1kg Sugar" in "Box * 10" shows as Boxes, not just kg.
+        if (multiplier > 1.0 && (bulkLower.contains("box") || bulkLower.contains("doz") || bulkLower.contains("dozen")
+                || bulkLower.contains("carton") || bulkLower.contains("crate") || bulkLower.contains("half doz"))) {
+            int bulkCount = (int) (totalBase / multiplier);
+            int remainder = (int) (totalBase % multiplier);
+
+            String unitName = "Boxes";
+            if (bulkLower.contains("doz") || bulkLower.contains("dozen") || bulkLower.contains("half doz"))
+                unitName = "Dozens";
+            else if (bulkLower.contains("carton"))
+                unitName = "Cartons";
+            else if (bulkLower.contains("crate"))
+                unitName = "Crates";
+
+            if (bulkCount > 0 && remainder > 0) {
+                return String.format("%d %s, %d pcs (of %.0f pcs)", bulkCount, unitName, remainder, multiplier);
+            } else if (bulkCount > 0) {
+                return String.format("%d %s (of %.0f pcs)", bulkCount, unitName, multiplier);
+            }
+        }
+
+        // 2. WEIGHT-BASED LOGIC (Sacks or kg)
         if (sizeLower.contains("kg")) {
             double kgPerSack = extractNumericValue(size);
             // Only use Sack logic if it's actually a bulk sack (>= 10kg)
@@ -240,29 +264,7 @@ public class DatabaseHelper {
             }
         }
 
-        // --- BULK UNIT LOGIC (Boxes, Dozens, etc.) ---
-        // Use the actual unit it was added in (bulkUnit) to determine the multiplier
-        double multiplier = getUnitMultiplier(bulkUnit, size);
-        if (multiplier > 1.0) {
-            int bulkCount = (int) (totalBase / multiplier);
-            int remainder = (int) (totalBase % multiplier);
-
-            String unitName = "Boxes";
-            if (bulkLower.contains("doz") || bulkLower.contains("dozen"))
-                unitName = "Dozens";
-            else if (bulkLower.contains("carton"))
-                unitName = "Cartons";
-            else if (bulkLower.contains("crate"))
-                unitName = "Crates";
-
-            if (bulkCount > 0 && remainder > 0) {
-                return String.format("%d %s, %d pcs (of %.0f pcs)", bulkCount, unitName, remainder, multiplier);
-            } else if (bulkCount > 0) {
-                return String.format("%d %s (of %.0f pcs)", bulkCount, unitName, multiplier);
-            }
-        }
-
-        // Use decimals for pieces if not a whole number
+        // 3. DEFAULT PIECES LOGIC
         if (totalBase % 1 == 0) {
             return String.format("%,.0f pcs", totalBase);
         } else {
@@ -790,6 +792,36 @@ public class DatabaseHelper {
             e.printStackTrace();
         }
         return sizes;
+    }
+
+    public ObservableList<String> getDistinctSuppliers() {
+        ObservableList<String> names = FXCollections.observableArrayList();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT DISTINCT supplier FROM stock ORDER BY supplier")) {
+            while (rs.next()) {
+                String s = rs.getString("supplier");
+                if (s != null && !s.isBlank()) names.add(s);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return names;
+    }
+
+    public ObservableList<String> getDistinctCustomers() {
+        ObservableList<String> names = FXCollections.observableArrayList();
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(
+                     "SELECT DISTINCT customer FROM sales WHERE type != 'NEW STOCK' ORDER BY customer")) {
+            while (rs.next()) {
+                String c = rs.getString("customer");
+                if (c != null && !c.isBlank() && !c.equalsIgnoreCase("Walk-in Customer"))
+                    names.add(c);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return names;
     }
 
     public void close() {

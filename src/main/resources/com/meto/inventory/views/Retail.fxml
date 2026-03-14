@@ -39,7 +39,7 @@
                     <!-- Customer Name -->
                     <VBox spacing="6" GridPane.rowIndex="0" GridPane.columnIndex="0" GridPane.columnSpan="2">
                         <Label text="Customer Name"/>
-                        <TextField fx:id="customerNameField" promptText="Enter customer name..."/>
+                        <ComboBox fx:id="customerNameComboBox" editable="true" promptText="Enter customer name..." maxWidth="Infinity"/>
                     </VBox>
 
                     <!-- Item Selection -->
@@ -69,20 +69,20 @@
                         <!-- Quick Buttons Area -->
                         <VBox spacing="8">
                             <FlowPane fx:id="weightButtonsBox" hgap="8" vgap="8">
-                                <Button fx:id="quarterKgBtn" text="1/4 kg" styleClass="pill, pill-indigo"/>
-                                <Button fx:id="halfKgBtn" text="1/2 kg" styleClass="pill, pill-indigo"/>
-                                <Button fx:id="kgBtn" text="Kg" styleClass="pill, pill-indigo"/>
-                                <Button fx:id="sackBtn" text="sack" styleClass="pill, pill-purple"/>
+                                <Button fx:id="quarterKgBtn" text="1/4 kg" styleClass="pill-quick"/>
+                                <Button fx:id="halfKgBtn"    text="1/2 kg" styleClass="pill-quick"/>
+                                <Button fx:id="kgBtn"        text="Kg"     styleClass="pill-quick"/>
+                                <Button fx:id="sackBtn"      text="sack"   styleClass="pill-quick"/>
                             </FlowPane>
                             <FlowPane fx:id="unitButtonsBox" hgap="8" vgap="8">
-                                <Button fx:id="pcsBtn" text="pcs * 1" styleClass="pill, pill-blue"/>
-                                <Button fx:id="box10Btn" text="Box * 10" styleClass="pill, pill-pink"/>
-                                <Button fx:id="box12Btn" text="Box * 12" styleClass="pill, pill-pink"/>
-                                <Button fx:id="box20Btn" text="Box * 20" styleClass="pill, pill-pink"/>
-                                <Button fx:id="box24Btn" text="Box * 24" styleClass="pill, pill-pink"/>
-                                <Button fx:id="box72Btn" text="Box * 72" styleClass="pill, pill-pink"/>
-                                <Button fx:id="crateBtn" text="Crate * 25" styleClass="pill, pill-orange"/>
-                                <Button fx:id="sackUnitBtn" text="Sack" styleClass="pill, pill-purple"/>
+                                <Button fx:id="pcsBtn"      text="pcs * 1"    styleClass="pill-quick"/>
+                                <Button fx:id="box10Btn"    text="Box * 10"   styleClass="pill-quick"/>
+                                <Button fx:id="box12Btn"    text="Box * 12"   styleClass="pill-quick"/>
+                                <Button fx:id="box20Btn"    text="Box * 20"   styleClass="pill-quick"/>
+                                <Button fx:id="box24Btn"    text="Box * 24"   styleClass="pill-quick"/>
+                                <Button fx:id="box72Btn"    text="Box * 72"   styleClass="pill-quick"/>
+                                <Button fx:id="crateBtn"    text="Crate * 25" styleClass="pill-quick"/>
+                                <Button fx:id="sackUnitBtn" text="Sack"       styleClass="pill-quick"/>
                             </FlowPane>
                         </VBox>
                     </VBox>

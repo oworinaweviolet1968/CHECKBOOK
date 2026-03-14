@@ -35,7 +35,7 @@
                                     <!-- Supplier -->
                                     <VBox spacing="6">
                                         <Label text="Supplier Name" style="-fx-font-weight: 600; -fx-font-size: 12px;"/>
-                                        <TextField fx:id="supplierNameField" promptText="e.g. Global Supplies Ltd" styleClass="text-field-modern"/>
+                                        <ComboBox fx:id="supplierNameComboBox" editable="true" maxWidth="Infinity" promptText="e.g. Global Supplies Ltd"/>
                                         <Label fx:id="supplierErrorLabel" text="* Required" visible="false" managed="false" style="-fx-text-fill: -fx-red; -fx-font-size: 11px;"/>
                                     </VBox>
                                     
@@ -76,7 +76,7 @@
                                     <Region VBox.vgrow="ALWAYS" />
                                     
                                     <HBox spacing="12" alignment="CENTER_RIGHT">
-                                        <Button text="Clear" styleClass="pill" style="-fx-background-color: #F9FAFB; -fx-border-color: #E5E7EB;"/>
+                                        <Button fx:id="clearButton" text="Clear" onAction="#onClear" styleClass="pill" style="-fx-background-color: #F9FAFB; -fx-border-color: #E5E7EB;"/>
                                         <Button fx:id="addButton" text="+ Add to List" style="-fx-background-color: #111827; -fx-text-fill: white; -fx-background-radius: 8; -fx-padding: 8 20; -fx-font-weight: 700;"/>
                                     </HBox>
                                 </VBox>
@@ -95,17 +95,15 @@
                                 
                                 <TableView fx:id="newStockTable" VBox.vgrow="ALWAYS">
                                     <columns>
-                                        <TableColumn text="Item" prefWidth="180">
-                                            <cellValueFactory><PropertyValueFactory property="items"/></cellValueFactory>
-                                        </TableColumn>
+                                        <TableColumn fx:id="previewItemCol" text="Item" prefWidth="200"/>
                                         <TableColumn text="Price" prefWidth="100">
                                             <cellValueFactory><PropertyValueFactory property="price"/></cellValueFactory>
                                         </TableColumn>
-                                        <TableColumn text="Total" prefWidth="100">
+                                        <TableColumn fx:id="previewTotalCol" text="Total" prefWidth="100">
                                             <cellValueFactory><PropertyValueFactory property="amount"/></cellValueFactory>
                                         </TableColumn>
-                                        <TableColumn text="Qty" prefWidth="80">
-                                            <cellValueFactory><PropertyValueFactory property="qty"/></cellValueFactory>
+                                        <TableColumn text="Unit" prefWidth="80">
+                                            <cellValueFactory><PropertyValueFactory property="unit"/></cellValueFactory>
                                         </TableColumn>
                                         <TableColumn fx:id="actionColumn" text="Action" prefWidth="80"/>
                                     </columns>

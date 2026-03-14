@@ -252,6 +252,44 @@ Label.header-title {
     -fx-background-color: #E5E7EB;
 }
 
+/* Quick-selection buttons: green border by default */
+.pill-quick {
+    -fx-background-color: #F0FDF4;
+    -fx-text-fill: #059669;
+    -fx-border-color: #10B981;
+    -fx-border-radius: 20;
+    -fx-border-width: 1.5;
+    -fx-background-radius: 20;
+    -fx-padding: 6 12;
+    -fx-font-size: 12px;
+    -fx-font-weight: 600;
+}
+
+.pill-quick:hover {
+    -fx-background-color: #D1FAE5;
+    -fx-effect: dropshadow(gaussian, rgba(16,185,129,0.25), 6, 0, 0, 0);
+}
+
+/* Active / selected state: solid green fill */
+.pill-quick-selected {
+    -fx-background-color: #10B981;
+    -fx-text-fill: white;
+    -fx-border-color: #059669;
+    -fx-border-radius: 20;
+    -fx-border-width: 1.5;
+    -fx-background-radius: 20;
+    -fx-padding: 6 12;
+    -fx-font-size: 12px;
+    -fx-font-weight: 700;
+    -fx-effect: dropshadow(gaussian, rgba(16,185,129,0.4), 8, 0, 0, 0);
+}
+
+.pill-quick-selected:hover {
+    -fx-background-color: #059669;
+    -fx-effect: dropshadow(gaussian, rgba(5,150,105,0.5), 8, 0, 0, 0);
+}
+
+
 /* Colorful Pills */
 .pill-indigo {
     -fx-background-color: #E0E7FF;

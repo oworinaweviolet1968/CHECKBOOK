@@ -19,7 +19,7 @@ import java.util.regex.Pattern;
 public class NewStockController implements DataManager.DataChangeListener {
 
     @FXML
-    private TextField supplierNameField;
+    private ComboBox<String> supplierNameComboBox;
     @FXML
     private TextField unitField;
     @FXML
@@ -33,7 +33,11 @@ public class NewStockController implements DataManager.DataChangeListener {
     @FXML
     private TableColumn<StockItem, Void> actionColumn;
     @FXML
+    private TableColumn<StockItem, String> previewItemCol, previewTotalCol;
+    @FXML
     private Label totalAmountLabel;
+    @FXML
+    private Button clearButton;
     @FXML
     private FlowPane qtyButtonsBox;
     @FXML
@@ -80,7 +84,7 @@ public class NewStockController implements DataManager.DataChangeListener {
             }
             return null;
         };
-        supplierNameField.setTextFormatter(new TextFormatter<>(filter));
+        supplierNameComboBox.getEditor().setTextFormatter(new TextFormatter<>(filter));
         itemsComboBox.getEditor().setTextFormatter(new TextFormatter<>(filter));
         // Force numbers only while typing, but allow the buttons to append the text
         unitField.addEventFilter(KeyEvent.KEY_TYPED, event -> {
@@ -276,10 +280,10 @@ public class NewStockController implements DataManager.DataChangeListener {
             if (lastPrice > 0) {
                 priceField.setText(String.format("%.2f", lastPrice));
 
-                // ALLOW MANUAL EDITS AS REQUESTED
-                priceField.setEditable(true);
-                priceField.setMouseTransparent(false);
-                priceField.setStyle("");
+                // LOCK FIELD TO PREVENT EDITS ON RECORDS
+                priceField.setEditable(false);
+                priceField.setMouseTransparent(true);
+                priceField.setStyle("-fx-background-color: #F3F4F6; -fx-text-fill: #6B7280;"); // Greyed out look
 
                 // KEEP QUICK BUTTONS ENABLED
                 qtyButtonsBox.setDisable(false);
@@ -302,6 +306,54 @@ public class NewStockController implements DataManager.DataChangeListener {
     }
 
     private void setupTableColumns() {
+        // Item column: same VBox design as Today's Sales Log
+        previewItemCol.setCellValueFactory(data -> data.getValue().itemsProperty());
+        previewItemCol.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null || getTableRow() == null || getTableRow().getItem() == null) {
+                    setGraphic(null);
+                    setText(null);
+                } else {
+                    StockItem si = getTableRow().getItem();
+                    javafx.scene.layout.VBox box = new javafx.scene.layout.VBox(2);
+
+                    javafx.scene.layout.HBox nameBox = new javafx.scene.layout.HBox(6);
+                    nameBox.setAlignment(javafx.geometry.Pos.BOTTOM_LEFT);
+
+                    Label nameLabel = new Label(item);
+                    nameLabel.getStyleClass().add("bold-label");
+
+                    Label sizeLabel = new Label(si.getQty() != null ? si.getQty() : "");
+                    sizeLabel.setStyle("-fx-text-fill: -fx-text-muted; -fx-font-size: 11px;");
+
+                    nameBox.getChildren().addAll(nameLabel, sizeLabel);
+                    box.getChildren().add(nameBox);
+                    box.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+                    setGraphic(box);
+                    setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+                }
+            }
+        });
+
+        // Total column: green text
+        previewTotalCol.setCellFactory(col -> new TableCell<StockItem, String>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setGraphic(null);
+                } else {
+                    setText(item);
+                    setStyle("-fx-text-fill: #10B981; -fx-font-weight: bold;"); // Green
+                    setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+                }
+            }
+        });
+
+        // Delete button column
         actionColumn.setCellFactory(col -> new TableCell<>() {
             private final Button deleteButton = new Button("Delete");
             {
@@ -333,9 +385,9 @@ public class NewStockController implements DataManager.DataChangeListener {
                     double totalAmount = count * multiplier * costPerPiece;
                     priceField.setText(String.format("%.2f", totalAmount));
 
-                    // Keep it editable even if auto-calculating
-                    priceField.setEditable(true);
-                    priceField.setStyle("");
+                    // Lock it for auto-calculated prices
+                    priceField.setEditable(false);
+                    priceField.setStyle("-fx-background-color: #F3F4F6; -fx-text-fill: #6B7280;");
                 }
             }
         });
@@ -348,16 +400,22 @@ public class NewStockController implements DataManager.DataChangeListener {
     private void refreshDropdowns() {
         ObservableList<String> availableItems = dataManager.getDbHelper().getAvailableItems();
         itemsComboBox.setItems(availableItems);
-        // Optional: If you use a filtered list or search, reset the editor
         itemsComboBox.getEditor().clear();
+
+        // Populate supplier dropdown from past stock entries
+        ObservableList<String> suppliers = dataManager.getDbHelper().getDistinctSuppliers();
+        supplierNameComboBox.setItems(suppliers);
     }
 
     private void createQtyQuickButtons() {
         String[] quick = { "None", "g", "kg", "ml", "l", "inch", "50kg", "25kg", "10kg" };
         for (String q : quick) {
             Button b = new Button(q);
-            b.getStyleClass().add("pill");
-            b.setOnAction(evt -> appendUnitToQty(q));
+            b.getStyleClass().add("pill-quick");
+            b.setOnAction(evt -> {
+                selectQuickButton(b, qtyButtonsMap);
+                appendUnitToQty(q);
+            });
             qtyButtonsBox.getChildren().add(b);
             qtyButtonsMap.put(q, b);
         }
@@ -402,8 +460,11 @@ public class NewStockController implements DataManager.DataChangeListener {
                 b.setGraphic(null);
             }
 
-            b.getStyleClass().add("pill");
-            b.setOnAction(evt -> appendUnit(unitKey));
+            b.getStyleClass().add("pill-quick");
+            b.setOnAction(evt -> {
+                selectQuickButton(b, unitButtonsMap);
+                appendUnit(unitKey);
+            });
 
             // STORE REFERENCE and add to box
             unitButtonsMap.put(unitKey, b);
@@ -442,6 +503,18 @@ public class NewStockController implements DataManager.DataChangeListener {
             showButton("pcs");
             showButton("box*12");
         }
+    }
+
+    /** Marks btn as selected (green fill) and deselects all others in the group. */
+    private void selectQuickButton(Button btn, java.util.Map<String, Button> group) {
+        for (Button b : group.values()) {
+            b.getStyleClass().remove("pill-quick-selected");
+            if (!b.getStyleClass().contains("pill-quick"))
+                b.getStyleClass().add("pill-quick");
+        }
+        btn.getStyleClass().remove("pill-quick");
+        if (!btn.getStyleClass().contains("pill-quick-selected"))
+            btn.getStyleClass().add("pill-quick-selected");
     }
 
     private void showButton(String key) {
@@ -535,7 +608,7 @@ public class NewStockController implements DataManager.DataChangeListener {
     }
 
     private void onAdd() {
-        supplierNameField.getText().trim();
+        supplierNameComboBox.getEditor().getText().trim();
         itemErrorLabel.setVisible(false);
         itemErrorLabel.setManaged(false);
         qtyErrorLabel.setVisible(false);
@@ -640,7 +713,7 @@ public class NewStockController implements DataManager.DataChangeListener {
 
     @FXML
     private void onSave() {
-        String supplier = supplierNameField.getText().trim();
+        String supplier = supplierNameComboBox.getEditor().getText().trim();
         if (supplier.isEmpty()) {
             supplierErrorLabel.setVisible(true);
             supplierErrorLabel.setManaged(true);
@@ -698,10 +771,38 @@ public class NewStockController implements DataManager.DataChangeListener {
 
         showAlert("Stock saved successfully!");
         items.clear(); // Clear the ObservableList
-        supplierNameField.clear();
+        supplierNameComboBox.getEditor().clear();
+        supplierNameComboBox.setValue(null);
         dataManager.notifyDataChanged();
         // --- refreshDropdown to show added item ---
         refreshDropdowns();
+    }
+
+    @FXML
+    private void onClear() {
+        supplierNameComboBox.getEditor().clear();
+        supplierNameComboBox.setValue(null);
+        itemsComboBox.getEditor().clear();
+        itemsComboBox.setValue(null);
+        qtyComboBox.getEditor().clear();
+        qtyComboBox.setValue(null);
+        unitField.clear();
+        priceField.clear();
+        priceField.setEditable(true);
+        priceField.setMouseTransparent(false);
+        priceField.setStyle("");
+        items.clear();
+        setFlowLevel(0);
+
+        // Reset error labels
+        supplierErrorLabel.setVisible(false);
+        itemErrorLabel.setVisible(false);
+        qtyErrorLabel.setVisible(false);
+        unitErrorLabel.setVisible(false);
+        priceErrorLabel.setVisible(false);
+
+        // Reset button states
+        updateQtyButtonsLockState(false);
     }
 
     private void showAlert(String text) {
