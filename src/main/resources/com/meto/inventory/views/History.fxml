@@ -32,6 +32,7 @@
                 <HBox spacing="10" alignment="CENTER_LEFT">
                     <Label text="Date:" style="-fx-font-size: 12px; -fx-font-weight: 700; -fx-text-fill: #374151;"/>
                     <DatePicker fx:id="datePicker" prefWidth="150" promptText="Filter by date"/>
+                    <Button fx:id="clearDateBtn" text="Clear" styleClass="pill"/>
                 </HBox>
 
                 <HBox spacing="10" alignment="CENTER_LEFT">

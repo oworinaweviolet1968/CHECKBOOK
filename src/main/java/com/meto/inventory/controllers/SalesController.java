@@ -335,8 +335,34 @@ public class SalesController implements DataManager.DataChangeListener {
         itemCol.setCellValueFactory(data -> data.getValue().itemsProperty());
         qtyCol.setCellValueFactory(data -> data.getValue().qtyProperty());
         unitCol.setCellValueFactory(data -> data.getValue().unitProperty());
+        unitCol.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("");
+                } else {
+                    setText(item);
+                    setStyle("-fx-text-fill: green; -fx-font-weight: bold;");
+                }
+            }
+        });
         priceCol.setCellValueFactory(data -> data.getValue().priceProperty());
         amountCol.setCellValueFactory(data -> data.getValue().amountProperty());
+        amountCol.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty || item == null) {
+                    setText(null);
+                    setStyle("");
+                } else {
+                    setText(item);
+                    setStyle("-fx-text-fill: green; -fx-font-weight: bold;");
+                }
+            }
+        });
 
         deleteCol.setCellFactory(param -> new TableCell<>() {
             private final Button deleteBtn = new Button("Delete");
@@ -364,7 +390,8 @@ public class SalesController implements DataManager.DataChangeListener {
 
         // Collect all weight buttons and unit buttons for selection tracking
         java.util.List<Button> wBtns = java.util.List.of(quarterKgBtn, halfKgBtn, kgBtn, sackBtn);
-        java.util.List<Button> uBtns = java.util.List.of(pcsBtn, box10Btn, box12Btn, box20Btn, box24Btn, box72Btn, crateBtn, sackUnitBtn);
+        java.util.List<Button> uBtns = java.util.List.of(pcsBtn, box10Btn, box12Btn, box20Btn, box24Btn, box72Btn,
+                crateBtn, sackUnitBtn);
 
         quarterKgBtn.setOnAction(e -> {
             selectQuickBtn(quarterKgBtn, wBtns);
@@ -391,14 +418,38 @@ public class SalesController implements DataManager.DataChangeListener {
         });
 
         // UNIT buttons (packaging units)
-        pcsBtn.setOnAction(e    -> { selectQuickBtn(pcsBtn,    uBtns); appendToUnit("pcs"); });
-        box10Btn.setOnAction(e  -> { selectQuickBtn(box10Btn,  uBtns); appendToUnit("Box * 10"); });
-        box12Btn.setOnAction(e  -> { selectQuickBtn(box12Btn,  uBtns); appendToUnit("Box * 12"); });
-        box20Btn.setOnAction(e  -> { selectQuickBtn(box20Btn,  uBtns); appendToUnit("Box * 20"); });
-        box24Btn.setOnAction(e  -> { selectQuickBtn(box24Btn,  uBtns); appendToUnit("Box * 24"); });
-        box72Btn.setOnAction(e  -> { selectQuickBtn(box72Btn,  uBtns); appendToUnit("Box * 72"); });
-        crateBtn.setOnAction(e  -> { selectQuickBtn(crateBtn,  uBtns); appendToUnit("Crate * 25"); });
-        sackUnitBtn.setOnAction(e -> { selectQuickBtn(sackUnitBtn, uBtns); appendToUnit("Sack"); });
+        pcsBtn.setOnAction(e -> {
+            selectQuickBtn(pcsBtn, uBtns);
+            appendToUnit("pcs");
+        });
+        box10Btn.setOnAction(e -> {
+            selectQuickBtn(box10Btn, uBtns);
+            appendToUnit("Box * 10");
+        });
+        box12Btn.setOnAction(e -> {
+            selectQuickBtn(box12Btn, uBtns);
+            appendToUnit("Box * 12");
+        });
+        box20Btn.setOnAction(e -> {
+            selectQuickBtn(box20Btn, uBtns);
+            appendToUnit("Box * 20");
+        });
+        box24Btn.setOnAction(e -> {
+            selectQuickBtn(box24Btn, uBtns);
+            appendToUnit("Box * 24");
+        });
+        box72Btn.setOnAction(e -> {
+            selectQuickBtn(box72Btn, uBtns);
+            appendToUnit("Box * 72");
+        });
+        crateBtn.setOnAction(e -> {
+            selectQuickBtn(crateBtn, uBtns);
+            appendToUnit("Crate * 25");
+        });
+        sackUnitBtn.setOnAction(e -> {
+            selectQuickBtn(sackUnitBtn, uBtns);
+            appendToUnit("Sack");
+        });
     }
 
     /** Marks btn as selected (green fill) and deselects all others in the group. */

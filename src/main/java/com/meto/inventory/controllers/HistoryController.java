@@ -15,6 +15,8 @@ public class HistoryController implements DataManager.DataChangeListener {
     @FXML
     private DatePicker datePicker;
     @FXML
+    private Button clearDateBtn;
+    @FXML
     private TableView<HistoryItem> historyTable;
     @FXML
     private TableColumn<HistoryItem, String> nameCol;
@@ -48,6 +50,7 @@ public class HistoryController implements DataManager.DataChangeListener {
         historyFilterCombo.setOnAction(e -> applyFilters());
         searchField.textProperty().addListener((obs, oldVal, newVal) -> applyFilters());
         datePicker.valueProperty().addListener((obs, oldVal, newVal) -> applyFilters());
+        clearDateBtn.setOnAction(e -> datePicker.setValue(null));
     }
 
     @Override

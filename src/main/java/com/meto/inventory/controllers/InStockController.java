@@ -43,6 +43,17 @@ public class InStockController implements DataManager.DataChangeListener {
         refreshBtn.setOnAction(e -> {
             loadInStock();
             loadDailySales();
+            
+            Thread syncThread = new Thread(() -> {
+                String dbName = dataManager.getCurrentDbName();
+                boolean hasData = dataManager.getDbHelper().hasData();
+                com.meto.inventory.services.SupabaseService.getInstance().syncOnLogin(dbName, hasData);
+                javafx.application.Platform.runLater(() -> {
+                    dataManager.notifyDataChanged();
+                });
+            });
+            syncThread.setDaemon(true);
+            syncThread.start();
         });
 
         searchField.textProperty().addListener((obs, oldVal, newVal) -> {

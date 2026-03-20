@@ -485,9 +485,19 @@ public class NewStockController implements DataManager.DataChangeListener {
 
         // 2. APPLY STRICT LOGIC
         if (s.contains("kg")) {
-            // WEIGHT-BASED: Only allow 'sack'
-            // This prevents "pcs" math errors for bulk goods
-            showButton("sack");
+            double numericValue = extractNumericValue(size);
+            if (numericValue <= 9.9) {
+                showButton("pcs");
+                showButton("half doz");
+                showButton("box*10");
+                showButton("box*12");
+                showButton("box*20");
+                showButton("box*24");
+                showButton("crate");
+                showButton("box*72");
+            } else {
+                showButton("sack");
+            }
         } else if (s.contains("ml") || s.contains("l") || s.contains("g") || s.contains("inch")) {
             // VOLUME-BASED or measurement-based
             showButton("pcs");

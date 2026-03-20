@@ -73,7 +73,7 @@
                              <Label fx:id="inventorySublabel" text="Smart Units • 0 items" style="-fx-font-size: 11px; -fx-text-fill: #9CA3AF;"/>
                         </VBox>
                         <Region HBox.hgrow="ALWAYS"/>
-                        <Button fx:id="refreshBtn" text="Refresh" styleClass="pill" style="-fx-background-color: #F9FAFB; -fx-border-color: #E5E7EB; -fx-border-radius: 6; -fx-padding: 4 12;"/>
+                        <Button fx:id="refreshBtn" text="Refresh" styleClass="pill"/>
                     </HBox>
     
                     <TableView fx:id="inStockTable" VBox.vgrow="ALWAYS" prefHeight="350">
