@@ -128,33 +128,7 @@ public class LoginController {
                             // ownershipPaid is already updated above.
                             // We need to re-fetch or just flow through. check backupEnabled below.
                         }
-                        // 1.5. Check Trial Period (30 Days)
-                        // If not paid, check if within 30 days of creation
-                        boolean isTrialActive = false;
-                        if (!ownershipPaid) {
-                            if (metadata.has("created_at")) {
-                                String createdAtStr = metadata.get("created_at").getAsString();
-                                try {
-                                    // Supabase format: 2026-02-01T20:23:49.519334+00:00
-                                    // Use OffsetDateTime or similar
-                                    java.time.OffsetDateTime createdAt = java.time.OffsetDateTime.parse(createdAtStr);
-                                    java.time.OffsetDateTime now = java.time.OffsetDateTime.now();
-                                    long daysDiff = java.time.temporal.ChronoUnit.DAYS.between(createdAt, now);
 
-                                    if (daysDiff < 30) {
-                                        isTrialActive = true;
-                                    } else {
-                                        System.out.println("Trial expired. Days since creation: " + daysDiff);
-                                    }
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                    // If parse fails, fail safe (block) or unsafe (allow)?
-                                    // Let's block to prevent abuse if format changes, but log it.
-                                }
-                            } else {
-                                // No created_at (legacy?), assume expired if not paid.
-                            }
-                        }
 
                         // 2. Backup Check
                         boolean backupEnabled = true; // Default Allow
@@ -171,14 +145,13 @@ public class LoginController {
                         }
 
                         final boolean finalOwnershipPaid = ownershipPaid;
-                        final boolean finalIsTrialActive = isTrialActive;
                         final boolean finalBackupEnabled = backupEnabled;
 
                         Platform.runLater(() -> {
-                            if (!finalOwnershipPaid && !finalIsTrialActive) {
+                            if (!finalOwnershipPaid) {
                                 setLoading(false);
-                                statusLabel.setText("Access Denied: Trial Expired.");
-                                showOwnershipAlert();
+                                statusLabel.setText("Access Denied: Payment Required.");
+                                showOwnershipAlert(email);
                                 return; // BLOCK LOGIN
                             }
 
@@ -186,7 +159,7 @@ public class LoginController {
                             com.meto.inventory.DataManager.getInstance().setBackupEnabled(finalBackupEnabled);
 
                             if (!finalBackupEnabled) {
-                                showBackupDisabledAlert();
+                                showBackupDisabledAlert(email);
                             }
 
                             statusLabel.setText("Login successful! Syncing data...");
@@ -354,70 +327,73 @@ public class LoginController {
         }).start();
     }
 
-    private void showOwnershipAlert() {
+    private void showOwnershipAlert(String email) {
         javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.WARNING);
         alert.setTitle("Account Expired");
         alert.setHeaderText("Ownership Payment Required");
-        alert.setContentText(
-                "Your trial has ended. Please purchase the app to continue using it.\n\nGo to meto.com/pay");
+        
+        javafx.scene.text.TextFlow textFlow = new javafx.scene.text.TextFlow();
+        javafx.scene.text.Text t1 = new javafx.scene.text.Text("Access has been denied. Please complete your payment to activate CheckBook Pro.\n\n");
+        javafx.scene.text.Text t2 = new javafx.scene.text.Text("Send 290,000 UGX to MTN Number:\n");
+        javafx.scene.text.Text t3 = new javafx.scene.text.Text("076 031 5703\n");
+        t3.setStyle("-fx-font-weight: bold; -fx-font-size: 16px;");
+        javafx.scene.text.Text t4 = new javafx.scene.text.Text("Name: Oworinawe Prince Beckham\n\n");
+        javafx.scene.text.Text t5 = new javafx.scene.text.Text("After sending, please WhatsApp your receipt footprint and your account email ");
+        javafx.scene.text.Text t6 = new javafx.scene.text.Text(email);
+        t6.setStyle("-fx-font-weight: bold;");
+        javafx.scene.text.Text t7 = new javafx.scene.text.Text(" to ");
+        javafx.scene.text.Text t8 = new javafx.scene.text.Text("076 031 5703");
+        t8.setStyle("-fx-font-weight: bold;");
+        javafx.scene.text.Text t9 = new javafx.scene.text.Text(" for immediate ownership activation.");
+        
+        textFlow.getChildren().addAll(t1, t2, t3, t4, t5, t6, t7, t8, t9);
+        alert.getDialogPane().setContent(textFlow);
 
-        javafx.scene.control.ButtonType payButton = new javafx.scene.control.ButtonType("Pay Now");
-        alert.getButtonTypes().add(payButton);
-
-        alert.showAndWait().ifPresent(response -> {
-            if (response == payButton) {
-                openPaymentLink();
-            }
-        });
+        javafx.scene.control.ButtonType closeBtn = new javafx.scene.control.ButtonType("Close", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        alert.getButtonTypes().setAll(closeBtn);
+        alert.showAndWait();
     }
 
-    private void showBackupDisabledAlert() {
-        javafx.scene.control.Alert alert = new javafx.scene.control.Alert(
-                javafx.scene.control.Alert.AlertType.INFORMATION);
+    private void showBackupDisabledAlert(String email) {
+        javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.INFORMATION);
         alert.setTitle("Backup Disabled");
         alert.setHeaderText("Monthly Backup Disabled");
-        alert.setContentText(
-                "Cloud backup is currently turned off. Your data is safe locally.\nTo enable it, please contact support or subscribe at meto.com/subscribe");
+        
+        javafx.scene.text.TextFlow textFlow = new javafx.scene.text.TextFlow();
+        javafx.scene.text.Text t1 = new javafx.scene.text.Text("Cloud backup is turned off. Your data is safe locally.\n\nTo activate your cloud subscription, send 15,000 UGX to MTN Number:\n");
+        javafx.scene.text.Text t2 = new javafx.scene.text.Text("076 031 5703\n");
+        t2.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
+        javafx.scene.text.Text t3 = new javafx.scene.text.Text("Name: Oworinawe Prince Beckham\n\n");
+        javafx.scene.text.Text t4 = new javafx.scene.text.Text("Then WhatsApp your receipt footprint and account email ");
+        javafx.scene.text.Text t5 = new javafx.scene.text.Text(email);
+        t5.setStyle("-fx-font-weight: bold;");
+        javafx.scene.text.Text t6 = new javafx.scene.text.Text(" to ");
+        javafx.scene.text.Text t7 = new javafx.scene.text.Text("076 031 5703");
+        t7.setStyle("-fx-font-weight: bold;");
+        javafx.scene.text.Text t8 = new javafx.scene.text.Text(" for immediate cloud activation.");
+        
+        textFlow.getChildren().addAll(t1, t2, t3, t4, t5, t6, t7, t8);
+        alert.getDialogPane().setContent(textFlow);
 
-        javafx.scene.control.ButtonType payButton = new javafx.scene.control.ButtonType("Subscribe");
-        alert.getButtonTypes().add(payButton);
-
-        alert.showAndWait().ifPresent(response -> {
-            if (response == payButton) {
-                openPaymentLink();
-            }
-        });
+        javafx.scene.control.ButtonType closeBtn = new javafx.scene.control.ButtonType("Close", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        alert.getButtonTypes().setAll(closeBtn);
+        alert.showAndWait();
     }
 
-    private void showBackupExpiredAlert() {
+    private void showBackupExpiredAlert(String email) {
         javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.WARNING);
         alert.setTitle("Backup Expired");
         alert.setHeaderText("Monthly Subscription Ended");
-        alert.setContentText(
-                "Your 30-day cloud backup period has ended. Syncing is now disabled.\n\nTo renew, please visit meto.com/subscribe");
+        
+        javafx.scene.text.TextFlow textFlow = new javafx.scene.text.TextFlow();
+        textFlow.getChildren().addAll(
+            new javafx.scene.text.Text("Your 30-day cloud backup period has ended. Syncing is now disabled.\n\nTo renew, please follow the payment instructions (15,000 UGX) to MTN number 076 031 5703.")
+        );
+        alert.getDialogPane().setContent(textFlow);
 
-        javafx.scene.control.ButtonType payButton = new javafx.scene.control.ButtonType("Renew Now");
-        alert.getButtonTypes().add(payButton);
-
-        alert.showAndWait().ifPresent(response -> {
-            if (response == payButton) {
-                openPaymentLink();
-            }
-        });
-    }
-
-    private void openPaymentLink() {
-        try {
-            java.awt.Desktop.getDesktop().browse(new java.net.URI("https://meto.com"));
-        } catch (Exception e) {
-            e.printStackTrace();
-            // Fallback for Linux sometimes
-            try {
-                Runtime.getRuntime().exec("xdg-open https://meto.com");
-            } catch (Exception ex) {
-                statusLabel.setText("Could not open link: https://meto.com");
-            }
-        }
+        javafx.scene.control.ButtonType closeBtn = new javafx.scene.control.ButtonType("Close", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        alert.getButtonTypes().setAll(closeBtn);
+        alert.showAndWait();
     }
 
     private void setLoading(boolean loading) {
