@@ -129,7 +129,6 @@ public class LoginController {
                             // We need to re-fetch or just flow through. check backupEnabled below.
                         }
 
-
                         // 2. Backup Check
                         boolean backupEnabled = true; // Default Allow
                         if (metadata.has("monthly_cloud_backup")) {
@@ -331,51 +330,58 @@ public class LoginController {
         javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.WARNING);
         alert.setTitle("Account Expired");
         alert.setHeaderText("Ownership Payment Required");
-        
+
         javafx.scene.text.TextFlow textFlow = new javafx.scene.text.TextFlow();
-        javafx.scene.text.Text t1 = new javafx.scene.text.Text("Access has been denied. Please complete your payment to activate CheckBook Pro.\n\n");
-        javafx.scene.text.Text t2 = new javafx.scene.text.Text("Send 290,000 UGX to MTN Number:\n");
+        javafx.scene.text.Text t1 = new javafx.scene.text.Text(
+                "Access has been denied. Please complete your payment to activate CheckBook Pro.\n\n");
+        javafx.scene.text.Text t2 = new javafx.scene.text.Text("Send 203,000 UGX to MTN Number:\n");
         javafx.scene.text.Text t3 = new javafx.scene.text.Text("076 031 5703\n");
         t3.setStyle("-fx-font-weight: bold; -fx-font-size: 16px;");
         javafx.scene.text.Text t4 = new javafx.scene.text.Text("Name: Oworinawe Prince Beckham\n\n");
-        javafx.scene.text.Text t5 = new javafx.scene.text.Text("After sending, please WhatsApp your receipt footprint and your account email ");
+        javafx.scene.text.Text t5 = new javafx.scene.text.Text(
+                "After sending, please WhatsApp your receipt footprint and your account email ");
         javafx.scene.text.Text t6 = new javafx.scene.text.Text(email);
         t6.setStyle("-fx-font-weight: bold;");
         javafx.scene.text.Text t7 = new javafx.scene.text.Text(" to ");
         javafx.scene.text.Text t8 = new javafx.scene.text.Text("076 031 5703");
         t8.setStyle("-fx-font-weight: bold;");
         javafx.scene.text.Text t9 = new javafx.scene.text.Text(" for immediate ownership activation.");
-        
+
         textFlow.getChildren().addAll(t1, t2, t3, t4, t5, t6, t7, t8, t9);
         alert.getDialogPane().setContent(textFlow);
 
-        javafx.scene.control.ButtonType closeBtn = new javafx.scene.control.ButtonType("Close", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        javafx.scene.control.ButtonType closeBtn = new javafx.scene.control.ButtonType("Close",
+                javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
         alert.getButtonTypes().setAll(closeBtn);
         alert.showAndWait();
     }
 
     private void showBackupDisabledAlert(String email) {
-        javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.INFORMATION);
+        javafx.scene.control.Alert alert = new javafx.scene.control.Alert(
+                javafx.scene.control.Alert.AlertType.INFORMATION);
         alert.setTitle("Backup Disabled");
         alert.setHeaderText("Monthly Backup Disabled");
-        
+
         javafx.scene.text.TextFlow textFlow = new javafx.scene.text.TextFlow();
-        javafx.scene.text.Text t1 = new javafx.scene.text.Text("Cloud backup is turned off. Your data is safe locally.\n\nTo activate your cloud subscription, send 15,000 UGX to MTN Number:\n");
+        javafx.scene.text.Text t1 = new javafx.scene.text.Text(
+                "Cloud backup is turned off. Your data is safe locally.\n\nTo activate your cloud subscription, send 15,000 UGX to MTN Number:\n");
         javafx.scene.text.Text t2 = new javafx.scene.text.Text("076 031 5703\n");
         t2.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
         javafx.scene.text.Text t3 = new javafx.scene.text.Text("Name: Oworinawe Prince Beckham\n\n");
-        javafx.scene.text.Text t4 = new javafx.scene.text.Text("Then WhatsApp your receipt footprint and account email ");
+        javafx.scene.text.Text t4 = new javafx.scene.text.Text(
+                "Then WhatsApp your receipt footprint and account email ");
         javafx.scene.text.Text t5 = new javafx.scene.text.Text(email);
         t5.setStyle("-fx-font-weight: bold;");
         javafx.scene.text.Text t6 = new javafx.scene.text.Text(" to ");
         javafx.scene.text.Text t7 = new javafx.scene.text.Text("076 031 5703");
         t7.setStyle("-fx-font-weight: bold;");
         javafx.scene.text.Text t8 = new javafx.scene.text.Text(" for immediate cloud activation.");
-        
+
         textFlow.getChildren().addAll(t1, t2, t3, t4, t5, t6, t7, t8);
         alert.getDialogPane().setContent(textFlow);
 
-        javafx.scene.control.ButtonType closeBtn = new javafx.scene.control.ButtonType("Close", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        javafx.scene.control.ButtonType closeBtn = new javafx.scene.control.ButtonType("Close",
+                javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
         alert.getButtonTypes().setAll(closeBtn);
         alert.showAndWait();
     }
@@ -384,14 +390,15 @@ public class LoginController {
         javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.WARNING);
         alert.setTitle("Backup Expired");
         alert.setHeaderText("Monthly Subscription Ended");
-        
+
         javafx.scene.text.TextFlow textFlow = new javafx.scene.text.TextFlow();
         textFlow.getChildren().addAll(
-            new javafx.scene.text.Text("Your 30-day cloud backup period has ended. Syncing is now disabled.\n\nTo renew, please follow the payment instructions (15,000 UGX) to MTN number 076 031 5703.")
-        );
+                new javafx.scene.text.Text(
+                        "Your 30-day cloud backup period has ended. Syncing is now disabled.\n\nTo renew, please follow the payment instructions (15,000 UGX) to MTN number 076 031 5703."));
         alert.getDialogPane().setContent(textFlow);
 
-        javafx.scene.control.ButtonType closeBtn = new javafx.scene.control.ButtonType("Close", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        javafx.scene.control.ButtonType closeBtn = new javafx.scene.control.ButtonType("Close",
+                javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
         alert.getButtonTypes().setAll(closeBtn);
         alert.showAndWait();
     }

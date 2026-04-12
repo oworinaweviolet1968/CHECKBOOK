@@ -65,7 +65,12 @@
                     </ImageView>
                 </StackPane>
                 
-                <!-- Bottom Actions removed per user request -->
+                <!-- Logout Button -->
+                <Button fx:id="navLogout" text="Log Out" styleClass="nav-button" maxWidth="Infinity" style="-fx-text-fill: #EF4444;">
+                    <graphic>
+                         <Region styleClass="icon, icon-logout" style="-fx-background-color: #EF4444;" />
+                    </graphic>
+                </Button>
             </children>
         </VBox>
     </left>

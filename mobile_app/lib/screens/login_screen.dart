@@ -4,6 +4,7 @@ import '../services/supabase_service.dart';
 import '../services/database_helper.dart';
 import '../main.dart'; // To navigate to MainScreen
 import '../utils/colors.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -116,6 +117,27 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ? const CircularProgressIndicator(color: Colors.white) 
                                 : const Text('Login', style: TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold)),
                         ),
+                    ),
+                    const SizedBox(height: 16),
+                    TextButton(
+                      onPressed: () async {
+                        final url = Uri.parse('https://beckhamz777.github.io/cb/#/checkout');
+                        if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Could not open website'), backgroundColor: Colors.red),
+                            );
+                          }
+                        }
+                      },
+                      child: const Text(
+                        'Create an Account',
+                        style: TextStyle(
+                          color: AppColors.primaryGreen,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
                     ),
                 ],
             )

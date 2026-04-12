@@ -14,7 +14,7 @@ public class MainController {
     private static MainController instance;
 
     @FXML
-    private Button navNewStock, navRetail, navHistory, navInshock;
+    private Button navNewStock, navRetail, navHistory, navInshock, navLogout;
     @FXML
     private StackPane contentPane;
 
@@ -44,6 +44,7 @@ public class MainController {
         navRetail.setOnAction(e -> setView(retailView, navRetail));
         navHistory.setOnAction(e -> setView(historyView, navHistory));
         navInshock.setOnAction(e -> setView(inShockView, navInshock));
+        navLogout.setOnAction(e -> handleLogout());
 
         // Listen for Backup Status
         com.meto.inventory.services.SupabaseService.getInstance().addStatusListener(status -> {
@@ -69,6 +70,18 @@ public class MainController {
         contentPane.getChildren().clear();
         contentPane.getChildren().add(node);
         updateNavStyles(activeBtn);
+    }
+
+    private void handleLogout() {
+        try {
+            com.meto.inventory.services.SupabaseService.getInstance().logout();
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/meto/inventory/views/Login.fxml"));
+            javafx.scene.Parent root = loader.load();
+            javafx.stage.Stage stage = (javafx.stage.Stage) navLogout.getScene().getWindow();
+            stage.setScene(new javafx.scene.Scene(root));
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
     }
 
     public void navigateTo(String viewName) {

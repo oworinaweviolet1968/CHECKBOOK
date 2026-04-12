@@ -200,12 +200,14 @@ public class AdminController {
                             backup = userData.get("monthly_cloud_backup").getAsBoolean();
                         }
 
-                        String backupExpiry = "Lifetime";
+                        String backupExpiry = "N/A";
                         if (userData.has("backup_expiry")) {
                             try {
                                 long ts = userData.get("backup_expiry").getAsLong();
                                 if (ts > 0) {
                                     backupExpiry = sdf.format(new java.util.Date(ts));
+                                } else if (backup) {
+                                    backupExpiry = "Expired";
                                 }
                             } catch (Exception ignore) {
                             }
@@ -231,11 +233,17 @@ public class AdminController {
                                     Map<String, Object> updates = new HashMap<>();
                                     updates.put("ownership_payment", newVal);
                                     if (newVal) {
-                                        // Set 30-day expiry
-                                        long expiry = System.currentTimeMillis() + (30L * 24 * 60 * 60 * 1000);
-                                        updates.put("ownership_expiry", expiry);
+                                        // Ownership is lifetime
+                                        updates.put("ownership_expiry", 0);
+                                        
+                                        // Include first month of cloud backup
+                                        updates.put("monthly_cloud_backup", true);
+                                        long backupExp = System.currentTimeMillis() + (30L * 24 * 60 * 60 * 1000);
+                                        updates.put("backup_expiry", backupExp);
+                                        
+                                        // Also update UI model instantly for backup
+                                        user.backupProperty().set(true);
                                     } else {
-                                        // Clear expiry? Or keep it? Let's clear it to be clean.
                                         updates.put("ownership_expiry", 0);
                                     }
                                     updateUser(uid, updates);
@@ -356,31 +364,13 @@ public class AdminController {
 
     private void handleLogout() {
         try {
-            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/meto/inventory/views/LoginView.fxml"));
-            // Assuming LoginView.fxml exists, otherwise standard loading
-            if (getClass().getResource("/com/meto/inventory/views/LoginView.fxml") == null) {
-                // Fallback if named differently, usually it was just 'Main' but Login logic is
-                // in LoginController.
-                // We likely need to construct the Scene manually or load the initial view
-                // again.
-                // Just reloading the App start logic or similar.
-                // Let's assume user has a Login.fxml or we just close.
-            }
-
-            // Re-load Login Scene (Assuming standard path or using what LoginController
-            // sets)
-            // Actually, we don't have the path easily. Let's try to find it or just exit
-            // app?
-            // "management_sys.fxml" or similar?
-            // Checking LoginController... it uses 'Main.fxml' for successful login.
-            // But we want the Login Screen.
-            // Let's try loading the resource we know exists:
+            com.meto.inventory.services.SupabaseService.getInstance().logout();
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/meto/inventory/views/Login.fxml"));
             Parent root = loader.load();
             Stage stage = (Stage) logoutButton.getScene().getWindow();
             stage.setScene(new Scene(root));
         } catch (Exception e) {
-            // e.printStackTrace();
-            // Just close if we can't navigate back
+            e.printStackTrace();
             ((Stage) logoutButton.getScene().getWindow()).close();
         }
     }
