@@ -31,12 +31,14 @@ jobs:
       - name: Build Maven project
         run: mvn clean package
 
-      # 5. Create Windows EXE using jpackage
-      - name: Create Windows EXE
+      # 5. Create Windows MSI using jpackage
+      - name: Create Windows MSI
         run: |
           jpackage `
-            --type exe `
-            --name ManagementSYS `
+            --type msi `
+            --name METO.IMS `
+            --app-version 1.7 `
+            --dest output `
             --input target `
             --main-jar ManagementSYS-1.0-SNAPSHOT.jar `
             --main-class com.meto.inventory.Main `
@@ -46,9 +48,9 @@ jobs:
             --win-menu `
             --win-shortcut
 
-      # 6. Upload the EXE as an artifact
-      - name: Upload EXE artifact
+      # 6. Upload the MSI as an artifact
+      - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ManagementSYS-EXE
-          path: ManagementSYS.exe
+          name: METO.IMS-MSI
+          path: output/*.msi
