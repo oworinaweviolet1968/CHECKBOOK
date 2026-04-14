@@ -386,22 +386,6 @@ public class LoginController {
         alert.showAndWait();
     }
 
-    private void showBackupExpiredAlert(String email) {
-        javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.WARNING);
-        alert.setTitle("Backup Expired");
-        alert.setHeaderText("Monthly Subscription Ended");
-
-        javafx.scene.text.TextFlow textFlow = new javafx.scene.text.TextFlow();
-        textFlow.getChildren().addAll(
-                new javafx.scene.text.Text(
-                        "Your 30-day cloud backup period has ended. Syncing is now disabled.\n\nTo renew, please follow the payment instructions (15,000 UGX) to MTN number 076 031 5703."));
-        alert.getDialogPane().setContent(textFlow);
-
-        javafx.scene.control.ButtonType closeBtn = new javafx.scene.control.ButtonType("Close",
-                javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
-        alert.getButtonTypes().setAll(closeBtn);
-        alert.showAndWait();
-    }
 
     private void setLoading(boolean loading) {
         loginButton.setDisable(loading);

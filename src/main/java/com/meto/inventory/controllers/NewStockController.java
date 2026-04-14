@@ -9,12 +9,8 @@ import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.FlowPane;
-import javafx.scene.layout.HBox;
-
 import java.time.LocalDate;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class NewStockController implements DataManager.DataChangeListener {
 
@@ -546,7 +542,13 @@ public class NewStockController implements DataManager.DataChangeListener {
         }
 
         String currentText = unitField.getText().trim();
-        String numberPart = currentText.replaceAll("[^0-9.]", "");
+        // Strip the OLD unit label first, then extract the user's quantity number.
+        // This prevents "1 box*72" → "172" when switching to another unit.
+        String withoutUnit = currentText
+                .replaceAll("(?i)(half doz|box|crate|sack|pcs|dozen|doz|carton)", "")
+                .replaceAll("[*]", "")
+                .trim();
+        String numberPart = withoutUnit.replaceAll("[^0-9.]", "").trim();
         if (numberPart.isEmpty())
             numberPart = "1";
 
@@ -714,11 +716,16 @@ public class NewStockController implements DataManager.DataChangeListener {
         StockItem si = new StockItem(itemName, qtyRaw, unitText, priceStr, amountStr);
         items.add(si);
 
-        // clear fields
+        // clear fields — reset values to null FIRST so re-selecting the same item works
+        itemsComboBox.setValue(null);
         itemsComboBox.getEditor().clear();
+        qtyComboBox.setValue(null);
         qtyComboBox.getEditor().clear();
         unitField.clear();
         priceField.clear();
+        priceField.setEditable(true);
+        priceField.setMouseTransparent(false);
+        priceField.setStyle("");
     }
 
     @FXML

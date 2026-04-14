@@ -178,6 +178,7 @@ class SupasService {
        }).eq('id', userId!);
        
        print('SYNC: Upload complete. TS=$ts');
+       updateLastKnownTimestamp(ts);
        syncStatus.value = SyncStatus.synced;
     } catch (e) {
        print('UPLOAD ERROR: $e');
@@ -237,6 +238,29 @@ class SupasService {
         .map((list) => list.where((item) => item['status'] == 'pending').toList());
   }
 
+  /// Direct HTTP poll for pending login requests (AJAX-style fallback).
+  /// This works even if the Realtime WebSocket has gone stale.
+  Future<List<Map<String, dynamic>>> fetchPendingLoginRequests() async {
+    final email = client.auth.currentUser?.email;
+    if (userId == null || email == null) return [];
+
+    try {
+      final result = await client
+          .from('login_requests')
+          .select()
+          .eq('status', 'pending');
+
+      // Filter by current user's email (RLS should handle this, but just in case)
+      return (result as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .where((item) => item['email'] == email)
+          .toList();
+    } catch (e) {
+      print('LOGIN POLL ERROR: $e');
+      return [];
+    }
+  }
+
   Future<void> updateLoginRequestStatus(String requestId, String status) async {
     final updates = {
       'status': status,
@@ -246,5 +270,53 @@ class SupasService {
     }
 
     await client.from('login_requests').update(updates).eq('id', requestId);
+  }
+
+  // --- REMOTE DATA CHANGE DETECTION ---
+
+  int _lastKnownCloudTimestamp = 0;
+
+  /// Check if the remote database has been updated by another app (desktop/mobile).
+  /// Returns true if new data was detected and downloaded.
+  Future<bool> checkForRemoteChanges() async {
+    if (userId == null) return false;
+
+    try {
+      final meta = await client.from('users').select('last_backup_timestamp').eq('id', userId!).maybeSingle();
+      if (meta == null) return false;
+
+      final cloudTs = meta['last_backup_timestamp'] as int? ?? 0;
+
+      // First call: just cache the value, don't trigger a sync
+      if (_lastKnownCloudTimestamp == 0) {
+        _lastKnownCloudTimestamp = cloudTs;
+        return false;
+      }
+
+      // If cloud timestamp is newer than what we last knew, another app uploaded
+      if (cloudTs > _lastKnownCloudTimestamp) {
+        print('SYNC POLL: Remote change detected! Cloud=$cloudTs, LastKnown=$_lastKnownCloudTimestamp');
+        _lastKnownCloudTimestamp = cloudTs;
+
+        // Download the newer database
+        final dbPath = await _getLocalDbPath();
+        await DatabaseHelper.instance.close();
+        await _downloadDatabase(userId!, dbPath);
+        await DatabaseHelper.instance.reopen();
+
+        syncStatus.value = SyncStatus.synced;
+        return true;
+      }
+
+      return false;
+    } catch (e) {
+      print('SYNC POLL ERROR: $e');
+      return false;
+    }
+  }
+
+  /// Call this after a successful upload to update the cached timestamp
+  void updateLastKnownTimestamp(int ts) {
+    _lastKnownCloudTimestamp = ts;
   }
 }

@@ -575,42 +575,74 @@ class DatabaseHelper {
   String formatStockForDisplay(double availablePieces, String unitLabel, String size) {
       if (availablePieces <= 0) return "0 pcs";
 
-      double multiplier = getUnitMultiplier(unitLabel, size);
       String sizeLower = size.toLowerCase();
-      String unitLower = unitLabel.toLowerCase();
-      
-      // If multiplier is 1 or it's a direct unit comparison, just return standard
-      if (multiplier <= 1) {
-          if (sizeLower.contains("kg")) return "${availablePieces.toStringAsFixed(1)} kg";
-          return "${availablePieces.toInt()} pcs";
-      }
 
-      int mainUnits = (availablePieces / multiplier).floor();
-      double remainder = availablePieces % multiplier;
-
-      // Extract a clean label for the main unit (e.g. "Sack", "Box")
-      String cleanMainLabel = "units";
-      if (unitLower.contains("sack")) cleanMainLabel = "sack";
-      else if (unitLower.contains("box")) cleanMainLabel = "box";
-      else if (unitLower.contains("crate")) cleanMainLabel = "crate";
-      else if (unitLower.contains("doz") || unitLower.contains("dozen")) cleanMainLabel = "box";
-      else if (unitLower.contains("carton")) cleanMainLabel = "carton";
-
-      double sizeVal = extractNumericValue(sizeLower);
-      bool isBulkSack = sizeLower.contains("kg") && sizeVal > 9.0;
-      String baseUnit = isBulkSack ? "kg" : "pcs";
-      
-      if (mainUnits > 0) {
-          String mainStr = "$mainUnits $cleanMainLabel${mainUnits > 1 ? 's' : ''}";
-          if (remainder > 0) {
-              String remStr = remainder == remainder.toInt() ? remainder.toInt().toString() : remainder.toStringAsFixed(2);
-              return "$mainStr $remStr $baseUnit";
+      // --- WEIGHT-BASED (Sacks / kg) ---
+      if (sizeLower.contains("kg")) {
+          double kgPerSack = extractNumericValue(size);
+          if (kgPerSack >= 10.0) {
+              int sacks = (availablePieces / kgPerSack).floor();
+              double remainingKg = availablePieces % kgPerSack;
+              if (sacks > 0 && remainingKg > 0.01) {
+                  return "$sacks Sacks / ${remainingKg.toStringAsFixed(1)} kg";
+              }
+              if (sacks > 0) return "$sacks Sacks";
+              return "${remainingKg.toStringAsFixed(1)} kg";
+          } else {
+              return "${availablePieces.toStringAsFixed(1)} kg";
           }
-          return mainStr;
-      } else {
-          String remStr = remainder == remainder.toInt() ? remainder.toInt().toString() : remainder.toStringAsFixed(2);
-          return "$remStr $baseUnit";
       }
+
+      // --- PIECE-BASED: Multi-tier cascading breakdown ---
+      double highestMultiplier = getUnitMultiplier(unitLabel, size);
+
+      if (highestMultiplier <= 1.0) {
+          if (availablePieces == availablePieces.toInt()) {
+              return "${availablePieces.toInt()} pcs";
+          }
+          return "${availablePieces.toStringAsFixed(1)} pcs";
+      }
+
+      // Define all unit tiers from largest to smallest
+      final tiers = [72.0, 25.0, 24.0, 20.0, 12.0, 10.0, 6.0];
+      final tierLabels = ["box*72", "crate*25", "box*24", "box*20", "box*12", "box*10", "half doz"];
+
+      List<String> parts = [];
+      double remaining = availablePieces;
+      bool foundHighest = false;
+
+      for (int i = 0; i < tiers.length; i++) {
+          double tierMultiplier = tiers[i];
+
+          // Start from the highest tier (matching the stored unit)
+          if (!foundHighest) {
+              if (tierMultiplier == highestMultiplier) {
+                  foundHighest = true;
+              } else {
+                  continue;
+              }
+          }
+
+          if (tierMultiplier > remaining && tierMultiplier != highestMultiplier) {
+              continue;
+          }
+
+          int count = (remaining / tierMultiplier).floor();
+          remaining = remaining % tierMultiplier;
+
+          if (count > 0 || tierMultiplier == highestMultiplier) {
+              parts.add("$count ${tierLabels[i]}");
+          }
+
+          if (remaining < 1) break;
+      }
+
+      // Append remaining pieces
+      if (remaining >= 1) {
+          parts.add("${remaining.toInt()} pcs");
+      }
+
+      return parts.isNotEmpty ? parts.join(" / ") : "${availablePieces.toInt()} pcs";
   }
 
   // --- SALES OPERATIONS ---
@@ -935,8 +967,17 @@ class DatabaseHelper {
   }
   
   Future<void> close() async {
-    final db = await instance.database;
-    db.close();
+    if (_database != null) {
+      await _database!.close();
+      _database = null;
+    }
+  }
+
+  /// Re-open the database after a close (e.g., after downloading a new DB file from cloud).
+  /// The next call to `database` getter will re-initialize the connection.
+  Future<void> reopen() async {
+    _database = null; // Force re-init
+    await database; // Trigger re-initialization
   }
 }
 

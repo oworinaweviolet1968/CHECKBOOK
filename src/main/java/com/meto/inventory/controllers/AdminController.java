@@ -18,7 +18,6 @@ import javafx.scene.control.*;
 import javafx.scene.control.cell.CheckBoxTableCell;
 import javafx.stage.Stage;
 
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 

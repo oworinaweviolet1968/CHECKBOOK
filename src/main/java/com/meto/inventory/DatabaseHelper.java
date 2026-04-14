@@ -222,54 +222,65 @@ public class DatabaseHelper {
 
     private String formatStockForDisplay(double totalBase, String size, String bulkUnit) {
         String sizeLower = size.toLowerCase();
-        String bulkLower = bulkUnit.toLowerCase();
-        double multiplier = getUnitMultiplier(bulkUnit, size);
 
-        // 1. PRIORITIZE SPECIFIC BULK UNITS (Boxes, Dozens, etc.)
-        // This ensures "1kg Sugar" in "Box * 10" shows as Boxes, not just kg.
-        if (multiplier > 1.0 && (bulkLower.contains("box") || bulkLower.contains("doz") || bulkLower.contains("dozen")
-                || bulkLower.contains("carton") || bulkLower.contains("crate") || bulkLower.contains("half doz"))) {
-            int bulkCount = (int) (totalBase / multiplier);
-            int remainder = (int) (totalBase % multiplier);
-
-            String unitName = "Boxes";
-            if (bulkLower.contains("doz") || bulkLower.contains("dozen") || bulkLower.contains("half doz"))
-                unitName = "Dozens";
-            else if (bulkLower.contains("carton"))
-                unitName = "Cartons";
-            else if (bulkLower.contains("crate"))
-                unitName = "Crates";
-
-            if (bulkCount > 0 && remainder > 0) {
-                return String.format("%d %s, %d pcs (of %.0f pcs)", bulkCount, unitName, remainder, multiplier);
-            } else if (bulkCount > 0) {
-                return String.format("%d %s (of %.0f pcs)", bulkCount, unitName, multiplier);
-            }
-        }
-
-        // 2. WEIGHT-BASED LOGIC (Sacks or kg)
+        // --- WEIGHT-BASED (Sacks / kg) ---
         if (sizeLower.contains("kg")) {
             double kgPerSack = extractNumericValue(size);
-            // Only use Sack logic if it's actually a bulk sack (>= 10kg)
             if (kgPerSack >= 10.0) {
                 int sacks = (int) (totalBase / kgPerSack);
                 double remainingKg = totalBase % kgPerSack;
-                if (sacks > 0 && remainingKg > 0)
-                    return String.format("%d Sacks, %.2f kg", sacks, remainingKg);
+                if (sacks > 0 && remainingKg > 0.01)
+                    return String.format("%d Sacks / %.1f kg", sacks, remainingKg);
                 if (sacks > 0)
                     return String.format("%d Sacks", sacks);
-                return String.format("%.2f kg", remainingKg);
+                return String.format("%.1f kg", remainingKg);
             } else {
-                return String.format("%,.2f kg", totalBase);
+                return String.format("%,.1f kg", totalBase);
             }
         }
 
-        // 3. DEFAULT PIECES LOGIC
-        if (totalBase % 1 == 0) {
-            return String.format("%,.0f pcs", totalBase);
-        } else {
-            return String.format("%,.2f pcs", totalBase);
+        // --- PIECE-BASED: Highest unit → Doz → pcs ---
+        double multiplier = getUnitMultiplier(bulkUnit, size);
+
+        // If multiplier is 1 or box*10, just show pcs
+        if (multiplier <= 1.0 || multiplier == 10.0) {
+            if (totalBase % 1 == 0) {
+                return String.format("%,.0f pcs", totalBase);
+            }
+            return String.format("%,.1f pcs", totalBase);
         }
+
+        // Friendly name for the highest unit
+        String friendlyName;
+        if (multiplier == 6.0) friendlyName = "Half Doz";
+        else if (multiplier == 25.0) friendlyName = "Crates";
+        else friendlyName = "Boxes"; // box*12, box*20, box*24, box*72 all show as "Boxes"
+
+        int mainCount = (int) (totalBase / multiplier);
+        int leftover = (int) (totalBase % multiplier);
+
+        StringBuilder display = new StringBuilder();
+
+        // Level 1: Highest unit
+        if (mainCount > 0) {
+            display.append(mainCount).append(" ").append(friendlyName);
+        }
+
+        // Level 2: Doz (only if highest unit > 12 and leftover >= 12)
+        if (multiplier > 12.0 && leftover >= 12) {
+            int dozens = leftover / 12;
+            leftover = leftover % 12;
+            if (display.length() > 0) display.append(" / ");
+            display.append(dozens).append(" Doz");
+        }
+
+        // Level 3: Remaining pcs
+        if (leftover > 0) {
+            if (display.length() > 0) display.append(" / ");
+            display.append(leftover).append(" pcs");
+        }
+
+        return display.length() > 0 ? display.toString() : String.format("%,.0f pcs", totalBase);
     }
 
     // --- STOCK OPERATIONS ---

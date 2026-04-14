@@ -48,7 +48,7 @@ public class SalesController implements DataManager.DataChangeListener {
 
     // Unit buttons
     @FXML
-    private Button pcsBtn, box10Btn, box12Btn, box20Btn, box24Btn, box72Btn, crateBtn;
+    private Button pcsBtn, halfDozBtn, box10Btn, box12Btn, box20Btn, box24Btn, box72Btn, crateBtn;
 
     @FXML
     private TableView<SaleItem> salesTable;
@@ -390,8 +390,8 @@ public class SalesController implements DataManager.DataChangeListener {
 
         // Collect all weight buttons and unit buttons for selection tracking
         java.util.List<Button> wBtns = java.util.List.of(quarterKgBtn, halfKgBtn, kgBtn, sackBtn);
-        java.util.List<Button> uBtns = java.util.List.of(pcsBtn, box10Btn, box12Btn, box20Btn, box24Btn, box72Btn,
-                crateBtn, sackUnitBtn);
+        java.util.List<Button> uBtns = java.util.List.of(pcsBtn, halfDozBtn, box10Btn, box12Btn, box20Btn, box24Btn,
+                box72Btn, crateBtn, sackUnitBtn);
 
         quarterKgBtn.setOnAction(e -> {
             selectQuickBtn(quarterKgBtn, wBtns);
@@ -421,6 +421,10 @@ public class SalesController implements DataManager.DataChangeListener {
         pcsBtn.setOnAction(e -> {
             selectQuickBtn(pcsBtn, uBtns);
             appendToUnit("pcs");
+        });
+        halfDozBtn.setOnAction(e -> {
+            selectQuickBtn(halfDozBtn, uBtns);
+            appendToUnit("Half Doz * 6");
         });
         box10Btn.setOnAction(e -> {
             selectQuickBtn(box10Btn, uBtns);
@@ -471,7 +475,14 @@ public class SalesController implements DataManager.DataChangeListener {
         if (text.isEmpty()) {
             unitField.setText(numericValue + " " + unit);
         } else {
-            String existingNumbers = text.replaceAll("[^0-9.]", "").trim();
+            // Strip the OLD unit label first, then extract the user's quantity number.
+            // This prevents extracting numbers from the unit name itself
+            // (e.g., "1 Box * 72" should give "1", not "172").
+            String withoutUnit = text
+                    .replaceAll("(?i)(half doz|box|crate|sack|pcs|dozen|doz|carton)", "")
+                    .replaceAll("[*]", "")
+                    .trim();
+            String existingNumbers = withoutUnit.replaceAll("[^0-9.]", "").trim();
             if (existingNumbers.isEmpty()) {
                 unitField.setText(numericValue + " " + unit);
             } else {

@@ -31,24 +31,39 @@ jobs:
       - name: Build Maven project
         run: mvn clean package
 
-      # 5. Create Windows MSI using jpackage
+      # 5. Prepare dist directory with only the shaded JAR
+      - name: Prepare dist directory
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item target/ManagementSYS-1.0-SNAPSHOT.jar dist/
+
+      # 6. Extract icon from resources for jpackage
+      - name: Extract application icon
+        run: |
+          jar xf dist/ManagementSYS-1.0-SNAPSHOT.jar com/meto/inventory/views/images/app_icon.ico
+          Copy-Item com/meto/inventory/views/images/app_icon.ico app_icon.ico
+
+      # 7. Create Windows MSI using jpackage
       - name: Create Windows MSI
         run: |
           jpackage `
             --type msi `
             --name METO.IMS `
-            --app-version 1.7 `
+            --app-version 1.8 `
             --dest output `
-            --input target `
+            --input dist `
             --main-jar ManagementSYS-1.0-SNAPSHOT.jar `
-            --main-class com.meto.inventory.Main `
+            --main-class com.meto.inventory.AppLauncher `
             --module-path javafx-sdk/javafx-sdk-21.0.10/lib `
-            --add-modules javafx.controls,javafx.fxml `
+            --add-modules javafx.controls,javafx.fxml,javafx.web,javafx.media `
+            --icon app_icon.ico `
+            --vendor "METO" `
+            --description "METO Inventory Management System" `
             --win-dir-chooser `
             --win-menu `
             --win-shortcut
 
-      # 6. Upload the MSI as an artifact
+      # 8. Upload the MSI as an artifact
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
         with:

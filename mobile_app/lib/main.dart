@@ -77,16 +77,21 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0; // Default to Dashboard (In Stock)
   final GlobalKey<DashboardScreenState> _dashboardKey = GlobalKey<DashboardScreenState>();
   StreamSubscription? _loginRequestSubscription;
+
+  // Polling timers
+  Timer? _loginPollTimer;
+  Timer? _dataSyncTimer;
 
   late List<Widget> _screens;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _screens = [
       DashboardScreen(key: _dashboardKey),
       NewStockScreen(),
@@ -95,6 +100,7 @@ class _MainScreenState extends State<MainScreen> {
     ];
     _initDatabase();
     _listenForLoginRequests();
+    _startPolling();
   }
 
   Future<void> _initDatabase() async {
@@ -108,6 +114,8 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  // --- REALTIME STREAM (fast path, may go stale) ---
+
   void _listenForLoginRequests() {
     _loginRequestSubscription = SupasService.instance.getLoginRequestsStream().listen((requests) {
       if (requests.isNotEmpty) {
@@ -115,6 +123,50 @@ class _MainScreenState extends State<MainScreen> {
         _showLoginApprovalDialog(request);
       }
     });
+  }
+
+  // --- POLLING (reliable fallback) ---
+
+  void _startPolling() {
+    // Poll for login requests every 5 seconds
+    _loginPollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollLoginRequests());
+
+    // Poll for remote data changes every 30 seconds
+    _dataSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) => _pollDataSync());
+  }
+
+  Future<void> _pollLoginRequests() async {
+    try {
+      final requests = await SupasService.instance.fetchPendingLoginRequests();
+      if (requests.isNotEmpty) {
+        _showLoginApprovalDialog(requests.first);
+      }
+    } catch (e) {
+      // Silent fail — polling should never crash the app
+    }
+  }
+
+  Future<void> _pollDataSync() async {
+    try {
+      final hasChanges = await SupasService.instance.checkForRemoteChanges();
+      if (hasChanges && mounted) {
+        // Refresh UI data since the database was updated
+        _dashboardKey.currentState?.refreshData();
+      }
+    } catch (e) {
+      // Silent fail
+    }
+  }
+
+  // --- APP LIFECYCLE ---
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // App came back to foreground — immediately check for login requests and data changes
+      _pollLoginRequests();
+      _pollDataSync();
+    }
   }
 
   void _showLoginApprovalDialog(Map<String, dynamic> request) {
@@ -151,7 +203,10 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _loginRequestSubscription?.cancel();
+    _loginPollTimer?.cancel();
+    _dataSyncTimer?.cancel();
     super.dispose();
   }
 
