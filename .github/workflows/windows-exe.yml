@@ -38,12 +38,12 @@ jobs:
       - name: Prepare dist directory
         run: |
           New-Item -ItemType Directory -Force -Path dist
-          Copy-Item target/ManagementSYS-1.0-SNAPSHOT.jar dist/
+          Copy-Item target/ManagementSYS-1.8.jar dist/
 
       # 6. Extract icon from resources for jpackage
       - name: Extract application icon
         run: |
-          jar xf dist/ManagementSYS-1.0-SNAPSHOT.jar com/meto/inventory/views/images/app_icon.ico
+          jar xf dist/ManagementSYS-1.8.jar com/meto/inventory/views/images/app_icon.ico
           Copy-Item com/meto/inventory/views/images/app_icon.ico app_icon.ico
 
       # 7. Create Windows MSI using jpackage
@@ -55,7 +55,7 @@ jobs:
             --app-version 1.8 `
             --dest output `
             --input dist `
-            --main-jar ManagementSYS-1.0-SNAPSHOT.jar `
+            --main-jar ManagementSYS-1.8.jar `
             --main-class com.meto.inventory.AppLauncher `
             --module-path javafx-sdk/javafx-sdk-21.0.10/lib `
             --add-modules javafx.controls,javafx.fxml,javafx.web,javafx.media `
@@ -72,3 +72,16 @@ jobs:
         with:
           name: METO.IMS-MSI
           path: output/*.msi
+
+      # 9. Release to beckhamz777/cb repository
+      - name: Create Release in cb repository
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: beckhamz777/cb
+          token: ${{ secrets.RELEASE_TOKEN }}
+          tag_name: v1.8
+          name: Release v1.8
+          draft: false
+          prerelease: false
+          files: |
+            output/*.msi
