@@ -40,11 +40,20 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item target/ManagementSYS-1.8.jar dist/
 
-      # 6. Extract icon from resources for jpackage
-      - name: Extract application icon
+      # 6. Extract logo.png from JAR and convert to .ico for jpackage
+      - name: Extract and convert logo to ICO
         run: |
-          jar xf dist/ManagementSYS-1.8.jar com/meto/inventory/views/images/app_icon.ico
-          Copy-Item com/meto/inventory/views/images/app_icon.ico app_icon.ico -ErrorAction SilentlyContinue
+          jar xf dist/ManagementSYS-1.8.jar com/meto/inventory/views/images/logo.png
+          $pngPath = Resolve-Path "com/meto/inventory/views/images/logo.png"
+          Add-Type -AssemblyName System.Drawing
+          $bitmap = [System.Drawing.Bitmap]::new($pngPath.Path)
+          $hicon  = $bitmap.GetHicon()
+          $icon   = [System.Drawing.Icon]::FromHandle($hicon)
+          $stream = [System.IO.FileStream]::new("app_icon.ico", [System.IO.FileMode]::Create)
+          $icon.Save($stream)
+          $stream.Close()
+          $bitmap.Dispose()
+          Write-Host "app_icon.ico created from logo.png"
 
       # 7. Build a custom JRE using jlink (explicit & reliable — avoids jpackage's internal bundling issues)
       - name: Build custom JRE with jlink
@@ -100,6 +109,7 @@ jobs:
 
       # 10. Upload the portable app-image so you can download & test without installing
       - name: Upload portable app-image artifact
+        continue-on-error: true  # won't block MSI build if storage quota is exceeded
         uses: actions/upload-artifact@v4
         with:
           name: METO-IMS-portable-v1.8
