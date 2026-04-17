@@ -29,13 +29,20 @@ void main() async {
   await Supabase.initialize(
     url: supabaseUrl,
     anonKey: supabaseKey,
+    authOptions: const FlutterAuthClientOptions(
+      authFlowType: AuthFlowType.pkce,
+    ),
   );
 
-  // Early DB initialization if already logged in
-  final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-  if (currentUserId != null) {
-    await DatabaseHelper.instance.switchDatabase(currentUserId);
+  // Early DB and Service initialization if session exists
+  final currentSession = Supabase.instance.client.auth.currentSession;
+  if (currentSession != null) {
+    final userId = currentSession.user.id;
+    debugPrint('Startup: Existing session found for $userId');
+    await DatabaseHelper.instance.switchDatabase(userId);
     await PasscodeService.instance.init();
+    // Pre-refresh metadata
+    unawaited(SupasService.instance.refreshUserMetadata());
   }
 
   runApp(const MyApp());

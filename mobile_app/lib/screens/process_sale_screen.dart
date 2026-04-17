@@ -875,7 +875,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
           }
 
           // Trigger background upload
-          SupasService.instance.uploadDatabase();
+          await SupasService.instance.uploadDatabase();
            if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sale Completed Successfully!')));
               setState(() {

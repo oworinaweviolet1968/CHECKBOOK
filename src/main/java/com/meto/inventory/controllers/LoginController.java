@@ -289,7 +289,7 @@ public class LoginController {
                 com.meto.inventory.DataManager.getInstance().getDbHelper().close();
 
                 boolean restored = SupabaseService.getInstance().syncOnLogin(
-                        com.meto.inventory.DataManager.getInstance().getCurrentDbName(), localHasData);
+                        com.meto.inventory.DataManager.getInstance().getCurrentDbName(), localHasData, false);
 
                 // CRITICAL FIX: Re-open the DB connection AFTER sync is done.
                 com.meto.inventory.DataManager.getInstance().getDbHelper().connect();

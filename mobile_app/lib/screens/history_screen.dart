@@ -545,8 +545,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                     if (item.id != null) {
                       try {
                         await DatabaseHelper.instance.deleteHistoryItem(item.id!);
-                        // Trigger background upload
-                        SupasService.instance.uploadDatabase();
+                        await SupasService.instance.uploadDatabase();
                         
                         if (mounted) {
                           Navigator.pop(context); // Close dialog

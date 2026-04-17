@@ -137,7 +137,7 @@ public class Main extends Application {
                     boolean localHasData = com.meto.inventory.DataManager.getInstance().getDbHelper().hasData();
                     com.meto.inventory.DataManager.getInstance().getDbHelper().close();
 
-                    service.syncOnLogin(com.meto.inventory.DataManager.getInstance().getCurrentDbName(), localHasData);
+                    service.syncOnLogin(com.meto.inventory.DataManager.getInstance().getCurrentDbName(), localHasData, false);
 
                     com.meto.inventory.DataManager.getInstance().getDbHelper().connect();
                     com.meto.inventory.DataManager.getInstance().getDbHelper().initializeDatabase();

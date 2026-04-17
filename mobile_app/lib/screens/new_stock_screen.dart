@@ -962,7 +962,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
 
           if (mounted) {
               // Trigger background upload
-              SupasService.instance.uploadDatabase();
+              await SupasService.instance.uploadDatabase();
                
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stock Saved Successfully!')));
               setState(() {

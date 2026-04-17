@@ -109,8 +109,8 @@ public class SalesController implements DataManager.DataChangeListener {
                 return change;
 
             // 2. Allow pure numbers and symbols (typing quantity)
-            // Allowed: 0-9, space, /, .
-            if (newText.matches("[0-9 ./]*")) {
+            // Allowed: 0-9, space, *, / (for 1/2) - Removed '.' to block decimals
+            if (newText.matches("[0-9 /*]*")) {
                 return change;
             }
 
@@ -241,20 +241,22 @@ public class SalesController implements DataManager.DataChangeListener {
 
     private void updateButtonVisibility(String selectedSize) {
         if (selectedSize == null) {
-            setBoxVisible(weightButtonsBox, false);
-            setBoxVisible(unitButtonsBox, false);
+            setNodeVisible(weightButtonsBox, false);
+            setNodeVisible(unitButtonsBox, false);
             return;
         }
 
         double sizeNum = dataManager.getDbHelper().extractNumericValue(selectedSize);
         boolean isBulkWeight = selectedSize.toLowerCase().contains("kg") && sizeNum >= 10.0;
+        setNodeVisible(sackBtn, isBulkWeight);
+        setNodeVisible(sackUnitBtn, isBulkWeight);
 
         if (isBulkWeight) {
-            setBoxVisible(weightButtonsBox, true);
-            setBoxVisible(unitButtonsBox, false);
+            setNodeVisible(weightButtonsBox, true);
+            setNodeVisible(unitButtonsBox, false);
         } else {
-            setBoxVisible(weightButtonsBox, false);
-            setBoxVisible(unitButtonsBox, true);
+            setNodeVisible(weightButtonsBox, false);
+            setNodeVisible(unitButtonsBox, true);
         }
     }
 
@@ -273,10 +275,10 @@ public class SalesController implements DataManager.DataChangeListener {
         addButton.setDisable(level < 5);
     }
 
-    private void setBoxVisible(Pane box, boolean visible) {
-        if (box != null) {
-            box.setVisible(visible);
-            box.setManaged(visible);
+    private void setNodeVisible(javafx.scene.Node node, boolean visible) {
+        if (node != null) {
+            node.setVisible(visible);
+            node.setManaged(visible);
         }
     }
 
@@ -395,26 +397,26 @@ public class SalesController implements DataManager.DataChangeListener {
 
         quarterKgBtn.setOnAction(e -> {
             selectQuickBtn(quarterKgBtn, wBtns);
-            String n = unitField.getText().replaceAll("[^0-9.]", "").trim();
-            unitField.setText(n.isEmpty() ? "1/4 kg" : n + " 1/4 kg");
+            String n = extractBaseQuantity(unitField.getText());
+            unitField.setText(n + " 1/4 kg");
         });
 
         halfKgBtn.setOnAction(e -> {
             selectQuickBtn(halfKgBtn, wBtns);
-            String n = unitField.getText().replaceAll("[^0-9.]", "").trim();
-            unitField.setText(n.isEmpty() ? "1/2 kg" : n + " 1/2 kg");
+            String n = extractBaseQuantity(unitField.getText());
+            unitField.setText(n + " 1/2 kg");
         });
 
         kgBtn.setOnAction(e -> {
             selectQuickBtn(kgBtn, wBtns);
-            String n = unitField.getText().replaceAll("[^0-9.]", "").trim();
-            unitField.setText(n.isEmpty() ? "1 kg" : n + " kg");
+            String n = extractBaseQuantity(unitField.getText());
+            unitField.setText(n + " kg");
         });
 
         sackBtn.setOnAction(e -> {
             selectQuickBtn(sackBtn, wBtns);
-            String n = unitField.getText().replaceAll("[^0-9.]", "").trim();
-            unitField.setText(n.isEmpty() ? "1 sack" : n + " sack");
+            String n = extractBaseQuantity(unitField.getText());
+            unitField.setText(n + " sack");
         });
 
         // UNIT buttons (packaging units)
@@ -469,31 +471,30 @@ public class SalesController implements DataManager.DataChangeListener {
     }
 
     private void appendToUnit(String unit) {
-        String text = unitField.getText().trim();
-        String numericValue = getUnitValue(unit);
-
-        if (text.isEmpty()) {
-            unitField.setText(numericValue + " " + unit);
-        } else {
-            // Strip the OLD unit label first, then extract the user's quantity number.
-            // This prevents extracting numbers from the unit name itself
-            // (e.g., "1 Box * 72" should give "1", not "172").
-            String withoutUnit = text
-                    .replaceAll("(?i)(half doz|box|crate|sack|pcs|dozen|doz|carton)", "")
-                    .replaceAll("[*]", "")
-                    .trim();
-            String existingNumbers = withoutUnit.replaceAll("[^0-9.]", "").trim();
-            if (existingNumbers.isEmpty()) {
-                unitField.setText(numericValue + " " + unit);
-            } else {
-                unitField.setText(existingNumbers + " " + unit);
-            }
-        }
+        String existingQty = extractBaseQuantity(unitField.getText());
+        unitField.setText(existingQty + " " + unit);
     }
 
-    private String getUnitValue(String unit) {
+    /**
+     * Extracts ONLY the leading numeric quantity from the unit field.
+     * e.g. "1 Box * 72" -> "1"
+     * e.g. "2.5 pcs" -> "2.5"
+     * e.g. "" -> "1"
+     */
+    private String extractBaseQuantity(String text) {
+        if (text == null || text.trim().isEmpty())
+            return "1";
+        
+        // Match numbers, dots, or fractions at the VERY START of the string
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile("^([0-9./]+)");
+        java.util.regex.Matcher m = p.matcher(text.trim());
+        
+        if (m.find()) {
+            return m.group(1);
+        }
         return "1";
     }
+
 
     private void addItem() {
         String item = itemsComboBox.getValue();
@@ -519,14 +520,26 @@ public class SalesController implements DataManager.DataChangeListener {
 
         try {
             double unitPrice = Double.parseDouble(priceText);
-            double moneyMultiplier = getMoneyMultiplier(countUnit);
-            double totalAmount = moneyMultiplier * unitPrice;
+            double totalAmount = dataManager.getDbHelper().extractNumericValue(countUnit) * unitPrice;
 
-            double weightForStock = getStockWeight(countUnit, size);
-            String weightStr = String.valueOf(weightForStock);
+            double totalCost = 0;
+            double piecesForStock = 0;
+            
+            // Retrieve bulk unit from stock to ensure correct multiplier detection
+            String bulkUnit = "";
+            try (java.sql.PreparedStatement pstmt = dataManager.getDbHelper().getConnection().prepareStatement("SELECT unit FROM stock WHERE item = ? AND quantity = ? LIMIT 1")) {
+                pstmt.setString(1, item);
+                pstmt.setString(2, size);
+                java.sql.ResultSet rs = pstmt.executeQuery();
+                if (rs.next()) bulkUnit = rs.getString("unit");
+            } catch (java.sql.SQLException e) { e.printStackTrace(); }
+
+            double quantityCount = dataManager.getDbHelper().extractNumericValue(countUnit);
+            double multiplier = dataManager.getDbHelper().getUnitMultiplier(countUnit, size, bulkUnit);
+            piecesForStock = quantityCount * multiplier;
 
             double costPerPiece = dataManager.getDbHelper().getLastRecordedPrice(item, size);
-            double totalCost = weightForStock * costPerPiece;
+            totalCost = piecesForStock * costPerPiece;
 
             if (totalCost > 0 && totalAmount < totalCost) {
                 String content = String.format(
@@ -538,7 +551,7 @@ public class SalesController implements DataManager.DataChangeListener {
                 }
             }
 
-            if (!dataManager.getDbHelper().hasEnoughStock(item, size, weightStr)) {
+            if (!dataManager.getDbHelper().hasEnoughStock(item, size, countUnit)) {
                 showAlert("Not enough stock!\nAvailable: " + dataManager.getDbHelper().getAvailableStock(item, size));
                 return;
             }
@@ -551,58 +564,6 @@ public class SalesController implements DataManager.DataChangeListener {
         } catch (NumberFormatException e) {
             showAlert("Invalid price format");
         }
-    }
-
-    private double getMoneyMultiplier(String text) {
-        if (text == null || text.isEmpty())
-            return 1.0;
-        String lower = text.toLowerCase().trim();
-        String[] parts = lower.split("(1/4|1/2|kg|sack|pcs|half doz|dozen|box|carton|crate)");
-        if (parts.length > 0) {
-            if (lower.startsWith("1/4") || lower.startsWith("1/2"))
-                return 1.0;
-            String numeric = parts[0].replaceAll("[^0-9.]", "").trim();
-            if (!numeric.isEmpty()) {
-                try {
-                    return Double.parseDouble(numeric);
-                } catch (Exception e) {
-                    return 1.0;
-                }
-            }
-        }
-        return 1.0;
-    }
-
-    private double getStockWeight(String text, String sizeStr) {
-        String lower = text.toLowerCase();
-        double count = getMoneyMultiplier(lower);
-
-        if (lower.contains("1/4"))
-            return count * 0.25;
-        if (lower.contains("1/2"))
-            return count * 0.5;
-
-        if (lower.contains("box*12") || lower.contains("dozen") || lower.contains("doz")
-                || lower.contains("half doz")) {
-            double multiplier = 12.0;
-            if (lower.contains("half"))
-                multiplier = 6.0;
-            return count * multiplier;
-        } else if (lower.contains("box*10")) {
-            return count * 10;
-        } else if (lower.contains("box*20") || lower.equals("box")) {
-            return count * 20;
-        } else if (lower.contains("box*24") || lower.contains("carton")) {
-            return count * 24;
-        } else if (lower.contains("box*72")) {
-            return count * 72;
-        } else if (lower.contains("crate")) {
-            return count * 25;
-        } else if (lower.contains("sack")) {
-            double kgPerSack = dataManager.getDbHelper().extractNumericValue(sizeStr);
-            return count * kgPerSack;
-        }
-        return count;
     }
 
     private void saveSale() {
@@ -652,8 +613,7 @@ public class SalesController implements DataManager.DataChangeListener {
     }
 
     private void updateStock(String itemName, String soldQty, String soldUnit) {
-        double actualWeight = getStockWeight(soldUnit, soldQty);
-        dataManager.getDbHelper().updateStockQuantity(itemName, soldQty, String.valueOf(actualWeight));
+        dataManager.getDbHelper().updateStockQuantity(itemName, soldQty, soldUnit);
     }
 
     private String determineSaleType() {

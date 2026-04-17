@@ -217,11 +217,11 @@ public class DatabaseHelper {
         // double kgPerSack = extractNumericValue(size);
         // return count * (kgPerSack > 0 ? kgPerSack : 1);
         // }
-        return count * getUnitMultiplier(unitCount, size);
+        return count * getUnitMultiplier(unitCount, size, unitCount);
     }
 
     private String formatStockForDisplay(double totalBase, String size, String bulkUnit) {
-        String sizeLower = size.toLowerCase();
+        String sizeLower = size.toLowerCase().replaceAll("\\s+", "");
 
         // --- WEIGHT-BASED (Sacks / kg) ---
         if (sizeLower.contains("kg")) {
@@ -240,33 +240,31 @@ public class DatabaseHelper {
         }
 
         // --- PIECE-BASED: Highest unit → Doz → pcs ---
-        double multiplier = getUnitMultiplier(bulkUnit, size);
+        double multiplier = getUnitMultiplier(bulkUnit, size, bulkUnit);
 
-        // If multiplier is 1 or box*10, just show pcs
-        if (multiplier <= 1.0 || multiplier == 10.0) {
-            if (totalBase % 1 == 0) {
-                return String.format("%,.0f pcs", totalBase);
-            }
-            return String.format("%,.1f pcs", totalBase);
+        // If multiplier is 1, just show pcs
+        if (multiplier <= 1.0) {
+            return String.format("%,.0f pcs", totalBase);
         }
 
         // Friendly name for the highest unit
         String friendlyName;
         if (multiplier == 6.0) friendlyName = "Half Doz";
-        else if (multiplier == 25.0) friendlyName = "Crates";
-        else friendlyName = "Boxes"; // box*12, box*20, box*24, box*72 all show as "Boxes"
+        else if (multiplier == 12.0) friendlyName = "Doz";
+        else if (sizeLower.contains("crate")) friendlyName = "Crates";
+        else if (sizeLower.contains("carton")) friendlyName = "Cartons";
+        else friendlyName = "Boxes"; 
 
         int mainCount = (int) (totalBase / multiplier);
-        int leftover = (int) (totalBase % multiplier);
+        int leftover = (int) (Math.round(totalBase % multiplier));
 
         StringBuilder display = new StringBuilder();
 
-        // Level 1: Highest unit
         if (mainCount > 0) {
             display.append(mainCount).append(" ").append(friendlyName);
         }
 
-        // Level 2: Doz (only if highest unit > 12 and leftover >= 12)
+        // Level 2: Doz (only if highest unit > 12)
         if (multiplier > 12.0 && leftover >= 12) {
             int dozens = leftover / 12;
             leftover = leftover % 12;
@@ -280,7 +278,7 @@ public class DatabaseHelper {
             display.append(leftover).append(" pcs");
         }
 
-        return display.length() > 0 ? display.toString() : String.format("%,.0f pcs", totalBase);
+        return display.length() > 0 ? display.toString() : "0 pcs";
     }
 
     // --- STOCK OPERATIONS ---
@@ -313,7 +311,7 @@ public class DatabaseHelper {
                 double existingCostPerPiece = rs.getDouble("price");
 
                 double quantityNumber = extractNumericValue(newUnit);
-                double multiplier = getUnitMultiplier(newUnit, size);
+                double multiplier = getUnitMultiplier(newUnit, size, newUnit);
                 double incomingPieces = quantityNumber * multiplier;
                 double newCostPerPiece = newPrice / (multiplier > 0 ? multiplier : 1);
 
@@ -348,7 +346,7 @@ public class DatabaseHelper {
 
     public void updateStockQuantity(String itemName, String soldSize, String soldUnit) {
         try {
-            String sql = "SELECT id, available_pieces FROM stock WHERE item = ? AND quantity = ?";
+            String sql = "SELECT id, unit, available_pieces FROM stock WHERE item = ? AND quantity = ?";
             PreparedStatement pstmt = connection.prepareStatement(sql);
             pstmt.setString(1, itemName);
             pstmt.setString(2, soldSize);
@@ -356,8 +354,11 @@ public class DatabaseHelper {
 
             if (rs.next()) {
                 int id = rs.getInt("id");
+                String bulkUnit = rs.getString("unit");
                 double currentPieces = rs.getDouble("available_pieces");
-                double soldPieces = extractNumericValue(soldUnit) * getUnitMultiplier(soldUnit, soldSize);
+                
+                double multiplier = getUnitMultiplier(soldUnit, soldSize, bulkUnit);
+                double soldPieces = extractNumericValue(soldUnit) * multiplier;
                 double remaining = currentPieces - soldPieces;
 
                 if (remaining >= 0) {
@@ -403,13 +404,15 @@ public class DatabaseHelper {
 
     public boolean hasEnoughStock(String itemName, String size, String soldUnit) {
         try (PreparedStatement pstmt = connection
-                .prepareStatement("SELECT available_pieces FROM stock WHERE item = ? AND quantity = ?")) {
+                .prepareStatement("SELECT unit, available_pieces FROM stock WHERE item = ? AND quantity = ?")) {
             pstmt.setString(1, itemName);
             pstmt.setString(2, size);
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
                 double stockAvailable = rs.getDouble("available_pieces");
-                double amountTryingToSell = extractNumericValue(soldUnit) * getUnitMultiplier(soldUnit, size);
+                String bulkUnit = rs.getString("unit");
+                double multiplier = getUnitMultiplier(soldUnit, size, bulkUnit);
+                double amountTryingToSell = extractNumericValue(soldUnit) * multiplier;
                 return stockAvailable >= amountTryingToSell;
             }
         } catch (SQLException e) {
@@ -555,19 +558,21 @@ public class DatabaseHelper {
         // Remove Math.floor here if you added it earlier!
         double costPrice = getLastRecordedPrice(item, size);
 
+        // Retrieve bulk unit from stock to ensure correct multiplier detection
+        String bulkUnit = "";
+        try (PreparedStatement pstmt = connection.prepareStatement("SELECT unit FROM stock WHERE item = ? AND quantity = ? LIMIT 1")) {
+            pstmt.setString(1, item);
+            pstmt.setString(2, size);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) bulkUnit = rs.getString("unit");
+        } catch (SQLException e) { e.printStackTrace(); }
+
         // 1. Get the raw number (e.g., "2" from "2 dozen")
-        // NOTE: For "3 1/2 kg", this now returns 1.5 (Total Weight/Qty), NOT 3 (Count)
         double quantityFactor = extractNumericValue(unit);
 
         // 2. Get the multiplier
-        double multiplier = getUnitMultiplier(unit, size);
+        double multiplier = getUnitMultiplier(unit, size, bulkUnit);
 
-        // Logic check: If extractNumericValue returns 1.5, and multiplier returns 1
-        // (for KG/fractions),
-        // then baseQty = 1.5. Correct for stock deduction.
-        // If multiplier returns non-1 (e.g. sack=20), checks needed.
-        // Assuming getUnitMultiplier handles "1/2 kg" by returning 1 or similar if the
-        // fraction logic is inside extractNumericValue.
         double baseQty = quantityFactor * multiplier;
 
         // DEBUG: Ensure we use the PASSED totalAmount
@@ -651,18 +656,22 @@ public class DatabaseHelper {
         else if (lowercaseText.contains("1/2"))
             fractionValue = 0.5;
 
-        // 2. Extract the FIRST whole number (e.g., the "12" in "12 box*12")
-        // Use regex to find the first sequence of digits and dots
+        // 2. Extract the FIRST whole number 
+        // We strip known fractions first to avoid confusing the regex
+        String cleaned = lowercaseText.replace("1/4", "").replace("1/2", "");
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(\\d+\\.?\\d*)");
-        java.util.regex.Matcher matcher = pattern.matcher(lowercaseText.replace("1/4", "").replace("1/2", ""));
+        java.util.regex.Matcher matcher = pattern.matcher(cleaned);
 
         if (matcher.find()) {
             try {
-                double wholeNumber = Double.parseDouble(matcher.group(1));
+                double value = Double.parseDouble(matcher.group(1));
+                // If it's something like "2 1/2", we should probably ADD them, 
+                // but the user says "only numbers" (no decimals). 
+                // However, internal logic still supports fractions for weight.
                 if (fractionValue > 0) {
-                    return wholeNumber * fractionValue;
+                    return value + fractionValue; // Changed from * to + for correct composite values like "2 1/2"
                 }
-                return wholeNumber;
+                return value;
             } catch (NumberFormatException e) {
                 return fractionValue;
             }
@@ -685,60 +694,77 @@ public class DatabaseHelper {
         return 0.0;
     }
 
-    public double getUnitMultiplier(String unitText, String size) {
-        if (unitText == null)
-            return 1.0;
-        String type = unitText.toLowerCase().trim();
-        String sizeLower = size.toLowerCase().trim();
+    public double getUnitMultiplier(String unitText, String size, String bulkUnit) {
+        if (unitText == null || unitText.isEmpty()) return 1.0;
+        String type = unitText.toLowerCase().replaceAll("\\s+", ""); // Normalize spaces
+        String sizeLower = size.toLowerCase().replaceAll("\\s+", "");
+        String bulkLower = (bulkUnit != null) ? bulkUnit.toLowerCase().replaceAll("\\s+", "") : "";
 
-        // 1. Check for the LONGEST/MOST SPECIFIC strings first
-        // If it's a sack, use the KG number from the size (e.g., "50kg" -> 50)
-        // ONLY treat "pc" as a "Sack" if the size is 10kg or more (Bulk)
-        // This protects small 1kg or 2kg packs from the sack logic
         double sizeNum = extractNumericValue(sizeLower);
         boolean isBulkSack = sizeLower.contains("kg") && sizeNum >= 10.0;
 
-        if (type.contains("sack") || (isBulkSack && type.contains("pc"))) {
+        if (type.contains("sack") || (isBulkSack && (type.contains("pc") || type.contains("item")))) {
             return sizeNum;
         }
 
-        // --- IMPROVED: Extract from * notation if present (e.g. box*12 -> 12) ---
+        // 1. Check for explicit multiplier in the unit itself (e.g. "pcs*12" or "box*72")
         if (type.contains("*")) {
             try {
                 String afterStar = type.substring(type.lastIndexOf("*") + 1).trim();
                 double val = extractNumericValue(afterStar);
-                if (val > 0)
-                    return val;
-            } catch (Exception e) {
-                // fall through
-            }
+                if (val > 0) return val;
+            } catch (Exception e) {}
         }
 
-        if (type.contains("half doz"))
-            return 6.0;
+        // Normalize 'type' by removing leading quantities for generic matching (e.g. "2 boxes" -> "boxes")
+        String normalizedType = type.replaceAll("^[0-9./* ]+", "");
 
-        // 2. Check for the shorter/general strings last
-        if (type.contains("box*10"))
-            return 10.0;
-        if (type.contains("box*12") || type.contains("dozen") || type.contains("doz"))
-            return 12.0;
-        if (type.contains("box*20") || type.equals("box"))
-            return 20.0;
-        if (type.contains("box*24") || type.contains("carton"))
-            return 24.0;
-        if (type.contains("box*72"))
-            return 72.0;
-        if (type.contains("crate") || type.contains("crate*25"))
-            return 25.0;
-        if (type.contains("box"))
-            return 20.0;
+        // 2. Specific Handle Piece or Item units (always 1.0 unless explicit * was used above)
+        if (normalizedType.equals("pc") || normalizedType.equals("pcs") || normalizedType.equals("item") || normalizedType.equals("items")) {
+            return 1.0;
+        }
+
+        // 3. Check for specific packaging (Dozens, etc.)
+        if (normalizedType.contains("halfdoz")) return 6.0;
+        if (normalizedType.contains("half")) return 0.5;
+        if (normalizedType.contains("quarter")) return 0.25;
+        if (normalizedType.contains("dozen") || normalizedType.contains("doz")) return 12.0;
+
+        // 4. Generic bulk unit text matching item's metadata (Box, Carton, etc.)
+        if (normalizedType.equals("box") || normalizedType.equals("boxes") || normalizedType.contains("carton") || normalizedType.contains("crate")) {
+            // First check the size meta-data for multiplier
+            if (sizeLower.contains("*")) {
+                try {
+                    String afterStar = sizeLower.substring(sizeLower.lastIndexOf("*") + 1).trim();
+                    double val = extractNumericValue(afterStar);
+                    if (val > 0) return val;
+                } catch (Exception e) {}
+            }
+            // Then check the bulk unit meta-data for multiplier
+            if (bulkLower.contains("*")) {
+                try {
+                    String afterStar = bulkLower.substring(bulkLower.lastIndexOf("*") + 1).trim();
+                    double val = extractNumericValue(afterStar);
+                    if (val > 0) return val;
+                } catch (Exception e) {}
+            }
+            return 20.0; // Standard fallback for generic box
+        }
+
+        // Legacy Fallbacks (space-normalized)
+        if (type.contains("box*10")) return 10.0;
+        if (type.contains("box*12")) return 12.0;
+        if (type.contains("box*24")) return 24.0;
+        if (type.contains("crate*25")) return 25.0;
+        if (type.contains("box*72")) return 72.0;
+        if (type.contains("box*20")) return 20.0;
 
         return 1.0;
     }
 
     public void addStock(String s, String i, String q, String u, double p, String d) {
         double unitCount = extractNumericValue(u);
-        double multiplier = getUnitMultiplier(u, q);
+        double multiplier = getUnitMultiplier(u, q, u);
         double totalPieces = unitCount * multiplier;
 
         // Use double for precision. If p is 25000 and multiplier is 12,
@@ -805,6 +831,19 @@ public class DatabaseHelper {
         return sizes;
     }
 
+    public boolean deleteStockItem(String itemName, String size) {
+        String sql = "DELETE FROM stock WHERE item = ? AND quantity = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, itemName);
+            pstmt.setString(2, size);
+            int affected = pstmt.executeUpdate();
+            return affected > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
     public ObservableList<String> getDistinctSuppliers() {
         ObservableList<String> names = FXCollections.observableArrayList();
         try (Statement stmt = connection.createStatement();
@@ -833,6 +872,10 @@ public class DatabaseHelper {
             e.printStackTrace();
         }
         return names;
+    }
+
+    public Connection getConnection() {
+        return connection;
     }
 
     public void close() {

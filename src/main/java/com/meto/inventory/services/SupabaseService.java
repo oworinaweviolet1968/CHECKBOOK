@@ -418,7 +418,7 @@ public class SupabaseService {
         });
     }
 
-    public boolean syncOnLogin(String dbPath, boolean localHasData) {
+    public boolean syncOnLogin(String dbPath, boolean localHasData, boolean isManual) {
         if (currentUserId == null)
             return false;
 
@@ -445,23 +445,20 @@ public class SupabaseService {
                 notifyStatus("Downloading...");
                 return downloadWithProgress(cloudFileName, dbPath);
 
-            } else {
-                System.out.println("Local newer or same.");
+            } else if (isManual || cloudTs == 0) {
+                // Upload only if manual refresh or if cloud is totally empty
+                System.out.println("Local newer or manual trigger. Checking if upload needed...");
 
                 if (localHasData) {
                     System.out.println("Uploading changes...");
                     uploadDatabase(dbPath);
-                } else if (cloudTs > 0) {
-                    // Local is NEWER but EMPTY (fresh install/deletion). Cloud HAS data.
-                    System.out.println("Local is empty but cloud has data. Forcing download.");
-                    notifyStatus("Restoring Backup...");
-
+                } else if (cloudTs > 0 && isManual) {
+                    System.out.println("Force restoring from cloud (manual)...");
                     return downloadWithProgress(cloudFileName, dbPath);
-
-                } else {
-                    System.out.println("Local DB is empty and no cloud backup exists.");
-                    notifyStatus("Cloud: Ready");
                 }
+            } else {
+                System.out.println("Auto-sync: Local is newer or same, skipping auto-upload to avoid stalls.");
+                notifyStatus("Cloud: Integrated");
             }
         } catch (Exception e) {
             e.printStackTrace();

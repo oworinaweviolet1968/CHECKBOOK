@@ -503,7 +503,7 @@ class DatabaseHelper {
   Future<void> addStock(String s, String i, String q, String u, double p, String d) async {
     final db = await instance.database;
     double unitCount = extractNumericValue(u);
-    double multiplier = getUnitMultiplier(u, q);
+    double multiplier = getUnitMultiplier(u, q, u);
     double totalPieces = unitCount * multiplier;
     
     // Price per single piece (base unit)
@@ -518,14 +518,17 @@ class DatabaseHelper {
   Future<void> updateStockQuantity(String itemName, String soldSize, String soldUnit) async {
       final db = await instance.database;
       final result = await db.rawQuery(
-        'SELECT id, available_pieces FROM stock WHERE item = ? AND quantity = ?',
+        'SELECT id, unit, available_pieces FROM stock WHERE item = ? AND quantity = ?',
         [itemName, soldSize]
       );
 
       if (result.isNotEmpty) {
           int id = result.first['id'] as int;
+          String bulkUnit = result.first['unit'] as String? ?? "";
           double currentPieces = result.first['available_pieces'] as double;
-          double soldPieces = extractNumericValue(soldUnit) * getUnitMultiplier(soldUnit, soldSize);
+          
+          double multiplier = getUnitMultiplier(soldUnit, soldSize, bulkUnit);
+          double soldPieces = extractNumericValue(soldUnit) * multiplier;
           double remaining = currentPieces - soldPieces;
 
           if (remaining >= 0) {
@@ -540,16 +543,15 @@ class DatabaseHelper {
   Future<bool> hasEnoughStock(String itemName, String size, String soldUnit) async {
       final db = await instance.database;
       final result = await db.rawQuery(
-          "SELECT available_pieces FROM stock WHERE item = ? AND quantity = ?",
+          "SELECT unit, available_pieces FROM stock WHERE item = ? AND quantity = ?",
           [itemName, size]
       );
       if (result.isNotEmpty) {
           double stockAvailable = result.first['available_pieces'] as double;
-          // Note: In SalesController, 'soldUnit' passed here acts as the 'Count Unit'
-          // Java code calls: extractNumericValue(soldUnit) * getUnitMultiplier(soldUnit, size)
-          // BUT wait, SalesController Java logic passes 'weightStr' to 'updateStockQuantity'
-          // but passes 'item.getUnit()' (e.g. "2 1/4 kg") to 'hasEnoughStock'.
-          double amountTryingToSell = extractNumericValue(soldUnit) * getUnitMultiplier(soldUnit, size);
+          String bulkUnit = result.first['unit'] as String? ?? "";
+          
+          double multiplier = getUnitMultiplier(soldUnit, size, bulkUnit);
+          double amountTryingToSell = extractNumericValue(soldUnit) * multiplier;
           return stockAvailable >= amountTryingToSell;
       }
       return false;
@@ -593,56 +595,52 @@ class DatabaseHelper {
           }
       }
 
-      // --- PIECE-BASED: Multi-tier cascading breakdown ---
-      double highestMultiplier = getUnitMultiplier(unitLabel, size);
+      // --- PIECE-BASED: Multi-tier cascading breakdown (Boxes / Doz / pcs) ---
+      double highestMultiplier = getUnitMultiplier(unitLabel, size, unitLabel);
 
       if (highestMultiplier <= 1.0) {
-          if (availablePieces == availablePieces.toInt()) {
-              return "${availablePieces.toInt()} pcs";
-          }
-          return "${availablePieces.toStringAsFixed(1)} pcs";
+          int total = availablePieces.round();
+          return "$total pcs";
       }
-
-      // Define all unit tiers from largest to smallest
-      final tiers = [72.0, 25.0, 24.0, 20.0, 12.0, 10.0, 6.0];
-      final tierLabels = ["box*72", "crate*25", "box*24", "box*20", "box*12", "box*10", "half doz"];
 
       List<String> parts = [];
-      double remaining = availablePieces;
-      bool foundHighest = false;
+      double remaining = availablePieces.roundToDouble();
 
-      for (int i = 0; i < tiers.length; i++) {
-          double tierMultiplier = tiers[i];
+      // Priority: Determine label name based on size and multiplier
+      String labelName;
+      String sizeLowerClean = size.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+      
+      if (highestMultiplier == 6.0) labelName = "Half Doz";
+      else if (highestMultiplier == 12.0) labelName = "Doz";
+      else if (sizeLowerClean.contains("crate")) labelName = "Crates";
+      else if (sizeLowerClean.contains("carton")) labelName = "Cartons";
+      else if (sizeLowerClean.contains("box")) labelName = "Boxes";
+      else labelName = "Boxes"; // Generic fallback
 
-          // Start from the highest tier (matching the stored unit)
-          if (!foundHighest) {
-              if (tierMultiplier == highestMultiplier) {
-                  foundHighest = true;
-              } else {
-                  continue;
-              }
+      // 1. HIGHEST BULK VALUE 
+      if (highestMultiplier > 1.0) {
+          int count = (remaining / highestMultiplier).floor();
+          remaining = remaining % highestMultiplier;
+          
+          if (count > 0) {
+              parts.add("$count $labelName");
           }
-
-          if (tierMultiplier > remaining && tierMultiplier != highestMultiplier) {
-              continue;
-          }
-
-          int count = (remaining / tierMultiplier).floor();
-          remaining = remaining % tierMultiplier;
-
-          if (count > 0 || tierMultiplier == highestMultiplier) {
-              parts.add("$count ${tierLabels[i]}");
-          }
-
-          if (remaining < 1) break;
       }
 
-      // Append remaining pieces
-      if (remaining >= 1) {
-          parts.add("${remaining.toInt()} pcs");
+      // 2. DOZENS (only if highestMultiplier > 12)
+      if (highestMultiplier > 12.0 && remaining >= 12.0) {
+          int count = (remaining / 12.0).floor();
+          remaining = remaining % 12.0;
+          if (count > 0) parts.add("$count Doz");
       }
 
-      return parts.isNotEmpty ? parts.join(" / ") : "${availablePieces.toInt()} pcs";
+      // 3. PIECES
+      int finalPieces = remaining.round();
+      if (finalPieces > 0) {
+          parts.add("$finalPieces pcs");
+      }
+
+      return parts.isEmpty ? "0 pcs" : parts.join(" / ");
   }
 
   // --- SALES OPERATIONS ---
@@ -651,8 +649,15 @@ class DatabaseHelper {
       final db = await instance.database;
       double costPrice = await getLastRecordedPrice(item, size);
       
+      // Retrieve bulk unit from stock to ensure correct multiplier detection
+      String bulkUnit = "";
+      final stockRes = await db.rawQuery("SELECT unit FROM stock WHERE item = ? AND quantity = ? LIMIT 1", [item, size]);
+      if (stockRes.isNotEmpty) {
+        bulkUnit = stockRes.first['unit'] as String? ?? "";
+      }
+
       double quantityFactor = extractNumericValue(unit);
-      double multiplier = getUnitMultiplier(unit, size);
+      double multiplier = getUnitMultiplier(unit, size, bulkUnit);
       double baseQty = quantityFactor * multiplier;
       
       // Normalize cost basis for Bulk Items
@@ -742,7 +747,7 @@ class DatabaseHelper {
     String unit = item['unit'] as String;
     String type = item['type'] as String;
 
-    double piecesToRevert = extractNumericValue(unit) * getUnitMultiplier(unit, size);
+    double piecesToRevert = extractNumericValue(unit) * getUnitMultiplier(unit, size, unit);
 
     final stockResult = await db.query(
       'stock',
@@ -840,50 +845,101 @@ class DatabaseHelper {
     if (lowercaseText.startsWith("1/4")) fractionValue = 0.25;
     else if (lowercaseText.startsWith("1/2")) fractionValue = 0.5;
 
-    // Regex to find the FIRST numeric part (whole number or decimal) at the START of the string
-    // This ignores internal numbers like the "72" in "2 box*72"
-    final cleaned = lowercaseText
-        .replaceAll("1/4", "")
-        .replaceAll("1/2", "")
-        .replaceAll(",", "")
-        .trim();
-    final match = RegExp(r'^(\d+(\.\d+)?)').firstMatch(cleaned);
+    // Remove known fractions to avoid confusing regex
+    String cleaned = lowercaseText.replaceAll("1/4", "").replaceAll("1/2", "").replaceAll(",", "").trim();
+    
+    // Find first numeric part (anywhere in string)
+    final match = RegExp(r'(\d+(\.\d+)?)').firstMatch(cleaned);
     
     if (match != null) {
         try {
-            double wholeNumber = double.parse(match.group(1)!);
-            return wholeNumber + fractionValue;
+            double value = double.parse(match.group(1)!);
+            if (fractionValue > 0) {
+                return value + fractionValue; // Fixed: Addition instead of multiplication
+            }
+            return value;
         } catch (e) {
             return fractionValue;
         }
     }
     
-    // If no leading number, check if there's just a fraction
     return fractionValue;
   }
 
   /// Ported from Java getUnitMultiplier
-  double getUnitMultiplier(String unitText, String size) {
-      String type = unitText.toLowerCase().replaceAll(' ', '');
-      String sizeLower = size.toLowerCase().replaceAll(' ', '');
+  double getUnitMultiplier(String unitText, String size, [String? bulkUnit]) {
+      if (unitText.isEmpty) return 1.0;
+      String type = unitText.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+      String sizeLower = size.toLowerCase().replaceAll(RegExp(r'\s+'), '');
+      String bulkLower = (bulkUnit ?? "").toLowerCase().replaceAll(RegExp(r'\s+'), '');
 
       double sizeNum = extractNumericValue(sizeLower);
       bool isBulkSack = sizeLower.contains("kg") && sizeNum >= 10.0;
 
-      if (type.contains("sack") || (isBulkSack && type.contains("pc"))) {
+      if (type.contains("sack") || (isBulkSack && (type.contains("pc") || type.contains("item")))) {
           return sizeNum;
       }
-      if (type.contains("halfdoz")) return 6.0;
-      if (type.contains("half")) return 0.5;
-      if (type.contains("quarter")) return 0.25;
 
-      if (type.contains("dozen") || type.contains("doz") || type.contains("box*12")) return 12.0;
-      if (type.contains("carton") || type.contains("box*24")) return 24.0;
-      if (type.contains("crate") || type.contains("crate*25")) return 25.0;
+      // 1. Explicit star multiplier in unit (e.g. "pcs*12" or "box*72")
+      if (type.contains("*")) {
+          try {
+              String afterStar = type.substring(type.lastIndexOf("*") + 1);
+              double val = extractNumericValue(afterStar);
+              if (val > 0) return val;
+          } catch (e) {}
+      }
+      
+      // Normalize 'type' by removing leading quantities
+      String normalizedType = type.replaceFirst(RegExp(r'^[0-9./* ]+'), '');
+
+      // 2. Piece or Item units (always 1.0)
+      if (normalizedType == "pc" || normalizedType == "pcs" || normalizedType == "item" || normalizedType == "items") {
+          return 1.0;
+      }
+
+      // 3. Packaging logic
+      if (normalizedType.contains("halfdoz")) return 6.0;
+      if (normalizedType.contains("half")) return 0.5;
+      if (normalizedType.contains("quarter")) return 0.25;
+      if (normalizedType.contains("dozen") || normalizedType.contains("doz")) return 12.0;
+
+      // 4. Generic units matching bulk metadata
+      if (normalizedType == "box" || normalizedType == "boxes" || normalizedType.contains("carton") || normalizedType.contains("crate")) {
+          if (sizeLower.contains("*")) {
+              try {
+                  String afterStar = sizeLower.substring(sizeLower.lastIndexOf("*") + 1);
+                  double val = extractNumericValue(afterStar);
+                  if (val > 0) return val;
+              } catch (e) {}
+          }
+          if (bulkLower.contains("*")) {
+              try {
+                  String afterStar = bulkLower.substring(bulkLower.lastIndexOf("*") + 1);
+                  double val = extractNumericValue(afterStar);
+                  if (val > 0) return val;
+              } catch (e) {}
+          }
+          return 20.0;
+      }
+                  String afterStar = sizeLower.substring(sizeLower.lastIndexOf("*") + 1);
+                  double val = extractNumericValue(afterStar);
+                  if (val > 0) return val;
+              } catch (e) {}
+          }
+          
+           // Fallback if no star but it's a known bulk term
+          if (normalizedType.contains("carton")) return 24.0;
+          if (normalizedType.contains("crate")) return 25.0;
+          return 20.0; // Default box
+      }
+
+      // Legacy Fallbacks (space-insensitive)
       if (type.contains("box*10")) return 10.0;
+      if (type.contains("box*12")) return 12.0;
+      if (type.contains("box*24")) return 24.0;
+      if (type.contains("crate*25")) return 25.0;
       if (type.contains("box*72")) return 72.0;
-      if (type.contains("box*20") || type == "box") return 20.0;
-      if (type.contains("box")) return 20.0; // Default for other boxes if unspecified 
+      if (type.contains("box*20")) return 20.0; 
 
       return 1.0;
   }

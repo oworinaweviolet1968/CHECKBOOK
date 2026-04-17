@@ -169,51 +169,42 @@ public class NewStockController implements DataManager.DataChangeListener {
         });
 
         // --- PRICE FIELD: COMMA FORMATTING & TEXT BLOCKING ---
-        priceField.addEventFilter(KeyEvent.KEY_TYPED, event -> {
-            if (!event.getCharacter().matches("[0-9.]"))
-                event.consume();
-        });
+        priceField.setTextFormatter(new TextFormatter<>(change -> {
+            if (change.isContentChange()) {
+                String newText = change.getControlNewText();
+                
+                // 1. Allow dot and digits ONLY
+                if (!newText.matches("[0-9., ]*")) {
+                    return null;
+                }
 
-        priceField.textProperty().addListener((obs, old, newVal) -> {
-            if (newVal == null || newVal.isEmpty())
-                return;
-            // Allow typing just a dot or starting with a dot
-            if (newVal.equals("."))
-                return;
+                // 2. Prevent multiple dots
+                if (newText.chars().filter(ch -> ch == '.').count() > 1) {
+                    return null;
+                }
 
-            String clean = newVal.replaceAll("[^0-9.]", "");
-            // Prevent multiple dots
-            if (clean.indexOf('.') != clean.lastIndexOf('.')) {
-                clean = clean.substring(0, clean.lastIndexOf('.'));
-            }
+                // 3. Format with commas if it doesn't end with a dot
+                // We do this by sanitizing and then re-formatting
+                String clean = newText.replaceAll("[^0-9.]", "");
+                if (clean.isEmpty()) return change;
 
-            if (clean.isEmpty())
-                return;
-            // Only format if it doesn't end with a dot (allow user to type decimals)
-            if (!clean.endsWith(".")) {
                 try {
-                    // Check if we have decimal part
-                    if (clean.contains(".")) {
-                        // Don't enforce format while typing decimals aggressively
+                    if (clean.contains(".") || clean.isEmpty()) {
+                        return change; // Don't format decimals or empty while typing
                     } else {
                         long val = Long.parseLong(clean);
                         String formatted = String.format("%,d", val);
-                        if (!newVal.equals(formatted)) {
-                            priceField.setText(formatted);
-                            priceField.positionCaret(formatted.length());
+                        
+                        // To avoid cursor jumping or infinite loop, only apply if change is different
+                        if (!change.getControlNewText().equals(formatted)) {
+                            change.setText(formatted);
+                            change.setRange(0, change.getControlText().length());
                         }
                     }
-                } catch (Exception e) {
-                    // Ignore parsing errors while typing
-                }
+                } catch (Exception e) {}
             }
-        });
-
-        priceField.textProperty().addListener((observable, oldValue, newValue) -> {
-            // Simplified listener to just handle comma removal for logic
-            // The previous listener handles the formatting.
-            // We remove the duplicate logic here to avoid conflicts.
-        });
+            return change;
+        }));
 
         // PRICE field: allow digits and a single dot only
         priceField.addEventFilter(KeyEvent.KEY_TYPED, event -> {
@@ -266,6 +257,25 @@ public class NewStockController implements DataManager.DataChangeListener {
         addButton.setDisable(level < 3);
     }
 
+    /**
+     * Extracts ONLY the leading numeric quantity from the text field.
+     * e.g. "1 Box * 72" -> "1"
+     * e.g. "2.5 pcs" -> "2.5"
+     * e.g. "" -> "1"
+     */
+    private String extractBaseQuantity(String text) {
+        if (text == null || text.trim().isEmpty())
+            return "1";
+        
+        // Match numbers, dots, or fractions at the VERY START of the string
+        java.util.regex.Pattern p = java.util.regex.Pattern.compile("^([0-9./]+)");
+        java.util.regex.Matcher m = p.matcher(text.trim());
+        
+        if (m.find()) {
+            return m.group(1);
+        }
+        return "1";
+    }
     private void handleQtySelection() {
         String item = itemsComboBox.getValue();
         String size = qtyComboBox.getEditor().getText();
@@ -375,7 +385,7 @@ public class NewStockController implements DataManager.DataChangeListener {
                 double costPerPiece = dataManager.getDbHelper().getExistingPrice(item, size);
 
                 if (costPerPiece > 0) {
-                    double multiplier = dataManager.getDbHelper().getUnitMultiplier(newVal, size);
+                    double multiplier = dataManager.getDbHelper().getUnitMultiplier(newVal, size, newVal);
                     double count = extractNumericValue(newVal);
 
                     double totalAmount = count * multiplier * costPerPiece;
@@ -541,16 +551,7 @@ public class NewStockController implements DataManager.DataChangeListener {
             return;
         }
 
-        String currentText = unitField.getText().trim();
-        // Strip the OLD unit label first, then extract the user's quantity number.
-        // This prevents "1 box*72" → "172" when switching to another unit.
-        String withoutUnit = currentText
-                .replaceAll("(?i)(half doz|box|crate|sack|pcs|dozen|doz|carton)", "")
-                .replaceAll("[*]", "")
-                .trim();
-        String numberPart = withoutUnit.replaceAll("[^0-9.]", "").trim();
-        if (numberPart.isEmpty())
-            numberPart = "1";
+        String numberPart = extractBaseQuantity(unitField.getText().trim());
 
         // Smart replace: Keep number, update unit
         unitField.setText(numberPart + " " + unit);
@@ -560,7 +561,7 @@ public class NewStockController implements DataManager.DataChangeListener {
 
         if (basePrice > 0) {
             // 2. Get the multiplier (e.g., Sack = 45)
-            double multiplier = dataManager.getDbHelper().getUnitMultiplier(unit, selectedSize);
+            double multiplier = dataManager.getDbHelper().getUnitMultiplier(unit, selectedSize, unit);
 
             // 3. Fill the price field with the price of ONE UNIT (e.g., 1 Sack = 200,000)
             double unitPrice = basePrice * multiplier;
