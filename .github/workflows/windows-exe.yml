@@ -66,14 +66,7 @@ jobs:
             --win-menu `
             --win-shortcut
 
-      # 8. Upload the MSI as an artifact
-      - name: Upload MSI artifact
-        uses: actions/upload-artifact@v5
-        with:
-          name: METO.IMS-MSI
-          path: output/*.msi
-
-      # 9. Release to beckhamz777/cb repository
+      # 8. Release to beckhamz777/cb repository
       - name: Create Release in cb repository
         uses: softprops/action-gh-release@v2
         with:
