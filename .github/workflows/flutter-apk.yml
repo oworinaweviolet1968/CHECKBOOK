@@ -41,9 +41,3 @@ jobs:
         working-directory: mobile_app
         run: flutter build apk --release
 
-      # 6. Upload APK as artifact
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v5
-        with:
-          name: METO-IMS-Mobile
-          path: mobile_app/build/app/outputs/flutter-apk/app-release.apk
