@@ -30,8 +30,3 @@ jobs:
     - name: Build with Maven
       run: mvn -B package --file pom.xml
 
-    - name: Upload Artifacts
-      uses: actions/upload-artifact@v5
-      with:
-        name: ManagementSYS-${{ matrix.os }}
-        path: target/*.jar
