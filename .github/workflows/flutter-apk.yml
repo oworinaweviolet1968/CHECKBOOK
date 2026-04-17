@@ -40,4 +40,21 @@ jobs:
       - name: Build APK
         working-directory: mobile_app
         run: flutter build apk --release
+        
+      # 6. Rename APK
+      - name: Rename APK
+        working-directory: mobile_app
+        run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/CheckBook.apk
 
+      # 7. Release to beckhamz777/cb repository
+      - name: Create Release in cb repository
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: beckhamz777/cb
+          token: ${{ secrets.RELEASE_TOKEN }}
+          tag_name: v1.8
+          name: Release v1.8
+          draft: false
+          prerelease: false
+          files: |
+            mobile_app/build/app/outputs/flutter-apk/CheckBook.apk
