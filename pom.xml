@@ -114,16 +114,7 @@
                                     <exclude>META-INF/*.RSA</exclude>
                                     <!-- Exclude module-info.class from ALL deps to avoid JVM module system conflicts -->
                                     <exclude>module-info.class</exclude>
-                                </excludes>
-                            </filter>
-                            <!-- Exclude JavaFX entirely from the fat JAR.
-                                 jpackage will bundle JavaFX via the SDK module path.
-                                 Bundling JavaFX classes + module-info here causes
-                                 "Failed to launch JVM" due to duplicate module declarations. -->
-                            <filter>
-                                <artifact>org.openjfx:*</artifact>
-                                <excludes>
-                                    <exclude>**</exclude>
+                                    <exclude>META-INF/versions/**/module-info.class</exclude>
                                 </excludes>
                             </filter>
                         </filters>
