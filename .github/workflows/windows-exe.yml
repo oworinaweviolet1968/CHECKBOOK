@@ -59,6 +59,7 @@ jobs:
             --main-class com.meto.inventory.AppLauncher `
             --module-path javafx-sdk/javafx-sdk-21.0.10/lib `
             --add-modules javafx.controls,javafx.fxml,javafx.web,javafx.media,javafx.graphics,javafx.base,java.sql,java.naming,java.desktop,java.management,jdk.crypto.ec,java.prefs,java.net.http,java.xml,java.logging,jdk.unsupported `
+            --java-options "--add-modules=javafx.controls,javafx.fxml,javafx.web,javafx.media,javafx.graphics,javafx.base" `
             --icon app_icon.ico `
             --vendor "METO" `
             --description "METO Inventory Management System" `
