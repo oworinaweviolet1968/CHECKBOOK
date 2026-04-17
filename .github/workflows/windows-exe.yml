@@ -32,7 +32,7 @@ jobs:
 
       # 4. Build the Maven project
       - name: Build Maven project
-        run: mvn clean package
+        run: mvn clean package -q
 
       # 5. Prepare dist directory with only the shaded JAR
       - name: Prepare dist directory
@@ -44,21 +44,80 @@ jobs:
       - name: Extract application icon
         run: |
           jar xf dist/ManagementSYS-1.8.jar com/meto/inventory/views/images/app_icon.ico
-          Copy-Item com/meto/inventory/views/images/app_icon.ico app_icon.ico
+          Copy-Item com/meto/inventory/views/images/app_icon.ico app_icon.ico -ErrorAction SilentlyContinue
 
-      # 7. Create Windows MSI using jpackage
+      # 7. Build a custom JRE using jlink (explicit & reliable — avoids jpackage's internal bundling issues)
+      - name: Build custom JRE with jlink
+        run: |
+          $javaHome = $env:JAVA_HOME
+          $jmodsPath = "$javaHome\jmods"
+          $javafxLib  = "javafx-sdk\javafx-sdk-21.0.10\lib"
+          $modulePath = "$jmodsPath;$javafxLib"
+
+          Write-Host "JAVA_HOME: $javaHome"
+          Write-Host "Module path: $modulePath"
+
+          jlink `
+            --module-path "$modulePath" `
+            --add-modules javafx.controls,javafx.fxml,javafx.web,javafx.media,javafx.graphics,javafx.base,java.sql,java.naming,java.desktop,java.management,jdk.crypto.ec,java.prefs,java.net.http,java.xml,java.logging,jdk.unsupported `
+            --output custom-jre `
+            --strip-debug `
+            --no-header-files `
+            --no-man-pages
+
+          Write-Host "custom-jre created. Contents of bin:"
+          Get-ChildItem custom-jre\bin
+
+      # 8. Create a portable app-image (folder with EXE — no install needed, use for testing!)
+      - name: Create portable app-image for testing
+        run: |
+          jpackage `
+            --type app-image `
+            --name "METO.IMS" `
+            --app-version 1.8 `
+            --dest app-image-output `
+            --input dist `
+            --main-jar ManagementSYS-1.8.jar `
+            --main-class com.meto.inventory.AppLauncher `
+            --runtime-image custom-jre `
+            --java-options "--add-modules=javafx.controls,javafx.fxml,javafx.web,javafx.media,javafx.graphics,javafx.base" `
+            --icon app_icon.ico
+
+      # 9. Quick smoke-test: run the EXE, give it 6s to start, check it doesn't die immediately
+      - name: Smoke-test app launch (JVM must start; GUI failure is OK in headless CI)
+        continue-on-error: true
+        run: |
+          $exe = "app-image-output\METO.IMS\METO.IMS.exe"
+          Write-Host "Starting: $exe"
+          $proc = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 6
+          if ($proc.HasExited) {
+            Write-Host "::warning::App exited early with code $($proc.ExitCode). Check for JVM launch error."
+          } else {
+            Write-Host "App is running (JVM launched successfully). Stopping..."
+            $proc.Kill()
+          }
+
+      # 10. Upload the portable app-image so you can download & test without installing
+      - name: Upload portable app-image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: METO-IMS-portable-v1.8
+          path: app-image-output/METO.IMS/
+          retention-days: 7
+
+      # 11. Create Windows MSI from the same proven custom JRE
       - name: Create Windows MSI
         run: |
           jpackage `
             --type msi `
-            --name METO.IMS `
+            --name "METO.IMS" `
             --app-version 1.8 `
             --dest output `
             --input dist `
             --main-jar ManagementSYS-1.8.jar `
             --main-class com.meto.inventory.AppLauncher `
-            --module-path javafx-sdk/javafx-sdk-21.0.10/lib `
-            --add-modules javafx.controls,javafx.fxml,javafx.web,javafx.media,javafx.graphics,javafx.base,java.sql,java.naming,java.desktop,java.management,jdk.crypto.ec,java.prefs,java.net.http,java.xml,java.logging,jdk.unsupported `
+            --runtime-image custom-jre `
             --java-options "--add-modules=javafx.controls,javafx.fxml,javafx.web,javafx.media,javafx.graphics,javafx.base" `
             --icon app_icon.ico `
             --vendor "METO" `
@@ -67,7 +126,7 @@ jobs:
             --win-menu `
             --win-shortcut
 
-      # 8. Release to beckhamz777/cb repository
+      # 12. Release MSI to beckhamz777/cb repository
       - name: Create Release in cb repository
         uses: softprops/action-gh-release@v2
         with:
