@@ -79,13 +79,16 @@ class DashboardScreenState extends State<DashboardScreen> {
               child: Image.asset('assets/images/app_icon.png', width: 20, height: 20),
             ),
             const SizedBox(width: 12),
-            const Text(
-              'StockFlow',
-              style: TextStyle(
-                color: AppColors.textPrimary,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-                letterSpacing: -0.5,
+            const Expanded(
+              child: Text(
+                'StockFlow',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  letterSpacing: -0.5,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],

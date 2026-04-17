@@ -129,6 +129,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         final request = requests.first;
         _showLoginApprovalDialog(request);
       }
+    }, onError: (err) {
+      debugPrint('Realtime stream error: $err');
+      // Silently fail, polling will catch it.
     });
   }
 

@@ -123,7 +123,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
     setState(() => _isBackingUp = true);
     
     try {
-      await SupasService.instance.uploadDatabase();
+      await SupasService.instance.syncDatabase(isManual: true);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

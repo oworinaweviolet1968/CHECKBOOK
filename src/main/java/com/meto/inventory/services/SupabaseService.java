@@ -14,6 +14,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import javax.crypto.Cipher;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.ByteBuffer;
+import java.security.SecureRandom;
+import java.util.Base64;
+import java.net.NetworkInterface;
+import java.util.Collections;
 
 public class SupabaseService {
 
@@ -35,6 +46,20 @@ public class SupabaseService {
 
     private SupabaseService() {
         this.client = HttpClient.newHttpClient();
+        // Ensure data directory exists on init
+        resolvePath("session_test.txt");
+    }
+
+    private String resolvePath(String fileName) {
+        String userHome = System.getProperty("user.home");
+        String appData = System.getenv("APPDATA");
+        String rootDir = (appData != null) ? appData : userHome;
+
+        java.io.File dir = new java.io.File(rootDir, "METO_IMS_DATA");
+        if (!dir.exists()) {
+            dir.mkdirs();
+        }
+        return new java.io.File(dir, fileName).getAbsolutePath();
     }
 
     public static SupabaseService getInstance() {
@@ -208,8 +233,10 @@ public class SupabaseService {
     private void saveSession() {
         if (currentRefreshToken != null) {
             try {
-                Files.writeString(Path.of("user_session.txt"), currentRefreshToken);
-            } catch (IOException e) {
+                String encryptedToken = encrypt(currentRefreshToken);
+                Files.writeString(Path.of(resolvePath("user_session.txt")), encryptedToken);
+            } catch (Exception e) {
+                System.err.println("Encryption failed, saving plain-text fallback (NOT SECURE)");
                 e.printStackTrace();
             }
         }
@@ -217,9 +244,18 @@ public class SupabaseService {
 
     public String loadSession() {
         try {
-            Path path = Path.of("user_session.txt");
+            Path path = Path.of(resolvePath("user_session.txt"));
             if (Files.exists(path)) {
-                return Files.readString(path).trim();
+                String content = Files.readString(path).trim();
+                // If it looks like a clear-text token (not base64 or too short), we might skip
+                // but decrypt will just fail.
+                try {
+                    return decrypt(content);
+                } catch (Exception e) {
+                    // Decryption failed - could be old plain-text session or moved disk
+                    System.err.println("Session decryption failed. Likely old or insecure session.");
+                    return null; 
+                }
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -229,10 +265,77 @@ public class SupabaseService {
 
     private void clearSession() {
         try {
-            Files.deleteIfExists(Path.of("user_session.txt"));
+            Files.deleteIfExists(Path.of(resolvePath("user_session.txt")));
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    // --- ENCRYPTION HELPERS ---
+
+    private String encrypt(String data) throws Exception {
+        byte[] salt = "METO_IMS_SALT_2024".getBytes();
+        SecretKey key = getEncryptionKey(salt);
+
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        byte[] iv = new byte[12];
+        new SecureRandom().nextBytes(iv);
+        GCMParameterSpec spec = new GCMParameterSpec(128, iv);
+        cipher.init(Cipher.ENCRYPT_MODE, key, spec);
+
+        byte[] cipherText = cipher.doFinal(data.getBytes());
+        ByteBuffer bb = ByteBuffer.allocate(iv.length + cipherText.length);
+        bb.put(iv);
+        bb.put(cipherText);
+
+        return Base64.getEncoder().encodeToString(bb.array());
+    }
+
+    private String decrypt(String encryptedData) throws Exception {
+        byte[] decoded = Base64.getDecoder().decode(encryptedData);
+        ByteBuffer bb = ByteBuffer.wrap(decoded);
+        byte[] iv = new byte[12];
+        bb.get(iv);
+        byte[] cipherText = new byte[bb.remaining()];
+        bb.get(cipherText);
+
+        byte[] salt = "METO_IMS_SALT_2024".getBytes();
+        SecretKey key = getEncryptionKey(salt);
+
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        GCMParameterSpec spec = new GCMParameterSpec(128, iv);
+        cipher.init(Cipher.DECRYPT_MODE, key, spec);
+
+        byte[] plainText = cipher.doFinal(cipherText);
+        return new String(plainText);
+    }
+
+    private SecretKey getEncryptionKey(byte[] salt) throws Exception {
+        String hardwareId = System.getProperty("user.name") + getMacAddress();
+        SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+        // 1000 iterations is plenty for local desktop app binding
+        PBEKeySpec spec = new PBEKeySpec(hardwareId.toCharArray(), salt, 1000, 256);
+        SecretKey tmp = factory.generateSecret(spec);
+        return new SecretKeySpec(tmp.getEncoded(), "AES");
+    }
+
+    private String getMacAddress() {
+        try {
+            java.util.Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            for (NetworkInterface ni : Collections.list(interfaces)) {
+                byte[] mac = ni.getHardwareAddress();
+                if (mac != null && mac.length > 0) {
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < mac.length; i++) {
+                        sb.append(String.format("%02X", mac[i]));
+                    }
+                    return sb.toString();
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return "FALLBACK_HARDWARE_ID";
     }
 
     private void parseAuthResponse(String body) {

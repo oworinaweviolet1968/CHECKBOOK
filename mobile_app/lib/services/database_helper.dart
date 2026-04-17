@@ -848,8 +848,8 @@ class DatabaseHelper {
     // Remove known fractions to avoid confusing regex
     String cleaned = lowercaseText.replaceAll("1/4", "").replaceAll("1/2", "").replaceAll(",", "").trim();
     
-    // Find first numeric part (anywhere in string)
-    final match = RegExp(r'(\d+(\.\d+)?)').firstMatch(cleaned);
+    // Find the leading numeric part (start of string only)
+    final match = RegExp(r'^(\d+(\.\d+)?)').firstMatch(cleaned);
     
     if (match != null) {
         try {
@@ -919,15 +919,8 @@ class DatabaseHelper {
                   if (val > 0) return val;
               } catch (e) {}
           }
-          return 20.0;
-      }
-                  String afterStar = sizeLower.substring(sizeLower.lastIndexOf("*") + 1);
-                  double val = extractNumericValue(afterStar);
-                  if (val > 0) return val;
-              } catch (e) {}
-          }
           
-           // Fallback if no star but it's a known bulk term
+          // Fallback if no star but it's a known bulk term
           if (normalizedType.contains("carton")) return 24.0;
           if (normalizedType.contains("crate")) return 25.0;
           return 20.0; // Default box
@@ -968,8 +961,6 @@ class DatabaseHelper {
       
       return cleaned.isEmpty ? "pcs" : cleaned;
   }
-  
-  // Need to fix 'boolean' to 'bool' in Dart above
   
   Future<List<String>> getAvailableItems() async {
       final db = await instance.database;

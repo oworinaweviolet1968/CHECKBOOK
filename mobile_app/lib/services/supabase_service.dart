@@ -33,7 +33,7 @@ class SupasService {
   String? get userId => client.auth.currentUser?.id;
 
   // Sync Logic (Mirroring Java syncOnLogin)
-  Future<void> syncDatabase() async {
+  Future<void> syncDatabase({bool isManual = false}) async {
     if (userId == null) return;
 
     try {
@@ -69,14 +69,17 @@ class SupasService {
           await _downloadDatabase(userId!, dbPath);
       } else {
           print('SYNC: Local is newer or same.');
-          if (localHasData) {
-              print('SYNC: Uploading changes...');
-              await uploadDatabase();
-          } else if (cloudTs > 0) {
-              print('SYNC: Local empty but cloud has data. Restoring...');
-              await _downloadDatabase(userId!, dbPath);
+          // Logic: Only upload automatically if the cloud is empty.
+          // IF manual, we always force an upload to ensure deletions/updates propagate.
+          if (isManual || cloudTs == 0) {
+              if (localHasData) {
+                  print('SYNC: Uploading changes...');
+                  await uploadDatabase();
+              } else {
+                  print('SYNC: Local empty, nothing to upload.');
+              }
           } else {
-              print('SYNC: Both empty. Ready.');
+              print('SYNC: Automatic sync skipped upload to prevent cloud overwrite.');
           }
       }
       syncStatus.value = SyncStatus.synced;
