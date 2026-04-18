@@ -41,6 +41,7 @@ void main() async {
     debugPrint('Startup: Existing session found for $userId');
     await DatabaseHelper.instance.switchDatabase(userId);
     await PasscodeService.instance.init();
+
     // Pre-refresh metadata
     unawaited(SupasService.instance.refreshUserMetadata());
   }

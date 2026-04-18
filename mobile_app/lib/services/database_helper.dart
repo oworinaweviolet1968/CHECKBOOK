@@ -292,6 +292,18 @@ class DatabaseHelper {
     ''');
   }
 
+  Future<void> clearAllData() async {
+      final db = await instance.database;
+      await db.transaction((txn) async {
+          await txn.execute("DELETE FROM sales");
+          await txn.execute("DELETE FROM stock");
+          await txn.execute("DELETE FROM deleted_history");
+          await txn.execute("DELETE FROM yearly_summaries");
+          await txn.execute("UPDATE settings SET value = '0' WHERE key = 'last_backup_timestamp'");
+      });
+      print("DATABASE: All local data cleared.");
+  }
+
   // --- Queries matching Java backend ---
 
   // Dashboard: Total Stock Value

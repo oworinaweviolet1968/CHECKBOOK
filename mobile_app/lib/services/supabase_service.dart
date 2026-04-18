@@ -227,6 +227,36 @@ class SupasService {
       return await DatabaseHelper.instance.getDbPath();
   }
 
+  /// Permanently deletes the cloud backup and resets metadata.
+  Future<void> wipeCloudData() async {
+      if (userId == null) return;
+      try {
+          syncStatus.value = SyncStatus.syncing;
+          
+          final dbPath = await _getLocalDbPath();
+          final fileName = dbPath.split(Platform.pathSeparator).last;
+          
+          // 1. Delete storage files
+          try {
+              await client.storage.from('backups').remove(['$userId/$fileName']);
+              await client.storage.from('backups').remove(['$userId/inventory.db']); // legacy
+          } catch (e) {
+              print('CLOUDWIPE STORAGE: $e');
+          }
+
+          // 2. Reset cloud metadata
+          await client.from('users').update({
+              'last_backup_timestamp': 0,
+          }).eq('id', userId!);
+
+          print('CLOUDWIPE: Cloud data successfully cleared.');
+          syncStatus.value = SyncStatus.synced;
+      } catch (e) {
+          print('CLOUDWIPE ERROR: $e');
+          syncStatus.value = SyncStatus.error;
+      }
+  }
+
   // --- PUSH-TO-LOGIN ---
 
   Stream<List<Map<String, dynamic>>> getLoginRequestsStream() {
