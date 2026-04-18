@@ -87,28 +87,33 @@ class StockTileRedesigned extends StatelessWidget {
           ),
           
           // Right: Quantity + Badge
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                quantity,
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                  color: AppColors.textPrimary,
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  quantity,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: AppColors.textPrimary,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                isLowStock ? "LOW STOCK" : "IN STOCK",
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: isLowStock ? AppColors.accentAmber : AppColors.primaryGreen,
-                  letterSpacing: 0.5,
+                const SizedBox(height: 2),
+                Text(
+                  isLowStock ? "LOW STOCK" : "IN STOCK",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: isLowStock ? AppColors.accentAmber : AppColors.primaryGreen,
+                    letterSpacing: 0.5,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),

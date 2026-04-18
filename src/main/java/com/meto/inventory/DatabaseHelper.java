@@ -251,9 +251,11 @@ public class DatabaseHelper {
         String friendlyName;
         if (multiplier == 6.0) friendlyName = "Half Doz";
         else if (multiplier == 12.0) friendlyName = "Doz";
-        else if (sizeLower.contains("crate")) friendlyName = "Crates";
-        else if (sizeLower.contains("carton")) friendlyName = "Cartons";
-        else friendlyName = "Boxes"; 
+        else if (sizeLower.contains("crate")) friendlyName = "Crs";
+        else if (sizeLower.contains("carton")) friendlyName = "Cts";
+        else if (sizeLower.contains("pack")) friendlyName = "Pks";
+        else if (sizeLower.contains("bundle")) friendlyName = "Bndls";
+        else friendlyName = "Bx"; 
 
         int mainCount = (int) (totalBase / multiplier);
         int leftover = (int) (Math.round(totalBase % multiplier));

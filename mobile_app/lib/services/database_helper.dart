@@ -595,49 +595,46 @@ class DatabaseHelper {
           }
       }
 
-      // --- PIECE-BASED: Multi-tier cascading breakdown (Boxes / Doz / pcs) ---
-      double highestMultiplier = getUnitMultiplier(unitLabel, size, unitLabel);
+      // --- PIECE-BASED: Multi-tier cascading breakdown (Bulk → Doz → pcs) ---
+      double multiplier = getUnitMultiplier(unitLabel, size, unitLabel);
 
-      if (highestMultiplier <= 1.0) {
+      if (multiplier <= 1.0) {
           int total = availablePieces.round();
           return "$total pcs";
       }
 
       List<String> parts = [];
-      double remaining = availablePieces.roundToDouble();
+      double remaining = availablePieces;
 
-      // Priority: Determine label name based on size and multiplier
-      String labelName;
+      // Friendly name for the highest unit
+      String friendlyName;
       String sizeLowerClean = size.toLowerCase().replaceAll(RegExp(r'\s+'), '');
       
-      if (highestMultiplier == 6.0) labelName = "Half Doz";
-      else if (highestMultiplier == 12.0) labelName = "Doz";
-      else if (sizeLowerClean.contains("crate")) labelName = "Crates";
-      else if (sizeLowerClean.contains("carton")) labelName = "Cartons";
-      else if (sizeLowerClean.contains("box")) labelName = "Boxes";
-      else labelName = "Boxes"; // Generic fallback
+      if (multiplier == 6.0) friendlyName = "Half Doz";
+      else if (multiplier == 12.0) friendlyName = "Doz";
+      else if (sizeLowerClean.contains("crate")) friendlyName = "Crates";
+      else if (sizeLowerClean.contains("carton")) friendlyName = "Cartons";
+      else if (sizeLowerClean.contains("pack")) friendlyName = "Pks";
+      else if (sizeLowerClean.contains("bundle")) friendlyName = "Bndls";
+      else friendlyName = "Bx"; 
 
-      // 1. HIGHEST BULK VALUE 
-      if (highestMultiplier > 1.0) {
-          int count = (remaining / highestMultiplier).floor();
-          remaining = remaining % highestMultiplier;
-          
-          if (count > 0) {
-              parts.add("$count $labelName");
-          }
+      int mainCount = (remaining / multiplier).floor();
+      int leftover = (remaining % multiplier).round();
+
+      if (mainCount > 0) {
+          parts.add("$mainCount $friendlyName");
       }
 
-      // 2. DOZENS (only if highestMultiplier > 12)
-      if (highestMultiplier > 12.0 && remaining >= 12.0) {
-          int count = (remaining / 12.0).floor();
-          remaining = remaining % 12.0;
-          if (count > 0) parts.add("$count Doz");
+      // Level 2: Dozens (only if highest unit > 12)
+      if (multiplier > 12.0 && leftover >= 12) {
+          int dozens = (leftover / 12).floor();
+          leftover = leftover % 12;
+          parts.add("$dozens Doz");
       }
 
-      // 3. PIECES
-      int finalPieces = remaining.round();
-      if (finalPieces > 0) {
-          parts.add("$finalPieces pcs");
+      // Level 3: Remaining pcs
+      if (leftover > 0) {
+          parts.add("$leftover pcs");
       }
 
       return parts.isEmpty ? "0 pcs" : parts.join(" / ");
