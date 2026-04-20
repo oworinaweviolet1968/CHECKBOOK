@@ -562,7 +562,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                              SizedBox(
                                  width: double.infinity,
                                  child: ElevatedButton.icon(
-                                     onPressed: _cart.isEmpty ? null : _checkout,
+                                     onPressed: _cart.isEmpty ? null : _showSaleSummaryDialog,
                                      icon: const Icon(Icons.receipt_long, size: 20),
                                      label: const Text("Complete Sale"),
                                      style: ElevatedButton.styleFrom(
@@ -858,7 +858,160 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
       );
   }
 
-  void _checkout() async {
+  void _showSaleSummaryDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        contentPadding: EdgeInsets.zero,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: AppColors.primaryGreen,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: const Column(
+                children: [
+                   Text(
+                    "CHECKBOOK APP",
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 2, fontSize: 18),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    "Receipt Summary",
+                    style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Content
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Customer: ${_customerController.text.isEmpty ? 'Walk-in' : _customerController.text}", 
+                         style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                    const SizedBox(height: 12),
+                    const Divider(),
+                    const SizedBox(height: 12),
+                    ..._cart.map((item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(item.item, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                                Text("${item.quantity} • ${item.unit}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                              ],
+                            ),
+                          ),
+                          Text("UGX ${_formatter.format(double.tryParse(item.amount) ?? 0)}", 
+                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                        ],
+                      ),
+                    )),
+                    const SizedBox(height: 12),
+                    const Divider(thickness: 2),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Total Amount", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text("UGX ${_formatter.format(_calculateTotalNum())}", 
+                             style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.primaryGreen)),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    const Center(
+                      child: Text("Do you want to print an invoice?", 
+                           style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            
+            // Actions
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _checkout(shouldPrint: true);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryGreen,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text("Yes, Print & Finish", style: TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _checkout(shouldPrint: false);
+                          },
+                          child: const Text("No, Just Save", style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _checkout({bool shouldPrint = false}) async {
+    if (shouldPrint) {
+      // Mock for now: show snackbar
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.print, color: Colors.white),
+              const SizedBox(width: 12),
+              Expanded(child: Text('Processing Invoice... (Printing logic pending)')),
+            ],
+          ),
+          backgroundColor: AppColors.primaryGreen,
+        )
+      );
+    }
       try {
           String customer = _customerController.text;
           for (var item in _cart) {

@@ -469,25 +469,35 @@ public class SupabaseService {
             return false;
 
         try {
-            notifyStatus("Uploading...");
-            // CHANGE: Use the actual filename (inventory_UID.db) instead of generic
-            // inventory.db
-            String cloudFileName = file.getName();
+            notifyStatus("Compressing...");
+            byte[] rawBytes = Files.readAllBytes(file.toPath());
+            
+            // 1. GZIP compress
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            try (java.util.zip.GZIPOutputStream gzos = new java.util.zip.GZIPOutputStream(baos)) {
+                gzos.write(rawBytes);
+            }
+            byte[] gzippedBytes = baos.toByteArray();
+
+            notifyStatus("Uploading (" + (gzippedBytes.length / 1024) + " KB)...");
+            
+            // CHANGE: Append .gz to filename and use application/gzip
+            String cloudFileName = file.getName() + ".gz";
             String path = "backups/" + currentUserId + "/" + cloudFileName;
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(STORAGE_URL + "/" + path))
                     .header("apikey", SUPABASE_KEY)
                     .header("Authorization", "Bearer " + currentAccessToken)
-                    .header("Content-Type", "application/x-sqlite3")
-                    .header("x-upsert", "true") // Overwrite
-                    .POST(HttpRequest.BodyPublishers.ofFile(file.toPath()))
+                    .header("Content-Type", "application/gzip")
+                    .header("x-upsert", "true")
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(gzippedBytes))
+                    .timeout(java.time.Duration.ofSeconds(60)) // Add timeout
                     .build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() == 200) {
-                // Save timestamp and file URL to DB
                 Map<String, Object> updates = new HashMap<>();
                 updates.put("last_backup_timestamp", System.currentTimeMillis());
                 updateUserFields(updates);
@@ -526,7 +536,6 @@ public class SupabaseService {
             return false;
 
         try {
-            // Check metadata first to see if cloud is newer
             JsonObject meta = getUserMetadata();
             long cloudTs = 0;
             if (meta.has("last_backup_timestamp") && !meta.get("last_backup_timestamp").isJsonNull()) {
@@ -537,30 +546,22 @@ public class SupabaseService {
             long localTs = local.exists() ? local.lastModified() : 0;
 
             System.out.println("SYNC DEBUG: CloudTS=" + cloudTs + ", LocalTS=" + localTs);
-            System.out.println("SYNC DEBUG: LocalHasData=" + localHasData + ", LocalFileExists=" + local.exists());
 
-            // Derive cloud path from local filename
             String cloudFileName = local.getName();
 
-            // Note: If cloudTs == 0 (fresh account), this block is skipped.
             if (cloudTs > localTs) {
-                System.out.println("Cloud is newer. Downloading...");
+                System.out.println("Cloud is newer. Attempting download...");
                 notifyStatus("Downloading...");
                 return downloadWithProgress(cloudFileName, dbPath);
 
             } else if (isManual || cloudTs == 0) {
-                // Upload only if manual refresh or if cloud is totally empty
-                System.out.println("Local newer or manual trigger. Checking if upload needed...");
-
                 if (localHasData) {
                     System.out.println("Uploading changes...");
                     uploadDatabase(dbPath);
                 } else if (cloudTs > 0 && isManual) {
-                    System.out.println("Force restoring from cloud (manual)...");
                     return downloadWithProgress(cloudFileName, dbPath);
                 }
             } else {
-                System.out.println("Auto-sync: Local is newer or same, skipping auto-upload to avoid stalls.");
                 notifyStatus("Cloud: Integrated");
             }
         } catch (Exception e) {
@@ -571,12 +572,32 @@ public class SupabaseService {
 
     private boolean downloadWithProgress(String cloudFileName, String localPath) {
         try {
-            String path = "backups/" + currentUserId + "/" + cloudFileName;
+            // Priority: Compressed version (.gz)
+            boolean success = performDownload(cloudFileName + ".gz", localPath, true);
+            if (!success) {
+                System.out.println("Compressed download failed. Falling back to legacy...");
+                success = performDownload(cloudFileName, localPath, false);
+            }
+            if (!success && !cloudFileName.equals("inventory.db")) {
+                System.out.println("Trying generic legacy name...");
+                success = performDownload("inventory.db", localPath, false);
+            }
+            return success;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    private boolean performDownload(String cloudPathSegment, String localPath, boolean isGzipped) {
+        try {
+            String path = "backups/" + currentUserId + "/" + cloudPathSegment;
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(STORAGE_URL + "/" + path))
                     .header("apikey", SUPABASE_KEY)
                     .header("Authorization", "Bearer " + currentAccessToken)
                     .GET()
+                    .timeout(java.time.Duration.ofSeconds(60))
                     .build();
 
             HttpResponse<java.io.InputStream> response = client.send(request,
@@ -584,10 +605,10 @@ public class SupabaseService {
 
             if (response.statusCode() == 200) {
                 long totalBytes = response.headers().firstValueAsLong("Content-Length").orElse(-1L);
-                System.out.println("Downloading... Total Bytes: " + totalBytes);
-
-                try (java.io.InputStream is = response.body();
-                        java.io.FileOutputStream fos = new java.io.FileOutputStream(localPath)) {
+                
+                try (java.io.InputStream rawIs = response.body();
+                     java.io.InputStream is = isGzipped ? new java.util.zip.GZIPInputStream(rawIs) : rawIs;
+                     java.io.FileOutputStream fos = new java.io.FileOutputStream(localPath)) {
 
                     byte[] buffer = new byte[8192];
                     int bytesRead;
@@ -596,30 +617,20 @@ public class SupabaseService {
                     while ((bytesRead = is.read(buffer)) != -1) {
                         fos.write(buffer, 0, bytesRead);
                         totalRead += bytesRead;
-                        if (totalBytes > 0) {
+                        if (totalBytes > 0 && !isGzipped) {
+                            // Only accurate for non-gzipped. For Gzip, we don't know the exact decompressed size.
                             notifyProgress((double) totalRead / totalBytes);
                         }
                     }
                 }
-
-                notifyProgress(1.0); // Complete
-                long newSize = Files.size(Path.of(localPath));
-                System.out.println("Restored from Supabase. Size=" + newSize);
+                
+                notifyProgress(1.0);
+                System.out.println("Restored " + (isGzipped ? "(GZ) " : "") + "to " + localPath);
                 return true;
-            } else {
-                System.err.println("Download failed: " + response.statusCode());
-
-                // FAILSAFE FOR LEGACY FILENAME (Only on FORCE download, but let's keep it
-                // simple here)
-                if (response.statusCode() == 404 && !cloudFileName.equals("inventory.db")) {
-                    System.out.println("Retrying with legacy 'inventory.db'...");
-                    return downloadWithProgress("inventory.db", localPath);
-                }
-
-                return false;
             }
+            return false;
         } catch (Exception e) {
-            e.printStackTrace();
+            System.err.println("Download failed for " + cloudPathSegment + ": " + e.getMessage());
             return false;
         }
     }

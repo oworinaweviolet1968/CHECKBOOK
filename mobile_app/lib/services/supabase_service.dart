@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:archive/archive_io.dart';
 import 'database_helper.dart';
 
 enum SyncStatus { idle, syncing, synced, error, offline }
@@ -165,22 +166,31 @@ class SupasService {
           return;
        }
 
-       final bytes = await file.readAsBytes();
-       final cloudFileName = file.path.split(Platform.pathSeparator).last;
-       final path = '$userId/$cloudFileName';
+        final bytes = await file.readAsBytes();
+        
+        // 1. Compress the database file
+        print('SYNC: Compressing database...');
+        final compressedBytes = GZipEncoder().encode(bytes);
+        if (compressedBytes == null) throw Exception("Compression failed");
+        
+        final cloudFileName = file.path.split(Platform.pathSeparator).last;
+        final path = '$userId/$cloudFileName.gz'; // Append .gz extension
 
-       await client.storage.from('backups').uploadBinary(
-           path,
-           bytes,
-           fileOptions: const FileOptions(upsert: true, contentType: 'application/x-sqlite3'),
-       );
+        print('SYNC: Uploading compressed database (${(compressedBytes.length / 1024).toStringAsFixed(1)} KB)...');
+        
+        // 2. Upload with 60s timeout
+        await client.storage.from('backups').uploadBinary(
+            path,
+            Uint8List.fromList(compressedBytes),
+            fileOptions: const FileOptions(upsert: true, contentType: 'application/gzip'),
+        ).timeout(const Duration(seconds: 60));
 
-       final ts = DateTime.now().millisecondsSinceEpoch;
-       await client.from('users').update({
-           'last_backup_timestamp': ts,
-       }).eq('id', userId!);
-       
-       print('SYNC: Upload complete. TS=$ts');
+        final ts = DateTime.now().millisecondsSinceEpoch;
+        await client.from('users').update({
+            'last_backup_timestamp': ts,
+        }).eq('id', userId!).timeout(const Duration(seconds: 15));
+        
+        print('SYNC: Upload complete. TS=$ts');
        updateLastKnownTimestamp(ts);
        syncStatus.value = SyncStatus.synced;
     } catch (e) {
@@ -195,16 +205,29 @@ class SupasService {
           Uint8List? data;
           
           try {
-            data = await client.storage.from('backups').download('$uid/$fileName');
-          } catch (_) {
-            // Fallback for legacy generic name
-            data = await client.storage.from('backups').download('$uid/inventory.db');
+            // Priority: Try to download the compressed version first
+            data = await client.storage.from('backups').download('$uid/$fileName.gz').timeout(const Duration(seconds: 60));
+            
+            if (data != null) {
+                print('SYNC: Decompressing database...');
+                final decompressed = GZipDecoder().decodeBytes(data);
+                data = Uint8List.fromList(decompressed);
+            }
+          } catch (e) {
+            print('SYNC: Compressed download failed or not found ($e). Falling back to legacy...');
+            try {
+                // Secondary: Try uncompressed file
+                data = await client.storage.from('backups').download('$uid/$fileName').timeout(const Duration(seconds: 60));
+            } catch (_) {
+                // Final fallback for generic name
+                data = await client.storage.from('backups').download('$uid/inventory.db').timeout(const Duration(seconds: 60));
+            }
           }
           
           if (data != null) {
             final file = File(savePath);
             await file.writeAsBytes(data);
-            print('SYNC: Downloaded to $savePath');
+            print('SYNC: Download and restoration complete to $savePath');
           }
       } catch (e) {
           print('DOWNLOAD ERROR: $e');

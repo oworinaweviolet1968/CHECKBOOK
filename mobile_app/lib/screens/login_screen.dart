@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
@@ -42,11 +43,8 @@ class _LoginScreenState extends State<LoginScreen> {
           // 2. Switch to user-specific DB
           await DatabaseHelper.instance.switchDatabase(userId);
           
-          // 3. Ensure cloud metadata exists
-          await SupasService.instance.ensureUserMetadataExists(email);
-          
-          // 4. Run Sync
-          await SupasService.instance.syncDatabase();
+          // 4. Run Sync in background (non-blocking)
+          unawaited(SupasService.instance.syncDatabase());
       }
 
       if (mounted) {

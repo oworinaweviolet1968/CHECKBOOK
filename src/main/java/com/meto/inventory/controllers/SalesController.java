@@ -388,7 +388,7 @@ public class SalesController implements DataManager.DataChangeListener {
 
     private void setupButtons() {
         addButton.setOnAction(e -> addItem());
-        saveButton.setOnAction(e -> saveSale());
+        saveButton.setOnAction(e -> showSaleSummaryDialog());
 
         // Collect all weight buttons and unit buttons for selection tracking
         java.util.List<Button> wBtns = java.util.List.of(quarterKgBtn, halfKgBtn, kgBtn, sackBtn);
@@ -566,14 +566,94 @@ public class SalesController implements DataManager.DataChangeListener {
         }
     }
 
-    private void saveSale() {
+    private void showSaleSummaryDialog() {
         String customer = customerNameComboBox.getEditor().getText().trim();
         if (customer.isEmpty() && customerNameComboBox.getValue() != null)
             customer = customerNameComboBox.getValue().trim();
+        
         if (customer.isEmpty() || items.isEmpty()) {
             showAlert("Customer name and items required");
             return;
         }
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("Receipt Preview");
+        dialog.setHeaderText(null);
+
+        // --- Custom Styling ---
+        DialogPane dialogPane = dialog.getDialogPane();
+        dialogPane.setStyle("-fx-background-color: white;");
+
+        // Header
+        Label headerLabel = new Label("CHECKBOOK APP");
+        headerLabel.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 18px; -fx-padding: 15; -fx-alignment: center;");
+        headerLabel.setMaxWidth(Double.MAX_VALUE);
+
+        Label subHeaderLabel = new Label("Receipt Summary");
+        subHeaderLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px; -fx-padding: 5 0 10 0;");
+
+        // Customer Info
+        Label customerLabel = new Label("Customer: " + customer);
+        customerLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 14px; -fx-padding: 10 0;");
+
+        // Item List (Simplified View)
+        javafx.scene.layout.VBox itemBox = new javafx.scene.layout.VBox(5);
+        itemBox.setStyle("-fx-padding: 10; -fx-background-color: #f9f9f9; -fx-border-color: #eee; -fx-border-radius: 5; -fx-background-radius: 5;");
+        for (SaleItem item : items) {
+            javafx.scene.layout.HBox row = new javafx.scene.layout.HBox(10);
+            Label name = new Label(item.getItems());
+            name.setStyle("-fx-font-weight: bold;");
+            Label details = new Label(item.getQty() + " - " + item.getUnit());
+            details.setStyle("-fx-text-fill: #777; -fx-font-size: 11px;");
+            javafx.scene.layout.Region spacer = new javafx.scene.layout.Region();
+            javafx.scene.layout.HBox.setHgrow(spacer, javafx.scene.layout.Priority.ALWAYS);
+            Label price = new Label("UGX " + item.getAmount());
+            price.setStyle("-fx-font-weight: bold;");
+            row.getChildren().addAll(new javafx.scene.layout.VBox(name, details), spacer, price);
+            itemBox.getChildren().add(row);
+        }
+
+        // Total
+        Label totalLabel = new Label(totalAmountLabel.getText());
+        totalLabel.setStyle("-fx-font-weight: 900; -fx-font-size: 16px; -fx-text-fill: #2e7d32; -fx-padding: 15 0;");
+
+        Label questionLabel = new Label("Do you want to print an invoice?");
+        questionLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #555;");
+
+        javafx.scene.layout.VBox content = new javafx.scene.layout.VBox(5, headerLabel, subHeaderLabel, customerLabel, itemBox, totalLabel, questionLabel);
+        content.setPrefWidth(400);
+        content.setAlignment(javafx.geometry.Pos.TOP_CENTER);
+        dialogPane.setContent(content);
+
+        // Buttons
+        ButtonType printBtn = new ButtonType("Yes, Print & Finish", ButtonBar.ButtonData.OK_DONE);
+        ButtonType saveBtn = new ButtonType("No, Just Save", ButtonBar.ButtonData.OTHER);
+        ButtonType cancelBtn = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+
+        dialogPane.getButtonTypes().addAll(printBtn, saveBtn, cancelBtn);
+
+        // Style the buttons
+        javafx.scene.Node printNode = dialogPane.lookupButton(printBtn);
+        printNode.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold;");
+        
+        dialog.showAndWait().ifPresent(response -> {
+            if (response == printBtn) {
+                saveSale(true);
+            } else if (response == saveBtn) {
+                saveSale(false);
+            }
+        });
+    }
+
+    private void saveSale(boolean shouldPrint) {
+        if (shouldPrint) {
+            // Mock printing for now
+            System.out.println("Printing invoice from Desktop...");
+        }
+
+        String customer = customerNameComboBox.getEditor().getText().trim();
+        if (customer.isEmpty() && customerNameComboBox.getValue() != null)
+            customer = customerNameComboBox.getValue().trim();
 
         for (SaleItem item : items) {
             if (!dataManager.getDbHelper().hasEnoughStock(item.getItems(), item.getQty(), item.getUnit())) {
@@ -594,7 +674,6 @@ public class SalesController implements DataManager.DataChangeListener {
             updateStock(item.getItems(), item.getQty(), item.getUnit());
         }
 
-        showAlert("Sale saved successfully! Stock updated.");
         items.clear();
         customerNameComboBox.getEditor().clear();
         customerNameComboBox.setValue(null);
@@ -604,6 +683,12 @@ public class SalesController implements DataManager.DataChangeListener {
         priceField.clear();
         updateTotal();
         dataManager.notifyDataChanged();
+        
+        if (!shouldPrint) {
+            showAlert("Sale saved successfully! Stock updated.");
+        } else {
+            showAlert("Sale Finalized! (Invoice processing logic placeholder triggered)");
+        }
     }
 
     private void clearFields() {
