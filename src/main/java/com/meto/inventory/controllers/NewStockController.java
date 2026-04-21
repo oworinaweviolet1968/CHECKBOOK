@@ -82,14 +82,19 @@ public class NewStockController implements DataManager.DataChangeListener {
         };
         supplierNameComboBox.getEditor().setTextFormatter(new TextFormatter<>(filter));
         itemsComboBox.getEditor().setTextFormatter(new TextFormatter<>(filter));
-        // Force numbers only while typing, but allow the buttons to append the text
-        unitField.addEventFilter(KeyEvent.KEY_TYPED, event -> {
-            if (!event.getCharacter().matches("[0-9]")) {
-                // If it's not a number, we block the keyboard input
-                // This stops them from typing "ten" instead of "10"
-                event.consume();
+        // --- STEP 0: QUANTITY INPUT (9-Digit Limit) ---
+        unitField.setTextFormatter(new TextFormatter<>(change -> {
+            String newText = change.getControlNewText().toLowerCase();
+            if (newText.isEmpty()) return change;
+            
+            // Allow numbers, spaces, and stars (for Box * 10 etc)
+            if (newText.matches("[0-9 /*]*")) {
+                String numericOnly = newText.replaceAll("[^0-9]", "");
+                if (numericOnly.length() > 9) return null;
+                return change;
             }
-        });
+            return change; // Allow button-based text updates
+        }));
 
         // --- STEP 0: START LOCKED ---
         setFlowLevel(0);
@@ -178,7 +183,10 @@ public class NewStockController implements DataManager.DataChangeListener {
                     return null;
                 }
 
-                // 2. Prevent multiple dots
+                // 2. Prevent multiple dots OR more than 9 digits (excluding dot/commas)
+                String numericOnly = newText.replaceAll("[^0-9]", "");
+                if (numericOnly.length() > 9) return null;
+
                 if (newText.chars().filter(ch -> ch == '.').count() > 1) {
                     return null;
                 }

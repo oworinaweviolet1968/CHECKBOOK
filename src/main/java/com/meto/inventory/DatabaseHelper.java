@@ -860,6 +860,23 @@ public class DatabaseHelper {
         return names;
     }
 
+    public ObservableList<String> getPriceHistory(String item, String size) {
+        ObservableList<String> prices = FXCollections.observableArrayList();
+        String sql = "SELECT DISTINCT price FROM sales WHERE item = ? AND quantity = ? AND type != 'NEW STOCK' ORDER BY created_at DESC LIMIT 10";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, item);
+            pstmt.setString(2, size);
+            ResultSet rs = pstmt.executeQuery();
+            java.text.DecimalFormat df = new java.text.DecimalFormat("#,###");
+            while (rs.next()) {
+                prices.add(df.format(rs.getDouble("price")));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return prices;
+    }
+
     public ObservableList<String> getDistinctCustomers() {
         ObservableList<String> names = FXCollections.observableArrayList();
         try (Statement stmt = connection.createStatement();

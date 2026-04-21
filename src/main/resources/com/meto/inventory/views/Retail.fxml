@@ -57,7 +57,7 @@
                     <!-- Price Input -->
                     <VBox spacing="6" GridPane.rowIndex="1" GridPane.columnIndex="0" GridPane.columnSpan="2">
                         <Label text="Price (UGX)"/>
-                        <TextField fx:id="priceField" promptText="0"/>
+                        <ComboBox fx:id="priceField" editable="true" promptText="0" maxWidth="Infinity"/>
                     </VBox>
                     
                     <!-- Quantity/Unit Input -->

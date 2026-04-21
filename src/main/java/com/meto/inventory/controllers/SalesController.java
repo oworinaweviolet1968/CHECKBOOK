@@ -2,6 +2,7 @@ package com.meto.inventory.controllers;
 
 import com.meto.inventory.DataManager;
 import com.meto.inventory.models.SaleItem;
+import com.meto.inventory.services.ReceiptPrinterService;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
@@ -24,7 +25,7 @@ public class SalesController implements DataManager.DataChangeListener {
     @FXML
     private TextField qtyField;
     @FXML
-    private TextField priceField;
+    private ComboBox<String> priceField;
     @FXML
     private Button addButton;
     @FXML
@@ -109,10 +110,15 @@ public class SalesController implements DataManager.DataChangeListener {
                 return change;
 
             // 2. Allow pure numbers and symbols (typing quantity)
-            // Allowed: 0-9, space, *, / (for 1/2) - Removed '.' to block decimals
+            // Allowed: 0-9, space, *, / (for 1/2)
             if (newText.matches("[0-9 /*]*")) {
+                // APPLY 9 DIGIT LIMIT to the numbers only
+                String numericOnly = newText.replaceAll("[^0-9]", "");
+                if (numericOnly.length() > 9) return null;
                 return change;
             }
+            
+            // ... strict button logic continues ...
 
             // 3. Strict Button-Only Logic:
             // We strip out all allowed numeric/symbol chars.
@@ -131,13 +137,37 @@ public class SalesController implements DataManager.DataChangeListener {
             return null;
         }));
 
-        // 2. Strict Numbers for Price
-        priceField.setTextFormatter(new TextFormatter<>(change -> {
-            String newText = change.getControlNewText().replaceAll(",", "");
-            if (newText.matches("\\d*")) { // Only digits allowed
-                return change;
+        // 2. Strict Numbers for Price + 9 Digit Limit + Comma Formatting
+        // Replacing the crash-prone ChangeListener with a stable TextFormatter
+        java.text.DecimalFormat priceDf = new java.text.DecimalFormat("#,###");
+        priceField.getEditor().setTextFormatter(new TextFormatter<>(change -> {
+            if (change.isContentChange()) {
+                String newText = change.getControlNewText().replaceAll(",", "");
+                
+                // 1. Digit Limit (9 digits)
+                if (newText.length() > 9) return null;
+                
+                // 2. Allow only digits
+                if (!newText.matches("\\d*")) return null;
+                
+                // 3. Auto-format with commas while protecting the cursor
+                if (!newText.isEmpty()) {
+                    try {
+                        long value = Long.parseLong(newText);
+                        String formatted = priceDf.format(value);
+                        
+                        // We must be careful not to trigger infinite loops
+                        // The TextFormatter handles the 'change' object directly
+                        change.setText(formatted);
+                        change.setRange(0, change.getControlText().length());
+                        change.setCaretPosition(formatted.length());
+                        change.setAnchor(formatted.length());
+                    } catch (NumberFormatException e) {
+                        return null;
+                    }
+                }
             }
-            return null;
+            return change;
         }));
 
         // --- STEP 0: START LOCKED ---
@@ -183,6 +213,9 @@ public class SalesController implements DataManager.DataChangeListener {
                 } else {
                     setFlowLevel(3);
                 }
+                
+                // --- PRICE HISTORY UPDATE ---
+                refreshPriceHistory(itemsComboBox.getValue(), newVal);
             }
         });
 
@@ -193,10 +226,10 @@ public class SalesController implements DataManager.DataChangeListener {
             if (newVal.trim().isEmpty()) {
                 if (qtyComboBox.getValue() != null)
                     setFlowLevel(3);
-                priceField.clear();
+                priceField.getEditor().clear();
             } else {
                 // Only downgrade level if price is empty
-                if (priceField.getText().trim().isEmpty()) {
+                if (priceField.getEditor().getText().trim().isEmpty()) {
                     setFlowLevel(4);
                 } else {
                     setFlowLevel(5);
@@ -204,26 +237,10 @@ public class SalesController implements DataManager.DataChangeListener {
             }
         });
 
-        priceField.textProperty().addListener((observable, oldValue, newValue) -> {
-            if (newValue.isEmpty())
-                return;
+        // --- DELETED CRASH-PRONE CHANGE LISTENER ---
+        // The stability fix is now handled by the TextFormatter above.
 
-            String cleanString = newValue.replaceAll(",", "");
-
-            try {
-                double value = Double.parseDouble(cleanString);
-                String formatted = String.format("%,.0f", value);
-
-                if (!newValue.equals(formatted)) {
-                    priceField.setText(formatted);
-                    priceField.positionCaret(formatted.length());
-                }
-            } catch (NumberFormatException e) {
-                // Ignore
-            }
-        });
-
-        priceField.textProperty().addListener((obs, oldVal, newVal) -> {
+        priceField.getEditor().textProperty().addListener((obs, oldVal, newVal) -> {
             if (newVal.trim().isEmpty()) {
                 if (!unitField.getText().trim().isEmpty())
                     setFlowLevel(4);
@@ -305,8 +322,17 @@ public class SalesController implements DataManager.DataChangeListener {
             String selectedItem = itemsComboBox.getValue();
             if (selectedItem != null) {
                 refreshSizesDropdown(selectedItem);
+                refreshPriceHistory(selectedItem, qtyComboBox.getValue());
             }
         });
+    }
+
+    private void refreshPriceHistory(String item, String size) {
+        if (item == null || size == null) {
+            priceField.setItems(FXCollections.observableArrayList());
+            return;
+        }
+        priceField.setItems(dataManager.getDbHelper().getPriceHistory(item, size));
     }
 
     private void refreshDropdowns() {
@@ -495,11 +521,10 @@ public class SalesController implements DataManager.DataChangeListener {
         return "1";
     }
 
-
     private void addItem() {
         String item = itemsComboBox.getValue();
         String size = qtyComboBox.getValue();
-        String priceText = priceField.getText().replaceAll("[^0-9,.]", "").replace(",", "");
+        String priceText = priceField.getEditor().getText().replaceAll("[^0-9,.]", "").replace(",", "");
         String countUnit = unitField.getText().trim().toLowerCase();
 
         unitErrorLabel.setVisible(false);
@@ -647,8 +672,9 @@ public class SalesController implements DataManager.DataChangeListener {
 
     private void saveSale(boolean shouldPrint) {
         if (shouldPrint) {
-            // Mock printing for now
-            System.out.println("Printing invoice from Desktop...");
+            ReceiptPrinterService.printReceipt(items, 
+                customerNameComboBox.getEditor().getText().trim(), 
+                totalAmountLabel.getText());
         }
 
         String customer = customerNameComboBox.getEditor().getText().trim();
@@ -680,7 +706,7 @@ public class SalesController implements DataManager.DataChangeListener {
         itemsComboBox.setValue(null);
         qtyComboBox.setValue(null);
         unitField.clear();
-        priceField.clear();
+        priceField.getEditor().clear();
         updateTotal();
         dataManager.notifyDataChanged();
         
@@ -693,7 +719,8 @@ public class SalesController implements DataManager.DataChangeListener {
 
     private void clearFields() {
         unitField.clear();
-        priceField.clear();
+        priceField.getEditor().clear();
+        priceField.setValue(null);
         qtyComboBox.setValue(null);
     }
 
