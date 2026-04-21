@@ -159,17 +159,24 @@ class DatabaseHelper {
             )
           ''');
 
-          // Migration for Debts & Edits
-          try { await db.execute("ALTER TABLE sales ADD COLUMN is_debt INTEGER DEFAULT 0"); } catch (e) { print("Migration error (sales.is_debt): $e"); }
-          try { await db.execute("ALTER TABLE sales ADD COLUMN is_paid INTEGER DEFAULT 0"); } catch (e) { print("Migration error (sales.is_paid): $e"); }
-          try { await db.execute("ALTER TABLE sales ADD COLUMN paid_amount REAL DEFAULT 0"); } catch (e) { print("Migration error (sales.paid_amount): $e"); }
-          try { await db.execute("ALTER TABLE sales ADD COLUMN is_edited INTEGER DEFAULT 0"); } catch (e) { print("Migration error (sales.is_edited): $e"); }
-          try { await db.execute("ALTER TABLE stock ADD COLUMN is_edited INTEGER DEFAULT 0"); } catch (e) { print("Migration error (stock.is_edited): $e"); }
-
-          try { await db.execute("ALTER TABLE deleted_history ADD COLUMN is_debt INTEGER DEFAULT 0"); } catch (e) { print("Migration error (deleted_history.is_debt): $e"); }
-          try { await db.execute("ALTER TABLE deleted_history ADD COLUMN is_paid INTEGER DEFAULT 0"); } catch (e) { print("Migration error (deleted_history.is_paid): $e"); }
-          try { await db.execute("ALTER TABLE deleted_history ADD COLUMN paid_amount REAL DEFAULT 0"); } catch (e) { print("Migration error (deleted_history.paid_amount): $e"); }
-          try { await db.execute("ALTER TABLE deleted_history ADD COLUMN is_edited INTEGER DEFAULT 0"); } catch (e) { print("Migration error (deleted_history.is_edited): $e"); }
+          // Migration Helper (Clean)
+          Future<void> addCol(String tbl, String col, String type) async {
+              var columns = await db.rawQuery("PRAGMA table_info($tbl)");
+              bool exists = columns.any((c) => c['name'] == col);
+              if (!exists) {
+                  await db.execute("ALTER TABLE $tbl ADD COLUMN $col $type");
+              }
+          }
+          
+          await addCol("sales", "is_debt", "INTEGER DEFAULT 0");
+          await addCol("sales", "is_paid", "INTEGER DEFAULT 0");
+          await addCol("sales", "paid_amount", "REAL DEFAULT 0");
+          await addCol("sales", "is_edited", "INTEGER DEFAULT 0");
+          await addCol("stock", "is_edited", "INTEGER DEFAULT 0");
+          await addCol("deleted_history", "is_debt", "INTEGER DEFAULT 0");
+          await addCol("deleted_history", "is_paid", "INTEGER DEFAULT 0");
+          await addCol("deleted_history", "paid_amount", "REAL DEFAULT 0");
+          await addCol("deleted_history", "is_edited", "INTEGER DEFAULT 0");
 
           // Create deleted_history table if it doesn't exist
           await db.execute('''

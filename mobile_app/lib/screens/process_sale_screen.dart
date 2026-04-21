@@ -4,6 +4,7 @@ import '../utils/colors.dart';
 import '../utils/formatters.dart';
 import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
+import '../services/printer_service.dart';
 import '../models/sale_item.dart';
 import '../widgets/common_app_bar_actions.dart';
 import 'package:intl/intl.dart';
@@ -998,19 +999,10 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
 
   void _checkout({bool shouldPrint = false}) async {
     if (shouldPrint) {
-      // Mock for now: show snackbar
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.print, color: Colors.white),
-              const SizedBox(width: 12),
-              Expanded(child: Text('Processing Invoice... (Printing logic pending)')),
-            ],
-          ),
-          backgroundColor: AppColors.primaryGreen,
-        )
-      );
+      // Capture data for printing before state is cleared
+      final cartToPrint = List<SaleItem>.from(_cart);
+      final customerToPrint = _customerController.text.isEmpty ? 'Walk-in Customer' : _customerController.text;
+      _printInvoice(customerToPrint, cartToPrint);
     }
       try {
           String customer = _customerController.text;
@@ -1047,6 +1039,29 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
       } catch (e) {
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
+  }
+
+  void _printInvoice(String customer, List<SaleItem> cart) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Searching for MPT-II printer...'), duration: Duration(seconds: 2))
+      );
+      
+      await PrinterService.instance.printInvoice(
+        customer, 
+        cart
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red,
+            content: Text('Printing Failed: ${e.toString().replaceAll("Exception: ", "")}'),
+            action: SnackBarAction(label: 'Retry', textColor: Colors.white, onPressed: () => _printInvoice(customer, cart)),
+          )
+        );
+      }
+    }
   }
 
   double _calculateTotalNum() {

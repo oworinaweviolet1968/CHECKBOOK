@@ -7,6 +7,8 @@ import '../services/passcode_service.dart';
 import '../services/supabase_service.dart';
 import '../widgets/common_app_bar_actions.dart';
 import '../screens/passcode_setup_screen.dart';
+import '../services/printer_service.dart';
+import '../models/sale_item.dart';
 import '../utils/colors.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -428,6 +430,16 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                                      constraints: const BoxConstraints(),
                                                      visualDensity: VisualDensity.compact,
                                                    ),
+                                                   if (!isStock) ...[
+                                                       const SizedBox(width: 8),
+                                                       IconButton(
+                                                           icon: const Icon(Icons.print, color: AppColors.primaryGreen, size: 20),
+                                                           onPressed: () => _reprintInvoice(item),
+                                                           padding: EdgeInsets.zero,
+                                                           constraints: const BoxConstraints(),
+                                                           visualDensity: VisualDensity.compact,
+                                                       ),
+                                                   ],
                                                ],
                                              ),
                                              const SizedBox(height: 4),
@@ -482,6 +494,38 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
             ),
           ),
       );
+  }
+
+  void _reprintInvoice(HistoryItem item) async {
+      try {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Searching for MPT-II printer...'), duration: Duration(seconds: 2))
+          );
+          
+          // Convert HistoryItem to SaleItem for the printer service
+          final saleItem = SaleItem(
+              item: item.item,
+              quantity: item.quantity,
+              unit: item.unit,
+              price: item.price,
+              amount: item.amount,
+              isDebt: item.isDebt,
+          );
+
+          await PrinterService.instance.printInvoice(
+              item.customer, 
+              [saleItem]
+          );
+      } catch (e) {
+          if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                      backgroundColor: Colors.red,
+                      content: Text('Reprint Failed: ${e.toString().replaceAll("Exception: ", "")}'),
+                  )
+              );
+          }
+      }
   }
 
   void _confirmDeletion(HistoryItem item) {
