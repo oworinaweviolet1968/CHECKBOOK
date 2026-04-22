@@ -34,10 +34,17 @@ class SupasService {
   String? get userId => client.auth.currentUser?.id;
 
   // Sync Logic (Mirroring Java syncOnLogin)
-  Future<void> syncDatabase({bool isManual = false}) async {
-    if (userId == null) return;
+  bool _isSyncing = false;
 
+  Future<void> syncDatabase({bool isManual = false}) async {
+    if (_isSyncing) {
+        print('SYNC: Skipping syncDatabase - another operation in progress.');
+        return;
+    }
+    _isSyncing = true;
     try {
+      if (userId == null) return;
+
       syncStatus.value = SyncStatus.syncing;
       print('SYNC: Starting sync for user $userId');
       
@@ -58,35 +65,32 @@ class SupasService {
       }
 
       final dbPath = await _getLocalDbPath();
-      final file = File(dbPath);
-      final localTs = await file.exists() ? (await file.lastModified()).millisecondsSinceEpoch : 0;
       final localHasData = await DatabaseHelper.instance.hasData();
 
-      print('SYNC: CloudTS=$cloudTs, LocalTS=$localTs, LocalHasData=$localHasData');
+      // Read internal version directly from the database file
+      final localVersionStr = await DatabaseHelper.instance.getSetting('last_backup_timestamp');
+      final localVersionTs = int.tryParse(localVersionStr ?? '0') ?? 0;
 
-      // 3. Compare (Matching Java logic)
-      if (cloudTs > localTs) {
+      print('SYNC: Cloud=$cloudTs, LocalVersion=$localVersionTs, LocalHasData=$localHasData');
+
+      if (cloudTs > localVersionTs) {
           print('SYNC: Cloud is newer. Downloading...');
           await _downloadDatabase(userId!, dbPath);
+          
+          // CRITICAL: After download, we must update the internal version to match what we just fetched
+          await DatabaseHelper.instance.reopen();
+          await DatabaseHelper.instance.saveSetting('last_backup_timestamp', cloudTs.toString());
+          _lastKnownCloudTimestamp = cloudTs;
+
       } else {
-          print('SYNC: Local is newer or same.');
-          // Logic: Only upload automatically if the cloud is empty.
-          // IF manual, we always force an upload to ensure deletions/updates propagate.
-          if (isManual || cloudTs == 0) {
-              if (localHasData) {
-                  print('SYNC: Uploading changes...');
-                  await uploadDatabase();
-              } else {
-                  print('SYNC: Local empty, nothing to upload.');
-              }
-          } else {
-              print('SYNC: Automatic sync skipped upload to prevent cloud overwrite.');
-          }
+          print('SYNC: Cloud is up-to-date or local is newer.');
       }
       syncStatus.value = SyncStatus.synced;
     } catch (e) {
       print('SYNC ERROR: $e');
       syncStatus.value = SyncStatus.error;
+    } finally {
+      _isSyncing = false;
     }
   }
 
@@ -152,8 +156,26 @@ class SupasService {
 
   Future<void> uploadDatabase() async {
     if (userId == null) return;
+    if (_isSyncing) {
+        print('SYNC: Skipping uploadDatabase - another operation in progress.');
+        return;
+    }
+    _isSyncing = true;
     try {
        syncStatus.value = SyncStatus.syncing;
+       // Collision Check: Verify cloud hasn't been updated since our last sync
+       // Logic: Read the version ID (timestamp) from INSIDE the database file
+       final localVersionStr = await DatabaseHelper.instance.getSetting('last_backup_timestamp');
+       final localVersionTs = int.tryParse(localVersionStr ?? '0') ?? 0;
+
+       final meta = await refreshUserMetadata();
+       final cloudTs = meta?['last_backup_timestamp'] as int? ?? 0;
+       if (cloudTs > localVersionTs) {
+          print('SYNC: Upload blocked. Cloud is newer ($cloudTs > $localVersionTs)');
+          syncStatus.value = SyncStatus.synced; 
+          return;
+       }
+
        if (!await DatabaseHelper.instance.hasData()) {
           print('SYNC: Skip upload - No local data');
           syncStatus.value = SyncStatus.synced;
@@ -191,11 +213,17 @@ class SupasService {
         }).eq('id', userId!).timeout(const Duration(seconds: 15));
         
         print('SYNC: Upload complete. TS=$ts');
-       updateLastKnownTimestamp(ts);
-       syncStatus.value = SyncStatus.synced;
+        
+        // Persist version ID into the database itself
+        await DatabaseHelper.instance.saveSetting('last_backup_timestamp', ts.toString());
+        
+        _lastKnownCloudTimestamp = ts;
+        syncStatus.value = SyncStatus.synced;
     } catch (e) {
        print('UPLOAD ERROR: $e');
        syncStatus.value = SyncStatus.error;
+    } finally {
+       _isSyncing = false;
     }
   }
 
@@ -225,9 +253,38 @@ class SupasService {
           }
           
           if (data != null) {
+            // CONFLICT MERGE: Capture local changes before download wipes the file
+            final dirtyStock = await DatabaseHelper.instance.getDirtyRecords('stock');
+            final dirtySales = await DatabaseHelper.instance.getDirtyRecords('sales');
+            final delStock = await DatabaseHelper.instance.getDeletedStock();
+            final delHistory = await DatabaseHelper.instance.getDeletedHistoryRaw();
+            
+            print('SYNC MERGE: Captured ${dirtyStock.length} stock, ${dirtySales.length} sales and ${delHistory.length} deletions.');
+
+            // CRITICAL: Close the database connection to release the file handle
+            // to avoid OS-level file locking issues during overwrite.
+            await DatabaseHelper.instance.close();
+
             final file = File(savePath);
             await file.writeAsBytes(data);
             print('SYNC: Download and restoration complete to $savePath');
+
+            // Reopen the database after successful overwrite
+            await DatabaseHelper.instance.reopen();
+
+            // RE-APPLY CHANGES
+            for (var r in dirtyStock) await DatabaseHelper.instance.applyDirtyRecord('stock', r);
+            for (var r in dirtySales) await DatabaseHelper.instance.applyDirtyRecord('sales', r);
+            for (var m in delStock) await DatabaseHelper.instance.applyStockDeletion(m['item'], m['quantity']);
+            for (var m in delHistory) await DatabaseHelper.instance.applyHistoryDeletion(
+              m['customer'] as String, 
+              m['item'] as String, 
+              (m['amount'] is int) ? (m['amount'] as int).toDouble() : m['amount'] as double, 
+              m['date'] as String
+            );
+            
+            await DatabaseHelper.instance.clearDirtyFlags();
+            print('SYNC MERGE: Successfully re-applied local changes to restored cloud file.');
           }
       } catch (e) {
           print('DOWNLOAD ERROR: $e');

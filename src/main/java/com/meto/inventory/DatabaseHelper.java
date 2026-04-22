@@ -9,6 +9,8 @@ import java.sql.*;
 import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
 
 public class DatabaseHelper {
 
@@ -121,10 +123,19 @@ public class DatabaseHelper {
                     )
                 """;
 
+        String createSettingsTable = """
+                    CREATE TABLE IF NOT EXISTS settings (
+                        key TEXT PRIMARY KEY,
+                        value TEXT
+                    )
+                """;
+
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(createStockTable);
             stmt.execute(createSalesTable);
             stmt.execute(createSummaryTable);
+            stmt.execute(createSettingsTable);
+            stmt.execute("CREATE TABLE IF NOT EXISTS deleted_stock (id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT, quantity TEXT, deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
 
             // AUTOMATIC MIGRATION: Check for missing columns in legacy DBs
             ensureSchema(stmt);
@@ -179,6 +190,22 @@ public class DatabaseHelper {
         } catch (SQLException e) {
             System.err.println("Schema check failed for sales: " + e.getMessage());
         }
+
+        // 3. New device_source column
+        try {
+            ResultSet rs = stmt.executeQuery("PRAGMA table_info(stock)");
+            boolean hasSource = false;
+            while (rs.next()) {
+                if ("device_source".equalsIgnoreCase(rs.getString("name"))) {
+                    hasSource = true;
+                    break;
+                }
+            }
+            if (!hasSource) {
+                stmt.execute("ALTER TABLE stock ADD COLUMN device_source TEXT DEFAULT 'Desktop'");
+                stmt.execute("ALTER TABLE sales ADD COLUMN device_source TEXT DEFAULT 'Desktop'");
+            }
+        } catch (SQLException e) {}
     }
 
     // --- LOGIC ENGINE: CONVERSIONS ---
@@ -326,7 +353,7 @@ public class DatabaseHelper {
                 }
 
                 // Logic Fix: Setting all 6 parameters for the UPDATE
-                String updateSql = "UPDATE stock SET available_pieces = ?, price = ?, supplier = ?, date = ?, unit = ? WHERE id = ?";
+                String updateSql = "UPDATE stock SET available_pieces = ?, price = ?, supplier = ?, date = ?, unit = ?, is_edited = 1 WHERE id = ?";
                 try (PreparedStatement updateStmt = connection.prepareStatement(updateSql)) {
                     updateStmt.setDouble(1, existingPieces + incomingPieces);
                     updateStmt.setDouble(2,
@@ -335,7 +362,7 @@ public class DatabaseHelper {
                     updateStmt.setString(3, supplier);
                     updateStmt.setString(4, LocalDate.now().toString());
                     updateStmt.setString(5, newUnit);
-                    updateStmt.setInt(6, id); // Set the 6th parameter!
+                    updateStmt.setInt(6, id); 
                     updateStmt.executeUpdate();
                     return true;
                 }
@@ -365,7 +392,7 @@ public class DatabaseHelper {
 
                 if (remaining >= 0) {
                     PreparedStatement updatePstmt = connection.prepareStatement(
-                            "UPDATE stock SET available_pieces = ? WHERE id = ?");
+                            "UPDATE stock SET available_pieces = ?, is_edited = 1 WHERE id = ?");
                     updatePstmt.setDouble(1, remaining);
                     updatePstmt.setInt(2, id);
                     updatePstmt.executeUpdate();
@@ -461,7 +488,7 @@ public class DatabaseHelper {
     public void addSale(String customer, String item, String quantity, String unit, double price, double amount,
             String type, String date) {
         // Added cost_price and base_quantity with default 0.0 for stock entries
-        String sql = "INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, device_source) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Desktop')";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, customer);
             pstmt.setString(2, item);
@@ -574,13 +601,9 @@ public class DatabaseHelper {
 
         // 2. Get the multiplier
         double multiplier = getUnitMultiplier(unit, size, bulkUnit);
-
         double baseQty = quantityFactor * multiplier;
 
-        // DEBUG: Ensure we use the PASSED totalAmount
-        // double totalAmount = unitCount * sellingPrice; <--- REMOVED
-
-        String sql = "INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_edited, device_source) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'Desktop')";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, customer);
             pstmt.setString(2, item);
@@ -769,12 +792,10 @@ public class DatabaseHelper {
         double multiplier = getUnitMultiplier(u, q, u);
         double totalPieces = unitCount * multiplier;
 
-        // Use double for precision. If p is 25000 and multiplier is 12,
-        // this needs to be 2083.33333333, not 2083.
         // Change this line to keep the decimals
         double pricePerSinglePiece = (double) p / multiplier; // e.g., 2083.33333333
 
-        String sql = "INSERT INTO stock(supplier, item, quantity, unit, price, available_pieces, date) VALUES(?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO stock(supplier, item, quantity, unit, price, available_pieces, date, is_edited, device_source) VALUES(?, ?, ?, ?, ?, ?, ?, 1, 'Desktop')";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, s);
             pstmt.setString(2, i);
@@ -835,11 +856,20 @@ public class DatabaseHelper {
 
     public boolean deleteStockItem(String itemName, String size) {
         String sql = "DELETE FROM stock WHERE item = ? AND quantity = ?";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setString(1, itemName);
-            pstmt.setString(2, size);
-            int affected = pstmt.executeUpdate();
-            return affected > 0;
+        try {
+            // Track the deletion for cloud merging
+            try (PreparedStatement delTrack = connection.prepareStatement("INSERT INTO deleted_stock(item, quantity) VALUES(?, ?)")) {
+                delTrack.setString(1, itemName);
+                delTrack.setString(2, size);
+                delTrack.executeUpdate();
+            }
+
+            try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+                pstmt.setString(1, itemName);
+                pstmt.setString(2, size);
+                int affected = pstmt.executeUpdate();
+                return affected > 0;
+            }
         } catch (SQLException e) {
             e.printStackTrace();
             return false;
@@ -893,6 +923,39 @@ public class DatabaseHelper {
         return names;
     }
 
+    public void saveSetting(String key, String value) {
+        String sql = "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, key);
+            pstmt.setString(2, value);
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public String getSetting(String key) {
+        try {
+            if (connection == null || connection.isClosed()) {
+                initializeDatabase();
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        String sql = "SELECT value FROM settings WHERE key = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, key);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getString("value");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
     public Connection getConnection() {
         return connection;
     }
@@ -904,5 +967,153 @@ public class DatabaseHelper {
         } catch (SQLException e) {
             e.printStackTrace();
         }
+    }
+
+    // --- CONFLICT MERGING HELPERS ---
+
+    public List<DirtyRecord> getDirtyRecords(String table) {
+        List<DirtyRecord> records = new ArrayList<>();
+        String sql = "SELECT * FROM " + table + " WHERE is_edited = 1";
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
+            ResultSetMetaData meta = rs.getMetaData();
+            int colCount = meta.getColumnCount();
+            while (rs.next()) {
+                Map<String, Object> data = new HashMap<>();
+                for (int i = 1; i <= colCount; i++) {
+                    data.put(meta.getColumnName(i), rs.getObject(i));
+                }
+                records.add(new DirtyRecord(data));
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return records;
+    }
+
+    public List<Map<String, String>> getDeletedStock() {
+        List<Map<String, String>> deleted = new ArrayList<>();
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT item, quantity FROM deleted_stock")) {
+            while (rs.next()) {
+                Map<String, String> m = new HashMap<>();
+                m.put("item", rs.getString("item"));
+                m.put("quantity", rs.getString("quantity"));
+                deleted.add(m);
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return deleted;
+    }
+
+    public List<Map<String, String>> getDeletedHistory() {
+        List<Map<String, String>> deleted = new ArrayList<>();
+        String sql = "SELECT customer, item, amount, date FROM deleted_history";
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                Map<String, String> m = new HashMap<>();
+                m.put("customer", rs.getString("customer"));
+                m.put("item", rs.getString("item"));
+                m.put("amount", rs.getString("amount"));
+                m.put("date", rs.getString("date"));
+                deleted.add(m);
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return deleted;
+    }
+
+    public static class DirtyRecord {
+        public final Map<String, Object> data;
+        public DirtyRecord(Map<String, Object> data) { this.data = data; }
+    }
+
+    public void applyDirtyRecord(String table, DirtyRecord record) {
+        // Create a copy and remove 'id' to let the new database assign a local ID
+        Map<String, Object> data = new HashMap<>(record.data);
+        data.remove("id");
+
+        if ("stock".equals(table)) {
+            // Check for existing by Name + Size
+            String checkSql = "SELECT id FROM stock WHERE item = ? AND quantity = ?";
+            try (PreparedStatement checkStmt = connection.prepareStatement(checkSql)) {
+                checkStmt.setString(1, (String) data.get("item"));
+                checkStmt.setString(2, (String) data.get("quantity"));
+                try (ResultSet rs = checkStmt.executeQuery()) {
+                    if (rs.next()) {
+                        int existingId = rs.getInt("id");
+                        StringBuilder sets = new StringBuilder();
+                        List<Object> args = new ArrayList<>();
+                        data.forEach((k, v) -> {
+                            if (sets.length() > 0) sets.append(", ");
+                            sets.append(k).append(" = ?");
+                            args.add(v);
+                        });
+                        String updateSql = "UPDATE stock SET " + sets + " WHERE id = ?";
+                        try (PreparedStatement upstmt = connection.prepareStatement(updateSql)) {
+                            for (int i = 0; i < args.size(); i++) upstmt.setObject(i + 1, args.get(i));
+                            upstmt.setInt(args.size() + 1, existingId);
+                            upstmt.executeUpdate();
+                            return;
+                        }
+                    }
+                }
+            } catch (SQLException e) { e.printStackTrace(); }
+        }
+
+        if ("sales".equals(table)) {
+            // Check for identical to avoid duplicates
+            String checkSql = "SELECT id FROM sales WHERE customer = ? AND item = ? AND amount = ? AND date = ?";
+            try (PreparedStatement checkStmt = connection.prepareStatement(checkSql)) {
+                checkStmt.setString(1, (String) data.get("customer"));
+                checkStmt.setString(2, (String) data.get("item"));
+                checkStmt.setObject(3, data.get("amount"));
+                checkStmt.setString(4, (String) data.get("date"));
+                try (ResultSet rs = checkStmt.executeQuery()) {
+                    if (rs.next()) return; // Already exists
+                }
+            } catch (SQLException e) { e.printStackTrace(); }
+        }
+
+        // Standard Insert
+        StringBuilder cols = new StringBuilder();
+        StringBuilder vals = new StringBuilder();
+        List<Object> args = new ArrayList<>();
+        
+        data.forEach((k, v) -> {
+            if (cols.length() > 0) { cols.append(","); vals.append(","); }
+            cols.append(k);
+            vals.append("?");
+            args.add(v);
+        });
+
+        String sql = "INSERT INTO " + table + " (" + cols + ") VALUES (" + vals + ")";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            for (int i = 0; i < args.size(); i++) {
+                pstmt.setObject(i + 1, args.get(i));
+            }
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public void applyStockDeletion(String item, String quantity) {
+        try (PreparedStatement pstmt = connection.prepareStatement("DELETE FROM stock WHERE item = ? AND quantity = ?")) {
+            pstmt.setString(1, item);
+            pstmt.setString(2, quantity);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public void applyHistoryDeletion(String customer, String item, String amount, String date) {
+        String sql = "DELETE FROM sales WHERE customer = ? AND item = ? AND amount = ? AND date = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, customer);
+            pstmt.setString(2, item);
+            pstmt.setString(3, amount);
+            pstmt.setString(4, date);
+            pstmt.executeUpdate();
+        } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public void clearDirtyFlags() {
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("UPDATE stock SET is_edited = 0");
+            stmt.execute("UPDATE sales SET is_edited = 0");
+            stmt.execute("DELETE FROM deleted_stock");
+        } catch (SQLException e) { e.printStackTrace(); }
     }
 }

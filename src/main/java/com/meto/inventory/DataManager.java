@@ -52,10 +52,16 @@ public class DataManager {
     }
 
     public void notifyDataChanged() {
+        notifyDataChanged(true);
+    }
+
+    public void notifyDataChanged(boolean triggerBackup) {
         for (DataChangeListener listener : listeners) {
             listener.onDataChanged();
         }
-        triggerBackup();
+        if (triggerBackup) {
+            triggerBackup();
+        }
     }
 
     private boolean isBackupEnabled = true;

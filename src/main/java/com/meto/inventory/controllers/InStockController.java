@@ -49,7 +49,7 @@ public class InStockController implements DataManager.DataChangeListener {
                 boolean hasData = dataManager.getDbHelper().hasData();
                 com.meto.inventory.services.SupabaseService.getInstance().syncOnLogin(dbName, hasData, true);
                 javafx.application.Platform.runLater(() -> {
-                    dataManager.notifyDataChanged();
+                    dataManager.notifyDataChanged(false);
                 });
             });
             syncThread.setDaemon(true);

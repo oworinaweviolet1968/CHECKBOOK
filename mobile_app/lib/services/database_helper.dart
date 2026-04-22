@@ -37,6 +37,19 @@ class DatabaseHelper {
     // Database will be re-initialized on next 'get database' call
   }
 
+  Future<void> close() async {
+    if (_database != null) {
+      print('DATABASE: Explicitly closing connection.');
+      await _database!.close();
+      _database = null;
+    }
+  }
+
+  Future<void> reopen() async {
+    await close();
+    await database; // This triggers _initDB via 'get database'
+  }
+
   Future<bool> hasData() async {
     final db = await instance.database;
     final stock = await db.rawQuery('SELECT COUNT(*) as count FROM stock');
@@ -52,7 +65,7 @@ class DatabaseHelper {
 
   Future<List<HistoryItem>> getHistory(String filter) async {
     final db = await instance.database;
-    String sql = "SELECT id, customer, item, type, quantity, unit, price, cost_price, base_quantity, amount, paid_amount, is_edited, date, is_debt, is_paid FROM sales WHERE 1=1";
+    String sql = "SELECT id, customer, item, type, quantity, unit, price, cost_price, base_quantity, amount, paid_amount, is_edited, date, is_debt, is_paid, device_source FROM sales WHERE 1=1";
 
     List<dynamic> args = [];
     if (filter.isNotEmpty && filter != "ALL") {
@@ -89,6 +102,7 @@ class DatabaseHelper {
             isDebt: (rs['is_debt'] as int? ?? 0) == 1,
             isPaid: (rs['is_paid'] as int? ?? 0) == 1,
             isEdited: (rs['is_edited'] as int? ?? 0) == 1,
+            deviceSource: rs['device_source'] as String? ?? "System",
         );
     }).toList().cast<HistoryItem>();
   }
@@ -98,7 +112,7 @@ class DatabaseHelper {
       final today = DateTime.now().toIso8601String().split('T')[0];
       
       final result = await db.rawQuery(
-          "SELECT id, customer, item, type, quantity, unit, price, amount, paid_amount, cost_price, base_quantity, is_edited, date, is_debt, is_paid FROM sales WHERE date = ? AND type != 'NEW STOCK' ORDER BY created_at DESC",
+          "SELECT id, customer, item, type, quantity, unit, price, amount, paid_amount, cost_price, base_quantity, is_edited, date, is_debt, is_paid, device_source FROM sales WHERE date = ? AND type != 'NEW STOCK' ORDER BY created_at DESC",
           [today]
       );
 
@@ -123,6 +137,7 @@ class DatabaseHelper {
               isDebt: (rs['is_debt'] as int? ?? 0) == 1,
               isPaid: (rs['is_paid'] as int? ?? 0) == 1,
               isEdited: (rs['is_edited'] as int? ?? 0) == 1,
+              deviceSource: rs['device_source'] as String? ?? "System",
           );
       }).toList().cast<HistoryItem>();
   }
@@ -173,10 +188,13 @@ class DatabaseHelper {
           await addCol("sales", "paid_amount", "REAL DEFAULT 0");
           await addCol("sales", "is_edited", "INTEGER DEFAULT 0");
           await addCol("stock", "is_edited", "INTEGER DEFAULT 0");
+          await addCol("sales", "device_source", "TEXT DEFAULT 'Desktop'");
+          await addCol("stock", "device_source", "TEXT DEFAULT 'Desktop'");
           await addCol("deleted_history", "is_debt", "INTEGER DEFAULT 0");
           await addCol("deleted_history", "is_paid", "INTEGER DEFAULT 0");
           await addCol("deleted_history", "paid_amount", "REAL DEFAULT 0");
           await addCol("deleted_history", "is_edited", "INTEGER DEFAULT 0");
+          await addCol("deleted_history", "device_source", "TEXT DEFAULT 'Desktop'");
 
           // Create deleted_history table if it doesn't exist
           await db.execute('''
@@ -196,6 +214,16 @@ class DatabaseHelper {
               is_paid INTEGER,
               paid_amount REAL DEFAULT 0,
               is_edited INTEGER DEFAULT 0,
+              device_source TEXT DEFAULT 'Desktop',
+              deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+          ''');
+
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS deleted_stock (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              item TEXT,
+              quantity TEXT,
               deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
           ''');
@@ -504,7 +532,7 @@ class DatabaseHelper {
 
       // UPDATE
       await db.rawUpdate(
-        'UPDATE stock SET available_pieces = ?, price = ?, supplier = ?, date = ?, unit = ? WHERE id = ?',
+        'UPDATE stock SET available_pieces = ?, price = ?, supplier = ?, date = ?, unit = ?, is_edited = 1 WHERE id = ?',
         [
           existingPieces + incomingPieces,
           ((existingPieces * existingCostPerPiece) + (incomingPieces * newCostPerPiece)) / (existingPieces + incomingPieces),
@@ -529,7 +557,7 @@ class DatabaseHelper {
     double pricePerSinglePiece = p / (multiplier > 0 ? multiplier : 1); 
 
     await db.rawInsert(
-      'INSERT INTO stock(supplier, item, quantity, unit, price, available_pieces, date) VALUES(?, ?, ?, ?, ?, ?, ?)',
+      "INSERT INTO stock(supplier, item, quantity, unit, price, available_pieces, date, is_edited, device_source) VALUES(?, ?, ?, ?, ?, ?, ?, 1, 'Mobile')",
       [s, i, q, cleanUnitLabel(u), pricePerSinglePiece, totalPieces, d]
     );
   }
@@ -552,7 +580,7 @@ class DatabaseHelper {
 
           if (remaining >= 0) {
               await db.rawUpdate(
-                  'UPDATE stock SET available_pieces = ? WHERE id = ?',
+                  'UPDATE stock SET available_pieces = ?, is_edited = 1 WHERE id = ?',
                   [remaining, id]
               );
           }
@@ -685,7 +713,7 @@ class DatabaseHelper {
       }
 
       await db.rawInsert(
-          'INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          "INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited, device_source) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'Mobile')",
           [
               customer, item, size, unit, sellingPrice, 
               costPrice, baseQty, totalAmount, type, 
@@ -789,7 +817,7 @@ class DatabaseHelper {
 
       await db.update(
         'stock',
-        {'available_pieces': newPieces},
+        {'available_pieces': newPieces, 'is_edited': 1},
         where: 'id = ?',
         whereArgs: [stockId],
       );
@@ -798,6 +826,7 @@ class DatabaseHelper {
       // and it results in 0 pieces, we might want to remove it entirely.
       // The user requested: "unless if its new stock is deleted entirely."
       if (type == 'NEW STOCK' && newPieces <= 0) {
+          await db.insert('deleted_stock', {'item': itemName, 'quantity': size});
           await db.delete('stock', where: 'id = ?', whereArgs: [stockId]);
       }
     }
@@ -1028,19 +1057,81 @@ class DatabaseHelper {
     }
     return null;
   }
-  
-  Future<void> close() async {
-    if (_database != null) {
-      await _database!.close();
-      _database = null;
-    }
+
+  // --- CONFLICT MERGING HELPERS ---
+
+  Future<List<Map<String, dynamic>>> getDirtyRecords(String table) async {
+    final db = await instance.database;
+    return await db.query(table, where: 'is_edited = 1');
   }
 
-  /// Re-open the database after a close (e.g., after downloading a new DB file from cloud).
-  /// The next call to `database` getter will re-initialize the connection.
-  Future<void> reopen() async {
-    _database = null; // Force re-init
-    await database; // Trigger re-initialization
+  Future<List<Map<String, dynamic>>> getDeletedStock() async {
+    final db = await instance.database;
+    return await db.query('deleted_stock');
+  }
+
+  Future<List<Map<String, dynamic>>> getDeletedHistoryRaw() async {
+    final db = await instance.database;
+    return await db.query('deleted_history', columns: ['customer', 'item', 'amount', 'date']);
+  }
+
+  Future<void> applyDirtyRecord(String table, Map<String, dynamic> record) async {
+    final db = await instance.database;
+    
+    // Create a copy and remove ID to prevent Primary Key conflicts
+    final Map<String, dynamic> data = Map.from(record);
+    data.remove('id');
+    
+    if (table == 'stock') {
+      // For stock, we want to update the existing entry if it exists (by Name + Size)
+      // instead of creating a duplicate.
+      final existing = await db.query('stock', 
+        where: 'item = ? AND quantity = ?', 
+        whereArgs: [data['item'], data['quantity']]
+      );
+      
+      if (existing.isNotEmpty) {
+        await db.update('stock', data, 
+          where: 'id = ?', 
+          whereArgs: [existing.first['id']]
+        );
+        return;
+      }
+    }
+    
+    if (table == 'sales') {
+      // For sales, check if an identical record exists to avoid duplicates
+      final existing = await db.query('sales', 
+        where: 'customer = ? AND item = ? AND amount = ? AND date = ?', 
+        whereArgs: [data['customer'], data['item'], data['amount'], data['date']]
+      );
+      if (existing.isNotEmpty) return; // Already there
+    }
+    
+    // Otherwise, just insert it as a new row
+    await db.insert(table, data, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> applyStockDeletion(String item, String quantity) async {
+    final db = await instance.database;
+    await db.delete('stock', where: 'item = ? AND quantity = ?', whereArgs: [item, quantity]);
+  }
+
+  Future<void> applyHistoryDeletion(String customer, String item, double amount, String date) async {
+    final db = await instance.database;
+    await db.delete('sales', 
+      where: 'customer = ? AND item = ? AND amount = ? AND date = ?', 
+      whereArgs: [customer, item, amount, date]
+    );
+  }
+
+  Future<void> clearDirtyFlags() async {
+    final db = await instance.database;
+    await db.transaction((txn) async {
+      await txn.update('stock', {'is_edited': 0});
+      await txn.update('sales', {'is_edited': 0});
+      await txn.execute('DELETE FROM deleted_stock');
+    });
   }
 }
 

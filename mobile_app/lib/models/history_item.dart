@@ -14,6 +14,7 @@ class HistoryItem {
   final bool isDebt;
   final bool isPaid;
   final bool isEdited;
+  final String deviceSource;
 
   HistoryItem({
     this.id,
@@ -31,5 +32,6 @@ class HistoryItem {
     this.isDebt = false,
     this.isPaid = false,
     this.isEdited = false,
+    this.deviceSource = "System",
   });
 }

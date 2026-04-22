@@ -367,20 +367,24 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                 Text(item.date, style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))), // text-secondary
                                 Row(
                                   children: [
-                                    if (item.isEdited)
-                                      Container(
-                                          margin: const EdgeInsets.only(right: 8),
-                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                              color: Colors.blue.withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(4),
-                                              border: Border.all(color: Colors.blue.withOpacity(0.5))
-                                          ),
-                                          child: const Text(
-                                              "EDITED", 
-                                              style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.blue, letterSpacing: 0.5)
-                                          ),
-                                      ),
+                                    Container(
+                                        margin: const EdgeInsets.only(right: 8),
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                            color: (item.deviceSource.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.1),
+                                            borderRadius: BorderRadius.circular(4),
+                                            border: Border.all(color: (item.deviceSource.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.5))
+                                        ),
+                                        child: Text(
+                                            item.deviceSource.toUpperCase(), 
+                                            style: TextStyle(
+                                                fontSize: 9, 
+                                                fontWeight: FontWeight.bold, 
+                                                color: item.deviceSource.toLowerCase() == "mobile" ? Colors.blue : Colors.grey, 
+                                                letterSpacing: 0.5
+                                            )
+                                        ),
+                                    ),
                                     Container(
                                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                         decoration: BoxDecoration(

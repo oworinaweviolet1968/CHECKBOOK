@@ -341,6 +341,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                                          quantity: displayAvail,
                                          isLowStock: isLow,
                                          isEdited: (item['is_edited'] as int? ?? 0) == 1,
+                                         source: item['device_source'] as String? ?? "System",
                                      );
                                  }).toList(),
                              );
@@ -412,6 +413,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                                                  orderInfo: "Order #$orderId • $time",
                                                  amount: "UGX ${_formatter.format(amount)}",
                                                  profit: isLocked ? "" : "Profit: UGX ${_formatter.format(profit)}",
+                                                 source: sale['device_source'] as String? ?? "System",
                                                  isPositiveProfit: profit >= 0,
                                              );
                                          },

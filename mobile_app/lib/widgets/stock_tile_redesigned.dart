@@ -8,6 +8,7 @@ class StockTileRedesigned extends StatelessWidget {
   final String quantity; // e.g. "45 pcs"
   final bool isLowStock;
   final bool isEdited;
+  final String source;
 
   const StockTileRedesigned({
     super.key,
@@ -17,6 +18,7 @@ class StockTileRedesigned extends StatelessWidget {
     required this.quantity,
     this.isLowStock = false,
     this.isEdited = false,
+    this.source = "System",
   });
 
   @override
@@ -42,33 +44,35 @@ class StockTileRedesigned extends StatelessWidget {
                      children: [
                         Row(
                           children: [
-                            Text(
-                              itemName,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                            if (isEdited) ...[
-                              const SizedBox(width: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
-                                ),
-                                child: const Text(
-                                  "EDITED",
-                                  style: TextStyle(
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.orange,
+                            Row(
+                              children: [
+                                Text(
+                                  itemName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                    color: AppColors.textPrimary,
                                   ),
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.2)),
+                                  ),
+                                  child: Text(
+                                    source.toUpperCase(),
+                                    style: TextStyle(
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.bold,
+                                      color: source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ],
                         ),
                        const SizedBox(height: 2),

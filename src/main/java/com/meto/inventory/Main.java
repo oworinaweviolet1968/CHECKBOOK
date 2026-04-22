@@ -135,15 +135,14 @@ public class Main extends Application {
 
                     // Standard Sync
                     boolean localHasData = com.meto.inventory.DataManager.getInstance().getDbHelper().hasData();
-                    com.meto.inventory.DataManager.getInstance().getDbHelper().close();
 
                     service.syncOnLogin(com.meto.inventory.DataManager.getInstance().getCurrentDbName(), localHasData, false);
 
                     com.meto.inventory.DataManager.getInstance().getDbHelper().connect();
                     com.meto.inventory.DataManager.getInstance().getDbHelper().initializeDatabase();
 
-                    // Notify UI after everything is ready
-                    com.meto.inventory.DataManager.getInstance().notifyDataChanged();
+                    // Notify UI after everything is ready (Silent to prevent echo upload)
+                    com.meto.inventory.DataManager.getInstance().notifyDataChanged(false);
                 }
             } catch (Exception e) {
                 e.printStackTrace();

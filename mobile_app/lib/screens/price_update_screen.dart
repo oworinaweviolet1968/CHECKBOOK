@@ -82,7 +82,7 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
+            child: Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -113,7 +113,7 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             ),
-            child: const Text('Update Price', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+            child: Text('Update Price', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
           ),
         ],
       ),
@@ -190,7 +190,7 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
                           final double multiplier = DatabaseHelper.instance.getUnitMultiplier(unitLabel, size);
                           final double currentPiecePrice = (item['price'] as num).toDouble();
                           final double currentUnitPrice = currentPiecePrice * multiplier;
-                          final bool isEdited = (item['is_edited'] as int? ?? 0) == 1;
+                          final String source = item['device_source'] as String? ?? 'System';
 
                           return Container(
                             decoration: BoxDecoration(
@@ -218,21 +218,21 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
                                       letterSpacing: -0.2,
                                     ),
                                   ),
-                                  if (isEdited) ...[
+                                  if (true) ...[
                                     const SizedBox(width: 8),
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                                       decoration: BoxDecoration(
-                                        color: Colors.orange.withValues(alpha: 0.1),
+                                        color: (source.toLowerCase() == 'mobile' ? Colors.blue : Colors.grey).withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
+                                        border: Border.all(color: (source.toLowerCase() == 'mobile' ? Colors.blue : Colors.grey).withValues(alpha: 0.2)),
                                       ),
-                                      child: const Text(
-                                        "EDITED",
+                                      child: Text(
+                                        source.toUpperCase(),
                                         style: TextStyle(
                                           fontSize: 8,
                                           fontWeight: FontWeight.bold,
-                                          color: Colors.orange,
+                                          color: (source.toLowerCase() == 'mobile' ? Colors.blue : Colors.grey),
                                         ),
                                       ),
                                     ),

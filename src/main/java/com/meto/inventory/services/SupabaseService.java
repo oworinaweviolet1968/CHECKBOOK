@@ -14,6 +14,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
@@ -25,6 +27,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.net.NetworkInterface;
 import java.util.Collections;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class SupabaseService {
 
@@ -39,9 +42,12 @@ public class SupabaseService {
 
     private static SupabaseService instance;
     private final HttpClient client;
+    private final ReentrantLock syncLock = new ReentrantLock();
     private String currentAccessToken;
     private String currentRefreshToken;
     private String currentUserId;
+    private long lastKnownCloudTimestamp = 0;
+    private long lastFetchCloudTs = 0; 
     private java.util.List<java.util.function.Consumer<String>> statusListeners = new java.util.ArrayList<>();
 
     private SupabaseService() {
@@ -461,14 +467,35 @@ public class SupabaseService {
     // --- STORAGE (BACKUPS) ---
 
     public boolean uploadDatabase(String filePath) {
-        if (currentUserId == null)
+        if (!syncLock.tryLock()) {
+            System.out.println("SYNC: Upload skipped - another sync operation is in progress.");
             return false;
-
-        File file = new File(filePath);
-        if (!file.exists())
-            return false;
-
+        }
         try {
+            if (currentUserId == null)
+                return false;
+
+            File file = new File(filePath);
+            if (!file.exists())
+                return false;
+
+            // Collision Check: Verify cloud hasn't been updated since our last sync
+            // Logic: Read the version ID (timestamp) from INSIDE the database file
+            String localVersionStr = com.meto.inventory.DataManager.getInstance().getDbHelper().getSetting("last_backup_timestamp");
+            long localVersionTs = (localVersionStr != null) ? Long.parseLong(localVersionStr) : 0;
+
+            JsonObject meta = getUserMetadata();
+            long cloudTs = 0;
+            if (meta.has("last_backup_timestamp") && !meta.get("last_backup_timestamp").isJsonNull()) {
+                cloudTs = meta.get("last_backup_timestamp").getAsLong();
+            }
+
+            if (cloudTs > localVersionTs) {
+                System.out.println("SYNC: Upload blocked. Cloud is newer (" + cloudTs + " > " + localVersionTs + ")");
+                notifyStatus("Cloud: Update Required");
+                return false;
+            }
+
             notifyStatus("Compressing...");
             byte[] rawBytes = Files.readAllBytes(file.toPath());
             
@@ -498,10 +525,15 @@ public class SupabaseService {
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() == 200) {
+                long ts = System.currentTimeMillis();
                 Map<String, Object> updates = new HashMap<>();
-                updates.put("last_backup_timestamp", System.currentTimeMillis());
+                updates.put("last_backup_timestamp", ts);
                 updateUserFields(updates);
 
+                // Persist version ID into the database itself
+                com.meto.inventory.DataManager.getInstance().getDbHelper().saveSetting("last_backup_timestamp", String.valueOf(ts));
+                
+                this.lastKnownCloudTimestamp = ts;
                 notifyStatus("Cloud: Synced");
                 return true;
             } else {
@@ -513,6 +545,8 @@ public class SupabaseService {
             e.printStackTrace();
             notifyStatus("Cloud: Offline");
             return false;
+        } finally {
+            syncLock.unlock();
         }
     }
 
@@ -532,46 +566,57 @@ public class SupabaseService {
     }
 
     public boolean syncOnLogin(String dbPath, boolean localHasData, boolean isManual) {
-        if (currentUserId == null)
+        if (!syncLock.tryLock()) {
+            System.out.println("SYNC: Sync skipped - another sync operation is in progress.");
             return false;
-
+        }
         try {
+            if (currentUserId == null)
+                return false;
+
             JsonObject meta = getUserMetadata();
             long cloudTs = 0;
             if (meta.has("last_backup_timestamp") && !meta.get("last_backup_timestamp").isJsonNull()) {
                 cloudTs = meta.get("last_backup_timestamp").getAsLong();
             }
+            this.lastFetchCloudTs = cloudTs;
 
             File local = new File(dbPath);
             long localTs = local.exists() ? local.lastModified() : 0;
+            String localVersionStr = com.meto.inventory.DataManager.getInstance().getDbHelper().getSetting("last_backup_timestamp");
+            long localVersionTs = (localVersionStr != null) ? Long.parseLong(localVersionStr) : 0;
 
-            System.out.println("SYNC DEBUG: CloudTS=" + cloudTs + ", LocalTS=" + localTs);
+            System.out.println("SYNC DEBUG: Cloud=" + cloudTs + ", LocalFileTime=" + localTs + ", LocalVersion=" + localVersionTs);
 
             String cloudFileName = local.getName();
 
-            if (cloudTs > localTs) {
+            if (cloudTs > localVersionTs) {
                 System.out.println("Cloud is newer. Attempting download...");
                 notifyStatus("Downloading...");
                 return downloadWithProgress(cloudFileName, dbPath);
 
-            } else if (isManual || cloudTs == 0) {
-                if (localHasData) {
-                    System.out.println("Uploading changes...");
-                    uploadDatabase(dbPath);
-                } else if (cloudTs > 0 && isManual) {
-                    return downloadWithProgress(cloudFileName, dbPath);
-                }
             } else {
                 notifyStatus("Cloud: Integrated");
             }
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            syncLock.unlock();
         }
         return false;
     }
 
     private boolean downloadWithProgress(String cloudFileName, String localPath) {
         try {
+            // CONFLICT MERGE: Capture local changes before download wipes the file
+            var helper = com.meto.inventory.DataManager.getInstance().getDbHelper();
+            List<com.meto.inventory.DatabaseHelper.DirtyRecord> dirtyStock = helper.getDirtyRecords("stock");
+            List<com.meto.inventory.DatabaseHelper.DirtyRecord> dirtySales = helper.getDirtyRecords("sales");
+            List<Map<String, String>> deletedStock = helper.getDeletedStock();
+            List<Map<String, String>> deletedHistory = helper.getDeletedHistory();
+
+            System.out.println("SYNC MERGE: Captured " + dirtyStock.size() + " stock, " + dirtySales.size() + " sales and " + deletedHistory.size() + " deletions.");
+
             // Priority: Compressed version (.gz)
             boolean success = performDownload(cloudFileName + ".gz", localPath, true);
             if (!success) {
@@ -582,6 +627,22 @@ public class SupabaseService {
                 System.out.println("Trying generic legacy name...");
                 success = performDownload("inventory.db", localPath, false);
             }
+
+            if (success) {
+                // RE-APPLY CHANGES (Connection was reopened in performDownload)
+                var newHelper = com.meto.inventory.DataManager.getInstance().getDbHelper();
+                for (var r : dirtyStock) newHelper.applyDirtyRecord("stock", r);
+                for (var r : dirtySales) newHelper.applyDirtyRecord("sales", r);
+                for (var m : deletedStock) newHelper.applyStockDeletion(m.get("item"), m.get("quantity"));
+                for (var m : deletedHistory) newHelper.applyHistoryDeletion(m.get("customer"), m.get("item"), m.get("amount"), m.get("date"));
+                
+                newHelper.clearDirtyFlags();
+                System.out.println("SYNC MERGE: Successfully re-applied local changes to restored cloud file.");
+                
+                // Silent Push of the merged result
+                // javafx.application.Platform.runLater(() -> uploadDatabase(localPath, false));
+            }
+
             return success;
         } catch (Exception e) {
             e.printStackTrace();
@@ -606,6 +667,10 @@ public class SupabaseService {
             if (response.statusCode() == 200) {
                 long totalBytes = response.headers().firstValueAsLong("Content-Length").orElse(-1L);
                 
+                // CRITICAL: Close the database connection to release the file handle
+                // to avoid OS-level file locking issues during overwrite.
+                com.meto.inventory.DataManager.getInstance().getDbHelper().close();
+
                 try (java.io.InputStream rawIs = response.body();
                      java.io.InputStream is = isGzipped ? new java.util.zip.GZIPInputStream(rawIs) : rawIs;
                      java.io.FileOutputStream fos = new java.io.FileOutputStream(localPath)) {
@@ -625,6 +690,16 @@ public class SupabaseService {
                 }
                 
                 notifyProgress(1.0);
+                
+                // CRITICAL: After successful download/replacement, record the new version ID in the DB
+                if (lastFetchCloudTs > 0) {
+                    System.out.println("Updating internal database version to " + lastFetchCloudTs);
+                    // We must reconnect first to ensure we write to the NEW file
+                    com.meto.inventory.DataManager.getInstance().getDbHelper().connect();
+                    com.meto.inventory.DataManager.getInstance().getDbHelper().saveSetting("last_backup_timestamp", String.valueOf(lastFetchCloudTs));
+                    this.lastKnownCloudTimestamp = lastFetchCloudTs;
+                }
+
                 System.out.println("Restored " + (isGzipped ? "(GZ) " : "") + "to " + localPath);
                 return true;
             }

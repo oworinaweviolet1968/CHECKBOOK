@@ -7,6 +7,7 @@ class SaleTileRedesigned extends StatelessWidget {
   final String amount; // "UGX 50.00"
   final String profit; // "Profit: UGX 10.00"
   final bool isPositiveProfit;
+  final String source;
 
   const SaleTileRedesigned({
     super.key,
@@ -15,6 +16,7 @@ class SaleTileRedesigned extends StatelessWidget {
     required this.amount,
     required this.profit,
     this.isPositiveProfit = true,
+    this.source = "System",
   });
 
   @override
@@ -63,14 +65,37 @@ class SaleTileRedesigned extends StatelessWidget {
                   children: [
                     // Main Text (Item Name / Customer)
                     Expanded(
-                      child: Text(
-                        customer,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 14,
-                          color: AppColors.textPrimary,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                      child: Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              customer,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                                color: AppColors.textPrimary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.2)),
+                            ),
+                            child: Text(
+                              source.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                                color: source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     
