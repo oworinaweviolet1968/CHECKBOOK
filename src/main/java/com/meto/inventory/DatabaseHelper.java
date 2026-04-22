@@ -821,6 +821,15 @@ public class DatabaseHelper {
                 ResultSet rs2 = stmt.executeQuery("SELECT 1 FROM sales LIMIT 1");
                 if (rs2.next())
                     return true;
+
+                // NEW: Also check deletions!
+                ResultSet rs3 = stmt.executeQuery("SELECT 1 FROM deleted_stock LIMIT 1");
+                if (rs3.next())
+                    return true;
+
+                ResultSet rs4 = stmt.executeQuery("SELECT 1 FROM deleted_history LIMIT 1");
+                if (rs4.next())
+                    return true;
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -1022,10 +1031,48 @@ public class DatabaseHelper {
         public DirtyRecord(Map<String, Object> data) { this.data = data; }
     }
 
+    public boolean isStockDeleted(String item, String quantity) {
+        String sql = "SELECT 1 FROM deleted_stock WHERE item = ? AND quantity = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, item);
+            pstmt.setString(2, quantity);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) { return false; }
+    }
+
+    public boolean isSaleDeleted(String customer, String item, Object amount, String date) {
+        String sql = "SELECT 1 FROM deleted_history WHERE customer = ? AND item = ? AND amount = ? AND date = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, customer);
+            pstmt.setString(2, item);
+            pstmt.setObject(3, amount);
+            pstmt.setString(4, date);
+            try (ResultSet rs = pstmt.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) { return false; }
+    }
+
     public void applyDirtyRecord(String table, DirtyRecord record) {
         // Create a copy and remove 'id' to let the new database assign a local ID
         Map<String, Object> data = new HashMap<>(record.data);
         data.remove("id");
+
+        // TOMBSTONE CHECK: Don't restore if deleted in the cloud (other device)
+        if ("stock".equals(table)) {
+            if (isStockDeleted((String)data.get("item"), (String)data.get("quantity"))) {
+                System.out.println("SYNC: Skipping restore of " + data.get("item") + " - Deleted in cloud.");
+                return;
+            }
+        }
+        if ("sales".equals(table)) {
+            if (isSaleDeleted((String)data.get("customer"), (String)data.get("item"), data.get("amount"), (String)data.get("date"))) {
+                System.out.println("SYNC: Skipping restore of sale " + data.get("item") + " - Deleted in cloud.");
+                return;
+            }
+        }
 
         if ("stock".equals(table)) {
             // Check for existing by Name + Size

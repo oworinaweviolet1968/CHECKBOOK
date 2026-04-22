@@ -54,11 +54,15 @@ class DatabaseHelper {
     final db = await instance.database;
     final stock = await db.rawQuery('SELECT COUNT(*) as count FROM stock');
     final sales = await db.rawQuery('SELECT COUNT(*) as count FROM sales');
+    final delStock = await db.rawQuery('SELECT COUNT(*) as count FROM deleted_stock');
+    final delSales = await db.rawQuery('SELECT COUNT(*) as count FROM deleted_history');
 
     int stockCount = Sqflite.firstIntValue(stock) ?? 0;
     int salesCount = Sqflite.firstIntValue(sales) ?? 0;
+    int delStockCount = Sqflite.firstIntValue(delStock) ?? 0;
+    int delSalesCount = Sqflite.firstIntValue(delSales) ?? 0;
 
-    return stockCount > 0 || salesCount > 0;
+    return stockCount > 0 || salesCount > 0 || delStockCount > 0 || delSalesCount > 0;
   }
 
   // --- HISTORY & SALES ---
@@ -1075,12 +1079,45 @@ class DatabaseHelper {
     return await db.query('deleted_history', columns: ['customer', 'item', 'amount', 'date']);
   }
 
+  Future<bool> isStockDeleted(String item, String quantity) async {
+    final db = await instance.database;
+    final results = await db.query('deleted_stock',
+        where: 'item = ? AND quantity = ?', whereArgs: [item, quantity]);
+    return results.isNotEmpty;
+  }
+
+  Future<bool> isSaleDeleted(String customer, String item, double amount, String date) async {
+    final db = await instance.database;
+    final results = await db.query('deleted_history',
+        where: 'customer = ? AND item = ? AND amount = ? AND date = ?',
+        whereArgs: [customer, item, amount, date]);
+    return results.isNotEmpty;
+  }
+
   Future<void> applyDirtyRecord(String table, Map<String, dynamic> record) async {
     final db = await instance.database;
-    
+
     // Create a copy and remove ID to prevent Primary Key conflicts
     final Map<String, dynamic> data = Map.from(record);
     data.remove('id');
+
+    // TOMBSTONE CHECK: Don't restore if deleted in the cloud (other device)
+    if (table == 'stock') {
+      if (await isStockDeleted(data['item'] as String, data['quantity'] as String)) {
+        print("SYNC: Skipping restore of ${data['item']} - Deleted in cloud.");
+        return;
+      }
+    }
+    if (table == 'sales') {
+      if (await isSaleDeleted(
+          data['customer'] as String,
+          data['item'] as String,
+          (data['amount'] as num).toDouble(),
+          data['date'] as String)) {
+        print("SYNC: Skipping restore of sale ${data['item']} - Deleted in cloud.");
+        return;
+      }
+    }
     
     if (table == 'stock') {
       // For stock, we want to update the existing entry if it exists (by Name + Size)
