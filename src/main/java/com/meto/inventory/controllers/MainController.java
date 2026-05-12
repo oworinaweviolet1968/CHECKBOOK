@@ -13,7 +13,7 @@ public class MainController {
     private static MainController instance;
 
     @FXML
-    private Button navNewStock, navRetail, navHistory, navInshock, navLogout;
+    private Button navNewStock, navRetail, navHistory, navInshock, navMore, navLogout;
     @FXML
     private StackPane contentPane;
 
@@ -21,7 +21,7 @@ public class MainController {
         return instance;
     }
 
-    private Node newStockView, retailView, historyView, inShockView;
+    private Node newStockView, retailView, historyView, inShockView, debtHistoryView;
 
     @FXML
     private javafx.scene.control.Label backupStatusLabel;
@@ -34,6 +34,7 @@ public class MainController {
         retailView = FXMLLoader.load(getClass().getResource("/com/meto/inventory/views/Retail.fxml"));
         historyView = FXMLLoader.load(getClass().getResource("/com/meto/inventory/views/History.fxml"));
         inShockView = FXMLLoader.load(getClass().getResource("/com/meto/inventory/views/Inshock.fxml"));
+        debtHistoryView = FXMLLoader.load(getClass().getResource("/com/meto/inventory/views/DebtHistory.fxml"));
 
         // Set default view and default active button style
         setView(inShockView, navInshock);
@@ -43,6 +44,7 @@ public class MainController {
         navRetail.setOnAction(e -> setView(retailView, navRetail));
         navHistory.setOnAction(e -> setView(historyView, navHistory));
         navInshock.setOnAction(e -> setView(inShockView, navInshock));
+        navMore.setOnAction(e -> setView(debtHistoryView, navMore));
         navLogout.setOnAction(e -> handleLogout());
 
         // Listen for Backup Status
@@ -97,12 +99,15 @@ public class MainController {
             case "inshock":
                 setView(inShockView, navInshock);
                 break;
+            case "debthistory":
+                setView(debtHistoryView, navMore);
+                break;
         }
     }
 
     private void updateNavStyles(Button selectedBtn) {
         // List of all your nav buttons
-        Button[] navButtons = { navNewStock, navRetail, navHistory, navInshock };
+        Button[] navButtons = { navNewStock, navRetail, navHistory, navInshock, navMore };
 
         for (Button btn : navButtons) {
             // Remove the active class from everyone

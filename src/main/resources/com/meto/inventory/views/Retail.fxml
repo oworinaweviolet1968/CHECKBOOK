@@ -78,7 +78,7 @@
                                 <Button fx:id="pcsBtn"      text="pcs * 1"      styleClass="pill-quick"/>
                                 <Button fx:id="halfDozBtn"  text="Half Doz * 6" styleClass="pill-quick"/>
                                 <Button fx:id="box10Btn"    text="Box * 10"     styleClass="pill-quick"/>
-                                <Button fx:id="box12Btn"    text="Box * 12"     styleClass="pill-quick"/>
+                                <Button fx:id="box12Btn"    text="Dozen"     styleClass="pill-quick"/>
                                 <Button fx:id="box20Btn"    text="Box * 20"     styleClass="pill-quick"/>
                                 <Button fx:id="box24Btn"    text="Box * 24"     styleClass="pill-quick"/>
                                 <Button fx:id="box72Btn"    text="Box * 72"     styleClass="pill-quick"/>
@@ -119,6 +119,8 @@
             </TableView>
 
             <HBox alignment="CENTER_RIGHT" spacing="16">
+                <!-- Debt Toggle -->
+                <CheckBox fx:id="debtCheckBox" text="Mark as Debt" style="-fx-font-weight: bold; -fx-text-fill: #d32f2f;"/>
                 <!-- Save Button -->
                 <Button fx:id="saveButton" text="Finalize Sale" styleClass="btn-green" prefHeight="40"/>
             </HBox>

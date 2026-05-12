@@ -2,6 +2,9 @@ package com.meto.inventory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class DataManager {
     private static DataManager instance;
@@ -12,6 +15,7 @@ public class DataManager {
         dbHelper = new DatabaseHelper();
         dbHelper.initializeDatabase();
         listeners = new ArrayList<>();
+        startAutoSyncTask();
     }
 
     public static DataManager getInstance() {
@@ -105,6 +109,34 @@ public class DataManager {
     // In DataManager class
     public void notifyItemsChanged() {
         notifyDataChanged(); // This will refresh everything including items
+    }
+
+    private ScheduledExecutorService syncExecutor;
+
+    private void startAutoSyncTask() {
+        if (syncExecutor != null) return;
+        
+        syncExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "AutoSyncThread");
+            t.setDaemon(true);
+            return t;
+        });
+
+        // Run every 30 seconds as requested
+        syncExecutor.scheduleAtFixedRate(() -> {
+            try {
+                com.meto.inventory.services.SupabaseService service = com.meto.inventory.services.SupabaseService.getInstance();
+                
+                if (service.isLoggedIn() && isBackupEnabled && service.isSyncFailed()) {
+                    if (service.isOnline()) {
+                        System.out.println("AutoSync: Connection restored. Retrying upload...");
+                        service.uploadDatabase(getCurrentDbName());
+                    }
+                }
+            } catch (Exception e) {
+                // Silently ignore background sync errors to avoid UI popups
+            }
+        }, 30, 30, TimeUnit.SECONDS);
     }
 
     public interface DataChangeListener {

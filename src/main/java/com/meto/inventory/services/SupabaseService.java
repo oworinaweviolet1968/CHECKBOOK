@@ -48,6 +48,7 @@ public class SupabaseService {
     private String currentUserId;
     private long lastKnownCloudTimestamp = 0;
     private long lastFetchCloudTs = 0; 
+    private boolean lastSyncFailed = false;
     private java.util.List<java.util.function.Consumer<String>> statusListeners = new java.util.ArrayList<>();
 
     private SupabaseService() {
@@ -371,6 +372,28 @@ public class SupabaseService {
         throw new IOException(msg);
     }
 
+    public boolean isSyncFailed() {
+        return lastSyncFailed;
+    }
+
+    /**
+     * Lightweight check if the cloud service is reachable.
+     */
+    public boolean isOnline() {
+        try {
+            // Heartbeat against Supabase Auth (health check)
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(AUTH_URL + "/health"))
+                    .GET()
+                    .timeout(java.time.Duration.ofSeconds(3))
+                    .build();
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() == 200;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     // --- DATABASE (METADATA) ---
 
     private void ensureUserMetadataExists(String email) {
@@ -472,12 +495,16 @@ public class SupabaseService {
             return false;
         }
         try {
-            if (currentUserId == null)
+            if (currentUserId == null) {
+                lastSyncFailed = true;
                 return false;
+            }
 
             File file = new File(filePath);
-            if (!file.exists())
+            if (!file.exists()) {
+                lastSyncFailed = true;
                 return false;
+            }
 
             // Collision Check: Verify cloud hasn't been updated since our last sync
             // Logic: Read the version ID (timestamp) from INSIDE the database file
@@ -535,15 +562,18 @@ public class SupabaseService {
                 
                 this.lastKnownCloudTimestamp = ts;
                 notifyStatus("Cloud: Synced");
+                lastSyncFailed = false;
                 return true;
             } else {
                 System.err.println("Upload failed: " + response.body());
                 notifyStatus("Cloud: Error");
+                lastSyncFailed = true;
                 return false;
             }
         } catch (Exception e) {
             e.printStackTrace();
             notifyStatus("Cloud: Offline");
+            lastSyncFailed = true;
             return false;
         } finally {
             syncLock.unlock();

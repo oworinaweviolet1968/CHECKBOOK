@@ -447,7 +447,7 @@ public class NewStockController implements DataManager.DataChangeListener {
     private void createUnitQuickButtons() {
         Map<String, String> unitLabels = Map.of(
                 "pcs", "pcs * 1", "sack", "Sack", "half doz", "Half Doz * 6",
-                "dozen", "Box * 12", "box*10", "Box * 10", "box*12", "Box * 12",
+                "dozen", "Dozen", "box*10", "Box * 10", "box*12", "Dozen",
                 "box*20", "Box * 20", "box*24", "Box * 24", "crate", "Crate * 25",
                 "box*72", "Box * 72");
 
@@ -791,8 +791,7 @@ public class NewStockController implements DataManager.DataChangeListener {
                 // So let's just rely on the stored Amount string which computed it correctly
                 // during onAdd().
             }
-
-            dataManager.getDbHelper().addSaleWithProfit(supplier, item, qty, unit, price, totalAmount, "NEW STOCK");
+            dataManager.getDbHelper().addSaleWithProfit(supplier, item, qty, unit, price, totalAmount, "NEW STOCK", false, null);
         }
 
         showAlert("Stock saved successfully!");

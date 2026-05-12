@@ -60,6 +60,8 @@ public class SalesController implements DataManager.DataChangeListener {
 
     @FXML
     private Label totalAmountLabel;
+    @FXML
+    private CheckBox debtCheckBox;
 
     private final ObservableList<SaleItem> items = FXCollections.observableArrayList();
     private final DataManager dataManager = DataManager.getInstance();
@@ -460,7 +462,7 @@ public class SalesController implements DataManager.DataChangeListener {
         });
         box12Btn.setOnAction(e -> {
             selectQuickBtn(box12Btn, uBtns);
-            appendToUnit("Box * 12");
+            appendToUnit("Dozen");
         });
         box20Btn.setOnAction(e -> {
             selectQuickBtn(box20Btn, uBtns);
@@ -692,11 +694,13 @@ public class SalesController implements DataManager.DataChangeListener {
         }
 
         String saleType = determineSaleType();
+        boolean isDebt = debtCheckBox.isSelected();
+        String receiptId = java.util.UUID.randomUUID().toString();
         for (SaleItem item : items) {
             double price = Double.parseDouble(item.getPrice().replaceAll("[^0-9.]", ""));
             double amount = Double.parseDouble(item.getAmount().replaceAll("[^0-9.]", ""));
             dataManager.getDbHelper().addSaleWithProfit(customer, item.getItems(), item.getQty(), item.getUnit(), price,
-                    amount, saleType);
+                    amount, saleType, isDebt, receiptId);
             updateStock(item.getItems(), item.getQty(), item.getUnit());
         }
 
@@ -707,6 +711,7 @@ public class SalesController implements DataManager.DataChangeListener {
         qtyComboBox.setValue(null);
         unitField.clear();
         priceField.getEditor().clear();
+        debtCheckBox.setSelected(false);
         updateTotal();
         dataManager.notifyDataChanged();
         

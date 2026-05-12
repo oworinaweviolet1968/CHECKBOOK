@@ -8,6 +8,7 @@ import '../screens/passcode_setup_screen.dart';
 import '../services/passcode_service.dart';
 import '../screens/deleted_history_screen.dart';
 import '../screens/price_update_screen.dart';
+import '../screens/debt_history_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class AccountScreen extends StatefulWidget {
@@ -315,6 +316,17 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
               onTap: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const PasscodeSetupScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            _buildActionCard(
+              title: 'Debt History',
+              icon: Icons.account_balance_wallet_outlined,
+              iconColor: AppColors.primaryGreen,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const DebtHistoryScreen()),
                 );
               },
             ),

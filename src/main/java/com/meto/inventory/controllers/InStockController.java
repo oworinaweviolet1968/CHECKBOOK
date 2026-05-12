@@ -45,9 +45,16 @@ public class InStockController implements DataManager.DataChangeListener {
             loadDailySales();
             
             Thread syncThread = new Thread(() -> {
+                com.meto.inventory.services.SupabaseService service = com.meto.inventory.services.SupabaseService.getInstance();
                 String dbName = dataManager.getCurrentDbName();
                 boolean hasData = dataManager.getDbHelper().hasData();
-                com.meto.inventory.services.SupabaseService.getInstance().syncOnLogin(dbName, hasData, true);
+
+                // 1. Try to push local changes
+                service.uploadDatabase(dbName);
+                
+                // 2. Pull remote changes (merges if cloud is newer)
+                service.syncOnLogin(dbName, hasData, true);
+
                 javafx.application.Platform.runLater(() -> {
                     dataManager.notifyDataChanged(false);
                 });

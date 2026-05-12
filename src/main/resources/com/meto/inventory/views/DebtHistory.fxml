@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.shape.Circle?>
+
+<VBox spacing="20" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.meto.inventory.controllers.DebtHistoryController" styleClass="main-container">
+    <padding>
+        <Insets top="20" right="20" bottom="20" left="20"/>
+    </padding>
+
+    <!-- Header Section -->
+    <HBox alignment="CENTER_LEFT" spacing="15">
+        <VBox>
+            <Label text="Debt Management" styleClass="h1"/>
+            <Label text="Monitor outstanding balances and settlement history" styleClass="text-muted"/>
+        </VBox>
+        <Region HBox.hgrow="ALWAYS"/>
+        <Button fx:id="refreshBtn" text="Refresh Data" styleClass="btn-secondary">
+            <graphic>
+                <Region styleClass="icon, icon-clock" style="-fx-scale-x: 0.8; -fx-scale-y: 0.8;"/>
+            </graphic>
+        </Button>
+    </HBox>
+
+    <!-- Summary Cards -->
+    <HBox spacing="20">
+        <VBox spacing="5" styleClass="card, card-debt" HBox.hgrow="ALWAYS">
+            <Label text="Outstanding Debt" styleClass="card-label"/>
+            <Label fx:id="totalDebtLabel" text="UGX 0" styleClass="card-value-red"/>
+            <Label text="Total balance yet to be collected" styleClass="card-sublabel"/>
+        </VBox>
+
+        <VBox spacing="5" styleClass="card" HBox.hgrow="ALWAYS">
+            <Label text="Total Debtors" styleClass="card-label"/>
+            <Label fx:id="debtorCountLabel" text="0" styleClass="card-value"/>
+            <Label text="Unique customers with active debt" styleClass="card-sublabel"/>
+        </VBox>
+
+        <VBox spacing="5" styleClass="card, card-success" HBox.hgrow="ALWAYS">
+            <Label text="Collected Today" styleClass="card-label"/>
+            <Label fx:id="collectedTodayLabel" text="UGX 0" styleClass="card-value-green"/>
+            <Label text="Debt settlements recorded today" styleClass="card-sublabel"/>
+        </VBox>
+    </HBox>
+
+    <!-- Content Sections -->
+    <TabPane VBox.vgrow="ALWAYS" tabClosingPolicy="UNAVAILABLE" styleClass="card">
+        <tabs>
+            <Tab text="Active Debts">
+                <VBox spacing="10" style="-fx-padding: 10;">
+                    <Label text="Unsettled Transactions" styleClass="h2"/>
+                    <TableView fx:id="unsettledTable" VBox.vgrow="ALWAYS">
+                        <columns>
+                            <TableColumn fx:id="customerCol" text="Customer" prefWidth="150"/>
+                            <TableColumn fx:id="itemCol" text="Item" prefWidth="150"/>
+                            <TableColumn fx:id="totalCol" text="Total" prefWidth="120"/>
+                            <TableColumn fx:id="paidCol" text="Paid" prefWidth="120"/>
+                            <TableColumn fx:id="remainingCol" text="Balance" prefWidth="120"/>
+                            <TableColumn fx:id="dateCol" text="Sale Date" prefWidth="120"/>
+                            <TableColumn fx:id="actionsCol" text="Actions" prefWidth="120"/>
+                        </columns>
+                    </TableView>
+                </VBox>
+            </Tab>
+            
+            <Tab text="Payment History">
+                <VBox spacing="10" style="-fx-padding: 10;">
+                    <Label text="Recent Partial Payments" styleClass="h2"/>
+                    <TableView fx:id="paymentLogsTable" VBox.vgrow="ALWAYS">
+                        <columns>
+                            <TableColumn fx:id="logCustomerCol" text="Customer" prefWidth="200"/>
+                            <TableColumn fx:id="logAmountCol" text="Amount Paid" prefWidth="150"/>
+                            <TableColumn fx:id="logDateCol" text="Payment Date" prefWidth="150"/>
+                        </columns>
+                    </TableView>
+                </VBox>
+            </Tab>
+
+            <Tab text="Settled Debts">
+                <VBox spacing="10" style="-fx-padding: 10;">
+                    <Label text="Recently Fully Paid Debts" styleClass="h2"/>
+                    <TableView fx:id="settledTable" VBox.vgrow="ALWAYS">
+                        <columns>
+                            <TableColumn fx:id="settledCustomerCol" text="Customer" prefWidth="150"/>
+                            <TableColumn fx:id="settledItemCol" text="Item" prefWidth="150"/>
+                            <TableColumn fx:id="settledAmountCol" text="Total Amount" prefWidth="150"/>
+                            <TableColumn fx:id="settledDateCol" text="Completion Date" prefWidth="150"/>
+                        </columns>
+                    </TableView>
+                </VBox>
+            </Tab>
+        </tabs>
+    </TabPane>
+
+</VBox>

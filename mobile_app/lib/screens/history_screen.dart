@@ -448,11 +448,6 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                              ),
                                              const SizedBox(height: 4),
                                              Text(
-                                                 "${item.quantity} ${item.unit}", 
-                                                 style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280))
-                                             ),
-                                              const SizedBox(height: 4),
-                                             Text(
                                                  isStock ? "Supplier: ${item.customer}" : "Customer: ${item.customer}",
                                                  style: const TextStyle(
                                                      fontSize: 12, 
@@ -506,19 +501,15 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
               const SnackBar(content: Text('Searching for MPT-II printer...'), duration: Duration(seconds: 2))
           );
           
-          // Convert HistoryItem to SaleItem for the printer service
-          final saleItem = SaleItem(
-              item: item.item,
-              quantity: item.quantity,
-              unit: item.unit,
-              price: item.price,
-              amount: item.amount,
-              isDebt: item.isDebt,
-          );
+          final itemsList = await DatabaseHelper.instance.getReceiptItems(item.id!);
+          
+          if (itemsList.isEmpty) {
+              throw Exception("Could not find items for this receipt.");
+          }
 
           await PrinterService.instance.printInvoice(
               item.customer, 
-              [saleItem]
+              itemsList
           );
       } catch (e) {
           if (mounted) {

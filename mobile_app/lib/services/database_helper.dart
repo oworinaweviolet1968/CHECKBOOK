@@ -69,81 +69,100 @@ class DatabaseHelper {
 
   Future<List<HistoryItem>> getHistory(String filter) async {
     final db = await instance.database;
-    String sql = "SELECT id, customer, item, type, quantity, unit, price, cost_price, base_quantity, amount, paid_amount, is_edited, date, is_debt, is_paid, device_source FROM sales WHERE 1=1";
-
-    List<dynamic> args = [];
-    if (filter.isNotEmpty && filter != "ALL") {
-        if (filter == "DEBTS") {
-            sql += " AND is_debt = 1 AND is_paid = 0";
-        } else {
-            sql += " AND type = ?";
-            args.add(filter);
-        }
+    final String sql;
+    if (filter == "DEBTS") {
+      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(paid_amount) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales WHERE is_debt = 1 AND is_paid = 0 GROUP BY COALESCE(receipt_id, created_at || customer) ORDER BY date DESC, created_at DESC";
+    } else if (filter != "ALL") {
+      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(paid_amount) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales WHERE type = ? GROUP BY COALESCE(receipt_id, created_at || customer) ORDER BY date DESC, created_at DESC";
+    } else {
+      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(paid_amount) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales GROUP BY COALESCE(receipt_id, created_at || customer) ORDER BY date DESC, created_at DESC";
     }
-    sql += " ORDER BY date DESC, created_at DESC";
 
-    final result = await db.rawQuery(sql, args);
-    
+    final List<Map<String, dynamic>> result = await db.rawQuery(
+        sql, filter != "ALL" && filter != "DEBTS" ? [filter] : []);
+
     return result.map((rs) {
-        double amount = (rs['amount'] as num).toDouble();
-        double paidAmount = (rs['paid_amount'] as num? ?? 0).toDouble();
-        double cost = (rs['cost_price'] as num).toDouble();
-        double baseQty = (rs['base_quantity'] as num).toDouble();
-        double profitVal = amount - (cost * baseQty);
-        
-        return HistoryItem(
-            id: rs['id'] as int,
-            customer: rs['customer'] as String,
-            item: rs['item'] as String,
-            type: rs['type'] as String,
-            quantity: rs['quantity'] as String,
-            unit: rs['unit'] as String,
-            price: (rs['price'] as num).toStringAsFixed(0),
-            amount: amount.toStringAsFixed(0),
-            paidAmount: paidAmount.toStringAsFixed(0),
-            profit: profitVal.toStringAsFixed(0),
-            date: rs['date'] as String,
-            isDebt: (rs['is_debt'] as int? ?? 0) == 1,
-            isPaid: (rs['is_paid'] as int? ?? 0) == 1,
-            isEdited: (rs['is_edited'] as int? ?? 0) == 1,
-            deviceSource: rs['device_source'] as String? ?? "System",
-        );
+      double amount = (rs['amount'] as num).toDouble();
+      double profitVal = (rs['profit'] as num).toDouble();
+
+      return HistoryItem(
+        id: rs['id'] as int,
+        customer: rs['customer'] as String,
+        item: rs['item'] as String,
+        type: rs['type'] as String,
+        quantity: "-",
+        unit: "-",
+        price: "-",
+        amount: amount.toStringAsFixed(0),
+        paidAmount: (rs['paid_amount'] as num? ?? 0).toStringAsFixed(0),
+        profit: profitVal.toStringAsFixed(0),
+        date: rs['date'] as String,
+        isDebt: (rs['is_debt'] as int? ?? 0) == 1,
+        isPaid: (rs['is_paid'] as int? ?? 0) == 1,
+        isEdited: (rs['is_edited'] as int? ?? 0) == 1,
+        deviceSource: rs['device_source'] as String? ?? "System",
+      );
     }).toList().cast<HistoryItem>();
   }
 
   Future<List<HistoryItem>> getTodaysSales() async {
-      final db = await instance.database;
-      final today = DateTime.now().toIso8601String().split('T')[0];
-      
-      final result = await db.rawQuery(
-          "SELECT id, customer, item, type, quantity, unit, price, amount, paid_amount, cost_price, base_quantity, is_edited, date, is_debt, is_paid, device_source FROM sales WHERE date = ? AND type != 'NEW STOCK' ORDER BY created_at DESC",
-          [today]
+    final db = await instance.database;
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    
+    final String sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(paid_amount) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales WHERE date = ? AND type != 'NEW STOCK' GROUP BY COALESCE(receipt_id, created_at || customer) ORDER BY created_at DESC";
+
+    final List<Map<String, dynamic>> result = await db.rawQuery(sql, [today]);
+
+    return result.map((rs) {
+      double amount = (rs['amount'] as num).toDouble();
+      double profitVal = (rs['profit'] as num).toDouble();
+
+      return HistoryItem(
+        id: rs['id'] as int,
+        customer: rs['customer'] as String,
+        item: rs['item'] as String,
+        type: rs['type'] as String,
+        quantity: "-",
+        unit: "-",
+        price: "-",
+        amount: amount.toStringAsFixed(0),
+        paidAmount: (rs['paid_amount'] as num? ?? 0).toStringAsFixed(0),
+        profit: profitVal.toStringAsFixed(0),
+        date: rs['date'] as String,
+        isDebt: (rs['is_debt'] as int? ?? 0) == 1,
+        isPaid: (rs['is_paid'] as int? ?? 0) == 1,
+        isEdited: (rs['is_edited'] as int? ?? 0) == 1,
+        deviceSource: rs['device_source'] as String? ?? "System",
       );
+    }).toList().cast<HistoryItem>();
+  }
 
-      return result.map((rs) {
-          double amount = (rs['amount'] as num).toDouble();
-          double cost = (rs['cost_price'] as num).toDouble();
-          double baseQty = (rs['base_quantity'] as num).toDouble();
-          double profitVal = amount - (cost * baseQty);
+  Future<List<SaleItem>> getReceiptItems(int saleId) async {
+    final db = await instance.database;
+    final info = await db.query("sales", columns: ["customer", "created_at", "receipt_id"], where: "id = ?", whereArgs: [saleId]);
+    
+    if (info.isEmpty) return [];
+    
+    final customer = info[0]['customer'];
+    final createdAt = info[0]['created_at'];
+    final receiptId = info[0]['receipt_id'];
 
-          return HistoryItem(
-              id: rs['id'] as int,
-              customer: rs['customer'] as String,
-              item: rs['item'] as String,
-              type: rs['type'] as String,
-              quantity: rs['quantity'] as String,
-              unit: rs['unit'] as String,
-              price: (rs['price'] as num).toStringAsFixed(0),
-              amount: amount.toStringAsFixed(0),
-              paidAmount: (rs['paid_amount'] as num? ?? 0).toStringAsFixed(0),
-              profit: profitVal.toStringAsFixed(0),
-              date: rs['date'] as String,
-              isDebt: (rs['is_debt'] as int? ?? 0) == 1,
-              isPaid: (rs['is_paid'] as int? ?? 0) == 1,
-              isEdited: (rs['is_edited'] as int? ?? 0) == 1,
-              deviceSource: rs['device_source'] as String? ?? "System",
-          );
-      }).toList().cast<HistoryItem>();
+    final List<Map<String, dynamic>> items;
+    if (receiptId != null && receiptId.toString().isNotEmpty) {
+      items = await db.query("sales", columns: ["item", "quantity", "unit", "price", "amount"], where: "receipt_id = ?", whereArgs: [receiptId]);
+    } else {
+      items = await db.query("sales", columns: ["item", "quantity", "unit", "price", "amount"], where: "customer = ? AND created_at = ?", whereArgs: [customer, createdAt]);
+    }
+
+    return items.map((rs) {
+      return SaleItem(
+        items: rs['item'] as String,
+        qty: rs['quantity'] as String,
+        unit: rs['unit'] as String,
+        price: (rs['price'] as num).toStringAsFixed(0),
+        amount: (rs['amount'] as num).toStringAsFixed(0),
+      );
+    }).toList();
   }
 
 
@@ -198,6 +217,7 @@ class DatabaseHelper {
           await addCol("deleted_history", "is_paid", "INTEGER DEFAULT 0");
           await addCol("deleted_history", "paid_amount", "REAL DEFAULT 0");
           await addCol("deleted_history", "is_edited", "INTEGER DEFAULT 0");
+          await addCol("sales", "receipt_id", "TEXT");
           await addCol("deleted_history", "device_source", "TEXT DEFAULT 'Desktop'");
 
           // Create deleted_history table if it doesn't exist
@@ -693,7 +713,7 @@ class DatabaseHelper {
 
   // --- SALES OPERATIONS ---
 
-  Future<void> addSaleWithProfit(String customer, String item, String size, String unit, double sellingPrice, double totalAmount, String type, {bool isDebt = false}) async {
+  Future<void> addSaleWithProfit(String customer, String item, String size, String unit, double sellingPrice, double totalAmount, String type, {bool isDebt = false, String? receiptId}) async {
       final db = await instance.database;
       double costPrice = await getLastRecordedPrice(item, size);
       
@@ -717,12 +737,14 @@ class DatabaseHelper {
       }
 
       await db.rawInsert(
-          "INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited, device_source) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'Mobile')",
+          "INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited, device_source, receipt_id, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'Mobile', ?, ?)",
           [
               customer, item, size, unit, sellingPrice, 
               costPrice, baseQty, totalAmount, type, 
               DateTime.now().toIso8601String().split('T')[0],
-              isDebt ? 1 : 0, 0, 0
+              isDebt ? 1 : 0, isDebt ? 0 : 1, isDebt ? 0 : totalAmount,
+              receiptId,
+              DateTime.now().toIso8601String()
           ]
       );
   }

@@ -2,6 +2,7 @@ package com.meto.inventory.controllers;
 
 import com.meto.inventory.DataManager;
 import com.meto.inventory.models.HistoryItem;
+import com.meto.inventory.utils.DialogHelper;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
@@ -25,13 +26,11 @@ public class HistoryController implements DataManager.DataChangeListener {
     @FXML
     private TableColumn<HistoryItem, String> typeCol;
     @FXML
-    private TableColumn<HistoryItem, String> qtyCol;
-    @FXML
-    private TableColumn<HistoryItem, String> unitCol;
-    @FXML
     private TableColumn<HistoryItem, String> amountCol;
     @FXML
     private TableColumn<HistoryItem, String> dateCol;
+    @FXML
+    private TableColumn<HistoryItem, String> actionsCol;
 
     private final DataManager dataManager = DataManager.getInstance();
     private javafx.collections.transformation.FilteredList<HistoryItem> filteredData;
@@ -41,7 +40,7 @@ public class HistoryController implements DataManager.DataChangeListener {
         // Register as listener for data changes
         dataManager.addDataChangeListener(this);
 
-        historyFilterCombo.getItems().addAll("ALL", "NEW STOCK", "WHOLESALE", "RETAIL");
+        historyFilterCombo.getItems().addAll("ALL", "NEW STOCK", "WHOLESALE", "RETAIL", "DEBTS");
         historyFilterCombo.setValue("ALL");
         setupTableColumns();
         loadHistory();
@@ -62,41 +61,28 @@ public class HistoryController implements DataManager.DataChangeListener {
     private void setupTableColumns() {
         nameCol.setCellValueFactory(data -> data.getValue().nameProperty());
         itemCol.setCellValueFactory(data -> data.getValue().itemProperty());
-        itemCol.setCellFactory(col -> new TableCell<HistoryItem, String>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setGraphic(null);
-                    setText(null);
-                } else {
-                    Label label = new Label(item);
-                    label.getStyleClass().add("bold-label");
-                    setGraphic(label);
-                    setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        itemCol.setCellFactory(tc -> {
+            TableCell<HistoryItem, String> cell = new TableCell<>() {
+                @Override
+                protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (empty || item == null) {
+                        setGraphic(null);
+                        setText(null);
+                    } else {
+                        javafx.scene.text.Text text = new javafx.scene.text.Text(item);
+                        text.wrappingWidthProperty().bind(tc.widthProperty().subtract(20));
+                        text.setFill(javafx.scene.paint.Color.web("#374151"));
+                        text.setStyle("-fx-font-size: 12px;");
+                        setGraphic(text);
+                        setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+                    }
                 }
-            }
+            };
+            return cell;
         });
 
         typeCol.setCellValueFactory(data -> data.getValue().typeUnitProperty());
-        qtyCol.setCellValueFactory(data -> data.getValue().qtyProperty());
-        qtyCol.setCellFactory(col -> new TableCell<HistoryItem, String>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setGraphic(null);
-                    setText(null);
-                } else {
-                    Label label = new Label(item);
-                    label.getStyleClass().add("size-pill");
-                    setGraphic(label);
-                    setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-                }
-            }
-        });
-
-        unitCol.setCellValueFactory(data -> data.getValue().unitProperty());
         amountCol.setCellValueFactory(data -> data.getValue().amountProperty());
         amountCol.setCellFactory(col -> new TableCell<HistoryItem, String>() {
             @Override
@@ -116,34 +102,66 @@ public class HistoryController implements DataManager.DataChangeListener {
 
         dateCol.setCellValueFactory(data -> data.getValue().dateProperty());
 
+        // Actions Column (Print Receipt)
+        actionsCol.setCellFactory(col -> new TableCell<HistoryItem, String>() {
+            private final Button printBtn = new Button("Print");
+            {
+                printBtn.getStyleClass().add("pill");
+                printBtn.setStyle("-fx-font-size: 11px; -fx-padding: 4 10; -fx-background-color: #2e7d32; -fx-text-fill: white;");
+                printBtn.setOnAction(e -> {
+                    HistoryItem item = getTableView().getItems().get(getIndex());
+                    handlePrintReceipt(item);
+                });
+            }
+
+            @Override
+            protected void updateItem(String item, boolean empty) {
+                super.updateItem(item, empty);
+                if (empty) {
+                    setGraphic(null);
+                } else {
+                    HistoryItem historyItem = getTableView().getItems().get(getIndex());
+                    // Only show print for sales (Retail, Wholesale, Debt)
+                    String type = historyItem.getTypeUnit();
+                    if (type != null && !type.equalsIgnoreCase("NEW STOCK")) {
+                        setGraphic(printBtn);
+                    } else {
+                        setGraphic(null);
+                    }
+                    setAlignment(javafx.geometry.Pos.CENTER);
+                }
+            }
+        });
+
         // Apply alignment classes for CSS header/cell alignment
         nameCol.getStyleClass().add("col-left");
         itemCol.getStyleClass().add("col-left");
-        qtyCol.getStyleClass().add("col-right");
-        unitCol.getStyleClass().add("col-center");
         amountCol.getStyleClass().add("col-right");
         dateCol.getStyleClass().add("col-right");
 
         // Align remaining columns' data
         leftAlignColumn(nameCol);
-        centerColumn(unitCol);
         rightAlignColumn(dateCol);
-        rightAlignColumn(qtyCol);
 
         // Custom Cell Factory for TYPE column (Badges + Centered)
         typeCol.getStyleClass().add("col-center");
-        typeCol.setCellFactory(column -> new TableCell<>() {
+        typeCol.setCellFactory(column -> new TableCell<HistoryItem, String>() {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
+                HistoryItem historyItem = getTableRow() != null ? getTableRow().getItem() : null;
+                
                 if (empty || item == null) {
                     setGraphic(null);
                     setText(null);
                 } else {
                     Label badge = new Label(item);
-                    badge.getStyleClass().add("badge"); // Base if needed, or just specific
+                    badge.getStyleClass().add("badge");
 
-                    if (item.equalsIgnoreCase("NEW STOCK")) {
+                    if (historyItem != null && historyItem.isIsDebt() && !historyItem.isIsPaid()) {
+                        badge.setText("DEBT");
+                        badge.getStyleClass().add("badge-debt");
+                    } else if (item.equalsIgnoreCase("NEW STOCK")) {
                         badge.getStyleClass().add("badge-stock");
                     } else if (item.equalsIgnoreCase("WHOLESALE")) {
                         badge.getStyleClass().add("badge-wholesale");
@@ -157,27 +175,43 @@ public class HistoryController implements DataManager.DataChangeListener {
             }
         });
 
-        // Row Factory for background coloring
-        historyTable.setRowFactory(tv -> new TableRow<HistoryItem>() {
-            @Override
-            protected void updateItem(HistoryItem item, boolean empty) {
-                super.updateItem(item, empty);
-                if (item == null || empty) {
-                    getStyleClass().removeAll("history-row-new-stock", "history-row-retail", "history-row-wholesale");
-                } else {
-                    String type = item.getTypeUnit();
-                    getStyleClass().removeAll("history-row-new-stock", "history-row-retail", "history-row-wholesale");
-                    if (type != null) {
-                        if (type.equalsIgnoreCase("NEW STOCK")) {
-                            getStyleClass().add("history-row-new-stock");
-                        } else if (type.equalsIgnoreCase("RETAIL")) {
-                            getStyleClass().add("history-row-retail");
-                        } else if (type.equalsIgnoreCase("WHOLESALE")) {
-                            getStyleClass().add("history-row-wholesale");
+        // Row Factory for background coloring and context menu
+        historyTable.setRowFactory(tv -> {
+            TableRow<HistoryItem> row = new TableRow<>() {
+                @Override
+                protected void updateItem(HistoryItem item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (item == null || empty) {
+                        getStyleClass().removeAll("history-row-new-stock", "history-row-retail", "history-row-wholesale", "history-row-debt");
+                        setContextMenu(null);
+                    } else {
+                        String type = item.getTypeUnit();
+                        getStyleClass().removeAll("history-row-new-stock", "history-row-retail", "history-row-wholesale", "history-row-debt");
+                        
+                        if (item.isIsDebt() && !item.isIsPaid()) {
+                            getStyleClass().add("history-row-debt");
+                            
+                            ContextMenu menu = new ContextMenu();
+                            MenuItem settleItem = new MenuItem("Settle Debt");
+                            settleItem.setOnAction(e -> showSettleDebtDialog(item));
+                            menu.getItems().add(settleItem);
+                            setContextMenu(menu);
+                        } else {
+                            setContextMenu(null);
+                            if (type != null) {
+                                if (type.equalsIgnoreCase("NEW STOCK")) {
+                                    getStyleClass().add("history-row-new-stock");
+                                } else if (type.equalsIgnoreCase("RETAIL")) {
+                                    getStyleClass().add("history-row-retail");
+                                } else if (type.equalsIgnoreCase("WHOLESALE")) {
+                                    getStyleClass().add("history-row-wholesale");
+                                }
+                            }
                         }
                     }
                 }
-            }
+            };
+            return row;
         });
     }
 
@@ -247,7 +281,7 @@ public class HistoryController implements DataManager.DataChangeListener {
 
         filteredData.setPredicate(item -> {
             // 1. Type Filter
-            if (typeFilter != null && !"ALL".equals(typeFilter)) {
+            if (typeFilter != null && !"ALL".equals(typeFilter) && !"DEBTS".equals(typeFilter)) {
                 if (!item.getTypeUnit().equalsIgnoreCase(typeFilter))
                     return false;
             }
@@ -278,6 +312,67 @@ public class HistoryController implements DataManager.DataChangeListener {
 
             return true;
         });
+    }
+
+    private void showSettleDebtDialog(HistoryItem item) {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Settle Debt");
+        dialog.setHeaderText("Settling debt for " + item.getName());
+        dialog.setContentText("Enter amount paid (UGX):");
+
+        String amountStrVal = item.getAmount() == null ? "0" : item.getAmount().replaceAll("[^0-9.]", "");
+        String paidStrVal = item.getPaidAmount() == null ? "0" : item.getPaidAmount().replaceAll("[^0-9.]", "");
+        
+        double total = amountStrVal.isEmpty() ? 0 : Double.parseDouble(amountStrVal);
+        double paid = paidStrVal.isEmpty() ? 0 : Double.parseDouble(paidStrVal);
+        double remaining = total - paid;
+
+        dialog.setHeaderText(String.format("Customer: %s\nItem: %s\nTotal: UGX %,.0f\nAlready Paid: UGX %,.0f\nRemaining: UGX %,.0f",
+                item.getName(), item.getItem(), total, paid, remaining));
+
+        dialog.showAndWait().ifPresent(amountStr -> {
+            try {
+                double amount = Double.parseDouble(amountStr.replaceAll("[^0-9.]", ""));
+                if (amount <= 0) {
+                    showAlert("Please enter a valid amount.");
+                    return;
+                }
+                dataManager.getDbHelper().markSaleAsPaid(item.getId(), amount);
+                dataManager.notifyDataChanged();
+                showAlert("Payment recorded successfully!");
+            } catch (NumberFormatException e) {
+                showAlert("Invalid amount format.");
+            }
+        });
+    }
+
+    private void showAlert(String message) {
+        DialogHelper.showAlert(message);
+    }
+
+    private void handlePrintReceipt(HistoryItem item) {
+        java.util.List<com.meto.inventory.models.SaleItem> itemsList = dataManager.getDbHelper().getReceiptItems(item.getId());
+        if (itemsList.isEmpty()) {
+            showAlert("Could not retrieve items for this receipt.");
+            return;
+        }
+
+        javafx.collections.ObservableList<com.meto.inventory.models.SaleItem> observableItems = javafx.collections.FXCollections.observableArrayList(itemsList);
+        
+        double total = itemsList.stream().mapToDouble(i -> {
+            try {
+                return Double.parseDouble(i.getAmount().replaceAll("[^0-9.]", ""));
+            } catch (Exception e) {
+                return 0;
+            }
+        }).sum();
+
+        com.meto.inventory.services.ReceiptPrinterService.printReceipt(
+            observableItems, 
+            item.getName(), 
+            String.format("%,.0f", total)
+        );
+        showAlert("Receipt sent to printer!");
     }
 
     // Clean up when controller is destroyed (optional but recommended)

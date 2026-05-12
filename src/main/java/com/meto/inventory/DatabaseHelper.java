@@ -4,7 +4,6 @@ import com.meto.inventory.models.HistoryItem;
 import com.meto.inventory.models.StockItem;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-
 import java.sql.*;
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -110,6 +109,11 @@ public class DatabaseHelper {
                         amount REAL NOT NULL,
                         type TEXT NOT NULL,
                         date TEXT NOT NULL,
+                        is_debt INTEGER DEFAULT 0,
+                        is_paid INTEGER DEFAULT 0,
+                        paid_amount REAL DEFAULT 0,
+                        is_edited INTEGER DEFAULT 0,
+                        device_source TEXT DEFAULT 'Desktop',
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                     )
                 """;
@@ -123,18 +127,29 @@ public class DatabaseHelper {
                     )
                 """;
 
+        String createDebtPaymentsTable = """
+                    CREATE TABLE IF NOT EXISTS debt_payments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        sale_id INTEGER NOT NULL,
+                        amount_paid REAL NOT NULL,
+                        payment_date TEXT NOT NULL,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (sale_id) REFERENCES sales(id)
+                    )
+                """;
+
         String createSettingsTable = """
                     CREATE TABLE IF NOT EXISTS settings (
                         key TEXT PRIMARY KEY,
                         value TEXT
                     )
                 """;
-
         try (Statement stmt = connection.createStatement()) {
             stmt.execute(createStockTable);
             stmt.execute(createSalesTable);
             stmt.execute(createSummaryTable);
             stmt.execute(createSettingsTable);
+            stmt.execute(createDebtPaymentsTable);
             stmt.execute("CREATE TABLE IF NOT EXISTS deleted_stock (id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT, quantity TEXT, deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
 
             // AUTOMATIC MIGRATION: Check for missing columns in legacy DBs
@@ -146,66 +161,56 @@ public class DatabaseHelper {
     }
 
     private void ensureSchema(Statement stmt) throws SQLException {
-        // 1. Check STOCK table for 'available_pieces'
+        // 1. Check STOCK table
         try {
             ResultSet rs = stmt.executeQuery("PRAGMA table_info(stock)");
             boolean hasAvailablePieces = false;
+            boolean hasSource = false;
+            boolean hasIsEdited = false;
             while (rs.next()) {
-                if ("available_pieces".equalsIgnoreCase(rs.getString("name"))) {
-                    hasAvailablePieces = true;
-                    break;
-                }
+                String col = rs.getString("name");
+                if ("available_pieces".equalsIgnoreCase(col)) hasAvailablePieces = true;
+                if ("device_source".equalsIgnoreCase(col)) hasSource = true;
+                if ("is_edited".equalsIgnoreCase(col)) hasIsEdited = true;
             }
-            if (!hasAvailablePieces) {
-                System.out.println("Migrating Schema: Adding 'available_pieces' to stock table.");
-                stmt.execute("ALTER TABLE stock ADD COLUMN available_pieces REAL DEFAULT 0");
-                // Optional: Backfill available_pieces from old logic if possible,
-                // but since we don't know the logic, 0 is safer than crashing.
-            }
-        } catch (SQLException e) {
-            System.err.println("Schema check failed for stock: " + e.getMessage());
-        }
+            if (!hasAvailablePieces) stmt.execute("ALTER TABLE stock ADD COLUMN available_pieces REAL DEFAULT 0");
+            if (!hasSource) stmt.execute("ALTER TABLE stock ADD COLUMN device_source TEXT DEFAULT 'Desktop'");
+            if (!hasIsEdited) stmt.execute("ALTER TABLE stock ADD COLUMN is_edited INTEGER DEFAULT 0");
+        } catch (SQLException e) { System.err.println("Schema check failed for stock: " + e.getMessage()); }
 
-        // 2. Check SALES table for 'cost_price' and 'base_quantity'
+        // 2. Check SALES table
         try {
             ResultSet rs = stmt.executeQuery("PRAGMA table_info(sales)");
             boolean hasCostPrice = false;
             boolean hasBaseQty = false;
+            boolean hasSource = false;
+            boolean hasIsDebt = false;
+            boolean hasIsPaid = false;
+            boolean hasPaidAmount = false;
+            boolean hasIsEdited = false;
+            boolean hasReceiptId = false;
+
             while (rs.next()) {
                 String col = rs.getString("name");
-                if ("cost_price".equalsIgnoreCase(col))
-                    hasCostPrice = true;
-                if ("base_quantity".equalsIgnoreCase(col))
-                    hasBaseQty = true;
+                if ("cost_price".equalsIgnoreCase(col)) hasCostPrice = true;
+                if ("base_quantity".equalsIgnoreCase(col)) hasBaseQty = true;
+                if ("device_source".equalsIgnoreCase(col)) hasSource = true;
+                if ("is_debt".equalsIgnoreCase(col)) hasIsDebt = true;
+                if ("is_paid".equalsIgnoreCase(col)) hasIsPaid = true;
+                if ("paid_amount".equalsIgnoreCase(col)) hasPaidAmount = true;
+                if ("is_edited".equalsIgnoreCase(col)) hasIsEdited = true;
+                if ("receipt_id".equalsIgnoreCase(col)) hasReceiptId = true;
             }
 
-            if (!hasCostPrice) {
-                System.out.println("Migrating Schema: Adding 'cost_price' to sales table.");
-                stmt.execute("ALTER TABLE sales ADD COLUMN cost_price REAL DEFAULT 0");
-            }
-            if (!hasBaseQty) {
-                System.out.println("Migrating Schema: Adding 'base_quantity' to sales table.");
-                stmt.execute("ALTER TABLE sales ADD COLUMN base_quantity REAL DEFAULT 0");
-            }
-        } catch (SQLException e) {
-            System.err.println("Schema check failed for sales: " + e.getMessage());
-        }
-
-        // 3. New device_source column
-        try {
-            ResultSet rs = stmt.executeQuery("PRAGMA table_info(stock)");
-            boolean hasSource = false;
-            while (rs.next()) {
-                if ("device_source".equalsIgnoreCase(rs.getString("name"))) {
-                    hasSource = true;
-                    break;
-                }
-            }
-            if (!hasSource) {
-                stmt.execute("ALTER TABLE stock ADD COLUMN device_source TEXT DEFAULT 'Desktop'");
-                stmt.execute("ALTER TABLE sales ADD COLUMN device_source TEXT DEFAULT 'Desktop'");
-            }
-        } catch (SQLException e) {}
+            if (!hasCostPrice) stmt.execute("ALTER TABLE sales ADD COLUMN cost_price REAL DEFAULT 0");
+            if (!hasBaseQty) stmt.execute("ALTER TABLE sales ADD COLUMN base_quantity REAL DEFAULT 0");
+            if (!hasSource) stmt.execute("ALTER TABLE sales ADD COLUMN device_source TEXT DEFAULT 'Desktop'");
+            if (!hasIsDebt) stmt.execute("ALTER TABLE sales ADD COLUMN is_debt INTEGER DEFAULT 0");
+            if (!hasIsPaid) stmt.execute("ALTER TABLE sales ADD COLUMN is_paid INTEGER DEFAULT 0");
+            if (!hasPaidAmount) stmt.execute("ALTER TABLE sales ADD COLUMN paid_amount REAL DEFAULT 0");
+            if (!hasIsEdited) stmt.execute("ALTER TABLE sales ADD COLUMN is_edited INTEGER DEFAULT 0");
+            if (!hasReceiptId) stmt.execute("ALTER TABLE sales ADD COLUMN receipt_id TEXT");
+        } catch (SQLException e) { System.err.println("Schema check failed for sales: " + e.getMessage()); }
     }
 
     // --- LOGIC ENGINE: CONVERSIONS ---
@@ -328,7 +333,7 @@ public class DatabaseHelper {
 
     public boolean mergeStock(String itemName, String size, String newUnit, double newPrice, String supplier,
             boolean forceSave) {
-        String selectSql = "SELECT id, available_pieces, price FROM stock WHERE item = ? AND quantity = ?";
+        String selectSql = "SELECT id, available_pieces, price, unit FROM stock WHERE item = ? AND quantity = ?";
         try (PreparedStatement selectStmt = connection.prepareStatement(selectSql)) {
             selectStmt.setString(1, itemName);
             selectStmt.setString(2, size);
@@ -338,11 +343,18 @@ public class DatabaseHelper {
                 int id = rs.getInt("id");
                 double existingPieces = rs.getDouble("available_pieces");
                 double existingCostPerPiece = rs.getDouble("price");
+                String existingUnit = rs.getString("unit");
 
                 double quantityNumber = extractNumericValue(newUnit);
                 double multiplier = getUnitMultiplier(newUnit, size, newUnit);
                 double incomingPieces = quantityNumber * multiplier;
                 double newCostPerPiece = newPrice / (multiplier > 0 ? multiplier : 1);
+
+                // --- SMART UNIT PERSISTENCE ---
+                // Only upgrade the unit if the NEW one is "larger" or equal (e.g. from Pcs to Doz)
+                // This prevents downgrading to 'pcs' just because the user added 6 pcs.
+                double existingMultiplier = getUnitMultiplier(existingUnit, size, existingUnit);
+                String unitToSave = (multiplier >= existingMultiplier) ? newUnit : existingUnit;
 
                 // --- VALIDATION GATE ---
                 if (!forceSave && existingCostPerPiece > 0) {
@@ -361,8 +373,8 @@ public class DatabaseHelper {
                                     / (existingPieces + incomingPieces));
                     updateStmt.setString(3, supplier);
                     updateStmt.setString(4, LocalDate.now().toString());
-                    updateStmt.setString(5, newUnit);
-                    updateStmt.setInt(6, id); 
+                    updateStmt.setString(5, unitToSave);
+                    updateStmt.setInt(6, id);
                     updateStmt.executeUpdate();
                     return true;
                 }
@@ -509,36 +521,47 @@ public class DatabaseHelper {
     public ObservableList<HistoryItem> getHistory(String filter) {
         ObservableList<HistoryItem> history = FXCollections.observableArrayList();
 
-        // 1. Updated SQL to include cost_price and base_quantity
-        String sql = "SELECT customer, item, type, quantity, unit, price, cost_price, base_quantity, amount, date FROM sales WHERE 1=1";
+        String sql = "SELECT MIN(id) as id, customer, " +
+                     "GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, " +
+                     "type, SUM(amount) as amount, SUM(amount - (cost_price * base_quantity)) as profit, " +
+                     "date, is_debt, is_paid, SUM(paid_amount) as paid_amount, " +
+                     "receipt_id, created_at " +
+                     "FROM sales WHERE 1=1";
 
-        if (filter != null && !filter.isEmpty() && !"ALL".equals(filter))
-            sql += " AND type = ?";
-        sql += " ORDER BY date DESC, created_at DESC";
+        if (filter != null && !filter.isEmpty() && !"ALL".equals(filter)) {
+            if ("DEBTS".equals(filter)) {
+                sql += " AND is_debt = 1 AND is_paid = 0";
+            } else {
+                sql += " AND type = ?";
+            }
+        }
+        
+        sql += " GROUP BY COALESCE(receipt_id, created_at || customer) " +
+               " ORDER BY date DESC, created_at DESC";
 
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            if (filter != null && !filter.isEmpty() && !"ALL".equals(filter))
+            if (filter != null && !filter.isEmpty() && !"ALL".equals(filter) && !"DEBTS".equals(filter))
                 pstmt.setString(1, filter);
             ResultSet rs = pstmt.executeQuery();
 
             while (rs.next()) {
-                double amount = rs.getDouble("amount"); // e.g., 52,000.0
-                double cost = rs.getDouble("cost_price"); // e.g., 2,083.3333
-                double baseQty = rs.getDouble("base_quantity"); // e.g., 24.0
-
-                // Precision math: 52000 - (2083.3333 * 24) = 2000.0
-                long profitVal = Math.round(amount - (cost * baseQty));
+                double amount = rs.getDouble("amount");
+                long profitVal = Math.round(rs.getDouble("profit"));
 
                 history.add(new HistoryItem(
+                        rs.getInt("id"),
                         rs.getString("customer"),
                         rs.getString("item"),
                         rs.getString("type"),
-                        rs.getString("quantity"),
-                        rs.getString("unit"),
-                        String.format("%,.0f", rs.getDouble("price")),
+                        "-", // quantity (merged into item)
+                        "-", // unit (merged into item)
+                        "-", // individual price (merged into item)
                         String.format("%,.0f", amount),
-                        String.format("%,d", profitVal), // Displays exactly 2,000
-                        rs.getString("date")));
+                        String.format("%,d", profitVal),
+                        rs.getString("date"),
+                        rs.getInt("is_debt") == 1,
+                        rs.getInt("is_paid") == 1,
+                        String.format("%,.0f", rs.getDouble("paid_amount"))));
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -549,22 +572,20 @@ public class DatabaseHelper {
     public ObservableList<HistoryItem> getTodaysSales() {
         ObservableList<HistoryItem> history = FXCollections.observableArrayList();
         String today = LocalDate.now().toString();
-        String sql = "SELECT customer, item, type, quantity, unit, price, amount, cost_price, base_quantity, date FROM sales "
-                +
-                "WHERE date = ? AND type != 'NEW STOCK' ORDER BY created_at DESC";
+        String sql = "SELECT id, customer, item, type, quantity, unit, price, amount, cost_price, base_quantity, date, is_debt, is_paid, paid_amount FROM sales "
+                + "WHERE date = ? AND type != 'NEW STOCK' ORDER BY created_at DESC";
 
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, today);
             ResultSet rs = pstmt.executeQuery();
             while (rs.next()) {
-                double amount = rs.getDouble("amount"); // e.g., 52,000.0
-                double cost = rs.getDouble("cost_price"); // e.g., 2,083.3333
-                double baseQty = rs.getDouble("base_quantity"); // e.g., 24.0
-
-                // Precision math: 52000 - (2083.3333 * 24) = 2000.0
+                double amount = rs.getDouble("amount");
+                double cost = rs.getDouble("cost_price");
+                double baseQty = rs.getDouble("base_quantity");
                 double profitVal = amount - (cost * baseQty);
 
                 history.add(new HistoryItem(
+                        rs.getInt("id"),
                         rs.getString("customer"),
                         rs.getString("item"),
                         rs.getString("type"),
@@ -572,8 +593,11 @@ public class DatabaseHelper {
                         rs.getString("unit"),
                         String.format("%,.2f", rs.getDouble("price")),
                         String.format("%,.2f", amount),
-                        String.format("%,.2f", profitVal), // Displays exactly 2,000.00
-                        rs.getString("date")));
+                        String.format("%,.2f", profitVal),
+                        rs.getString("date"),
+                        rs.getInt("is_debt") == 1,
+                        rs.getInt("is_paid") == 1,
+                        String.format("%,.0f", rs.getDouble("paid_amount"))));
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -582,12 +606,9 @@ public class DatabaseHelper {
     }
 
     public void addSaleWithProfit(String customer, String item, String size, String unit, double sellingPrice,
-            double totalAmount,
-            String type) {
-        // Remove Math.floor here if you added it earlier!
+            double totalAmount, String type, boolean isDebt, String receiptId) {
         double costPrice = getLastRecordedPrice(item, size);
 
-        // Retrieve bulk unit from stock to ensure correct multiplier detection
         String bulkUnit = "";
         try (PreparedStatement pstmt = connection.prepareStatement("SELECT unit FROM stock WHERE item = ? AND quantity = ? LIMIT 1")) {
             pstmt.setString(1, item);
@@ -596,14 +617,11 @@ public class DatabaseHelper {
             if (rs.next()) bulkUnit = rs.getString("unit");
         } catch (SQLException e) { e.printStackTrace(); }
 
-        // 1. Get the raw number (e.g., "2" from "2 dozen")
         double quantityFactor = extractNumericValue(unit);
-
-        // 2. Get the multiplier
         double multiplier = getUnitMultiplier(unit, size, bulkUnit);
         double baseQty = quantityFactor * multiplier;
 
-        String sql = "INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_edited, device_source) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'Desktop')";
+        String sql = "INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited, device_source, receipt_id) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'Desktop', ?)";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, customer);
             pstmt.setString(2, item);
@@ -612,10 +630,95 @@ public class DatabaseHelper {
             pstmt.setDouble(5, sellingPrice);
             pstmt.setDouble(6, costPrice);
             pstmt.setDouble(7, baseQty);
-            pstmt.setDouble(8, totalAmount); // Use the explicit amount
+            pstmt.setDouble(8, totalAmount);
             pstmt.setString(9, type);
             pstmt.setString(10, LocalDate.now().toString());
+            pstmt.setInt(11, isDebt ? 1 : 0);
+            pstmt.setInt(12, 0); // is_paid
+            pstmt.setDouble(13, 0); // paid_amount
+            pstmt.setString(14, receiptId);
             pstmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public List<com.meto.inventory.models.SaleItem> getReceiptItems(int saleId) {
+        List<com.meto.inventory.models.SaleItem> items = new ArrayList<>();
+        String getInfoSql = "SELECT customer, created_at, receipt_id FROM sales WHERE id = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(getInfoSql)) {
+            pstmt.setInt(1, saleId);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                String customer = rs.getString("customer");
+                String createdAt = rs.getString("created_at");
+                String receiptId = rs.getString("receipt_id");
+
+                String getItemsSql;
+                if (receiptId != null && !receiptId.isEmpty()) {
+                    getItemsSql = "SELECT item, quantity, unit, price, amount FROM sales WHERE receipt_id = ?";
+                } else {
+                    // Fallback for legacy data: Group by customer and exact created_at
+                    getItemsSql = "SELECT item, quantity, unit, price, amount FROM sales WHERE customer = ? AND created_at = ?";
+                }
+
+                try (PreparedStatement pstmtItems = connection.prepareStatement(getItemsSql)) {
+                    if (receiptId != null && !receiptId.isEmpty()) {
+                        pstmtItems.setString(1, receiptId);
+                    } else {
+                        pstmtItems.setString(1, customer);
+                        pstmtItems.setString(2, createdAt);
+                    }
+                    ResultSet rsItems = pstmtItems.executeQuery();
+                    while (rsItems.next()) {
+                        items.add(new com.meto.inventory.models.SaleItem(
+                            rsItems.getString("item"),
+                            rsItems.getString("quantity"),
+                            rsItems.getString("unit"),
+                            String.format("%,.2f", rsItems.getDouble("price")),
+                            String.format("%,.2f", rsItems.getDouble("amount"))
+                        ));
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return items;
+    }
+
+    public void markSaleAsPaid(int id, double newPayment) {
+        String selectSql = "SELECT amount, paid_amount FROM sales WHERE id = ?";
+        try (PreparedStatement selectStmt = connection.prepareStatement(selectSql)) {
+            selectStmt.setInt(1, id);
+            ResultSet rs = selectStmt.executeQuery();
+            if (rs.next()) {
+                double totalAmount = rs.getDouble("amount");
+                double currentPaid = rs.getDouble("paid_amount");
+                double updatedPaid = currentPaid + newPayment;
+
+                // 1. Record the payment log
+                try (PreparedStatement payStmt = connection.prepareStatement("INSERT INTO debt_payments(sale_id, amount_paid, payment_date) VALUES(?, ?, ?)")) {
+                    payStmt.setInt(1, id);
+                    payStmt.setDouble(2, newPayment);
+                    payStmt.setString(3, LocalDate.now().toString());
+                    payStmt.executeUpdate();
+                }
+
+                // 2. Update the sale status
+                if (updatedPaid >= totalAmount) {
+                    try (PreparedStatement updateStmt = connection.prepareStatement("UPDATE sales SET paid_amount = amount, is_paid = 1, is_edited = 1 WHERE id = ?")) {
+                        updateStmt.setInt(1, id);
+                        updateStmt.executeUpdate();
+                    }
+                } else {
+                    try (PreparedStatement updateStmt = connection.prepareStatement("UPDATE sales SET paid_amount = ?, is_edited = 1 WHERE id = ?")) {
+                        updateStmt.setDouble(1, updatedPaid);
+                        updateStmt.setInt(2, id);
+                        updateStmt.executeUpdate();
+                    }
+                }
+            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -1162,5 +1265,83 @@ public class DatabaseHelper {
             stmt.execute("UPDATE sales SET is_edited = 0");
             stmt.execute("DELETE FROM deleted_stock");
         } catch (SQLException e) { e.printStackTrace(); }
+    }
+
+    public double getTotalOutstandingDebt() {
+        String sql = "SELECT SUM(amount - paid_amount) FROM sales WHERE is_debt = 1 AND is_paid = 0";
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            if (rs.next()) return rs.getDouble(1);
+        } catch (SQLException e) { e.printStackTrace(); }
+        return 0;
+    }
+
+    public int getDebtorCount() {
+        String sql = "SELECT COUNT(DISTINCT customer) FROM sales WHERE is_debt = 1 AND is_paid = 0";
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            if (rs.next()) return rs.getInt(1);
+        } catch (SQLException e) { e.printStackTrace(); }
+        return 0;
+    }
+
+    public double getDebtCollectedToday() {
+        String today = LocalDate.now().toString();
+        String sql = "SELECT SUM(amount_paid) FROM debt_payments WHERE payment_date = ?";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, today);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) return rs.getDouble(1);
+        } catch (SQLException e) { e.printStackTrace(); }
+        return 0;
+    }
+
+    public ObservableList<com.meto.inventory.models.DebtPaymentLog> getRecentDebtPayments() {
+        ObservableList<com.meto.inventory.models.DebtPaymentLog> logs = FXCollections.observableArrayList();
+        String sql = "SELECT p.amount_paid, p.payment_date, s.customer, s.item " +
+                     "FROM debt_payments p JOIN sales s ON p.sale_id = s.id " +
+                     "ORDER BY p.created_at DESC LIMIT 50";
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                logs.add(new com.meto.inventory.models.DebtPaymentLog(
+                    rs.getString("customer"),
+                    rs.getString("item"),
+                    rs.getDouble("amount_paid"),
+                    rs.getString("payment_date")
+                ));
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return logs;
+    }
+
+    public ObservableList<HistoryItem> getSettledDebts() {
+        ObservableList<HistoryItem> history = FXCollections.observableArrayList();
+        String sql = "SELECT id, customer, item, type, quantity, unit, price, cost_price, base_quantity, amount, date, is_debt, is_paid, paid_amount " +
+                     "FROM sales WHERE is_debt = 1 AND is_paid = 1 ORDER BY date DESC LIMIT 100";
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                double amount = rs.getDouble("amount");
+                double cost = rs.getDouble("cost_price");
+                double baseQty = rs.getDouble("base_quantity");
+                long profitVal = Math.round(amount - (cost * baseQty));
+
+                history.add(new HistoryItem(
+                        rs.getInt("id"),
+                        rs.getString("customer"),
+                        rs.getString("item"),
+                        rs.getString("type"),
+                        rs.getString("quantity"),
+                        rs.getString("unit"),
+                        String.format("%,.0f", rs.getDouble("price")),
+                        String.format("%,.0f", amount),
+                        String.format("%,d", profitVal),
+                        rs.getString("date"),
+                        true, true,
+                        String.format("%,.0f", rs.getDouble("paid_amount"))));
+            }
+        } catch (SQLException e) { e.printStackTrace(); }
+        return history;
     }
 }

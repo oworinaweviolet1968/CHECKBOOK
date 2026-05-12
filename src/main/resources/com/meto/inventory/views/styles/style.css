@@ -22,6 +22,8 @@
     /* Red 500 */
     -fx-orange: #F59E0B;
     /* Amber 500 */
+    -fx-primary-light: #D1FAE5;
+    /* Emerald 100 */
     -fx-font-base: "Inter", "Segoe UI", sans-serif;
 }
 
@@ -430,6 +432,18 @@ Label.header-title {
     -fx-font-weight: 700;
 }
 
+.badge-debt {
+    -fx-background-color: #FEF2F2;
+    -fx-text-fill: #DC2626;
+    -fx-border-color: #FEE2E2;
+    -fx-border-width: 1;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-padding: 2 6;
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+}
+
 /* Destructive Action */
 .btn-red {
     -fx-background-color: #FEE2E2 !important;
@@ -495,6 +509,16 @@ Label.header-title {
 /* Clock / History */
 .icon-clock {
     -fx-shape: "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z";
+}
+
+/* More / Dots */
+.icon-more {
+    -fx-shape: "M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z";
+}
+
+/* Debt / Hand Coins */
+.icon-debt {
+    -fx-shape: "M5 8h2v8H5zm7 0h2v8h-2zm7 0h2v8h-2zM2 4h20v2H2zm0 14h20v2H2z";
 }
 
 /* Archive / Check / In-Stock */
@@ -589,6 +613,11 @@ Label.header-title {
     -fx-background-color: #fff5f5 !important;
 }
 
+.history-row-debt {
+    -fx-background-color: #fffafa !important;
+    -fx-border-color: #fee2e2 !important;
+}
+
 /* Hides the empty table rows */
 .table-row-cell:empty {
     -fx-background-color: transparent;
@@ -677,4 +706,68 @@ Label.header-title {
     -fx-font-size: 12px;
     -fx-font-weight: 600;
     -fx-text-fill: -fx-text-main;
+}
+/* DEBT HISTORY & DASHBOARD CARDS */
+.card {
+    -fx-background-color: white;
+    -fx-background-radius: 12px;
+    -fx-padding: 20px;
+    -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.05), 10, 0, 0, 5);
+}
+
+.card-label {
+    -fx-font-size: 13px;
+    -fx-text-fill: -fx-text-muted;
+    -fx-font-weight: bold;
+}
+
+.card-value {
+    -fx-font-size: 24px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #111827;
+}
+
+.card-value-red {
+    -fx-font-size: 24px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #EF4444;
+}
+
+.card-value-green {
+    -fx-font-size: 24px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #10B981;
+}
+
+.card-sublabel {
+    -fx-font-size: 11px;
+    -fx-text-fill: #9CA3AF;
+}
+
+.card-debt {
+    -fx-border-color: #FEE2E2;
+    -fx-border-width: 0 0 0 4px;
+    -fx-border-radius: 0 12px 12px 0;
+}
+
+.card-success {
+    -fx-border-color: #D1FAE5;
+    -fx-border-width: 0 0 0 4px;
+    -fx-border-radius: 0 12px 12px 0;
+}
+
+.h1 {
+    -fx-font-size: 24px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #111827;
+}
+
+.h2 {
+    -fx-font-size: 18px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #374151;
+}
+
+.text-muted {
+    -fx-text-fill: #6B7280;
 }
