@@ -42,7 +42,7 @@ class PrinterService {
   }
 
   /// Prints a formatted invoice to the connected thermal printer.
-  Future<void> printInvoice(String customer, List<SaleItem> cart) async {
+  Future<void> printInvoice(String customer, List<SaleItem> cart, {String? date}) async {
     bool connected = await connectToPrinter();
     if (!connected) throw Exception("Could not connect to thermal printer. Ensure it is paired and turned on.");
 
@@ -57,7 +57,7 @@ class PrinterService {
     bytes += generator.hr();
 
     // Sales Info
-    bytes += generator.text("Date: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}");
+    bytes += generator.text("Date: ${date ?? DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}");
     bytes += generator.text("Customer: ${customer.isEmpty ? 'Walk-in Customer' : customer}");
     bytes += generator.hr();
 

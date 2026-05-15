@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/history_item.dart';
 import '../services/database_helper.dart';
+import '../services/printer_service.dart';
+import '../models/sale_item.dart';
 import '../utils/colors.dart';
 
 class DebtHistoryScreen extends StatefulWidget {
-  const DebtHistoryScreen({super.key});
+  final int initialIndex;
+  const DebtHistoryScreen({super.key, this.initialIndex = 0});
 
   @override
   State<DebtHistoryScreen> createState() => _DebtHistoryScreenState();
@@ -22,7 +25,7 @@ class _DebtHistoryScreenState extends State<DebtHistoryScreen> with SingleTicker
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 2, vsync: this, initialIndex: widget.initialIndex);
     _loadDebts();
   }
 
@@ -200,8 +203,19 @@ class _DebtHistoryScreenState extends State<DebtHistoryScreen> with SingleTicker
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(debt.customer, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                Text(debt.date, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                Expanded(child: Text(debt.customer, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16))),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.print, color: AppColors.primaryGreen, size: 20),
+                      onPressed: () => _reprintInvoice(debt),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(debt.date, style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -312,5 +326,34 @@ class _DebtHistoryScreenState extends State<DebtHistoryScreen> with SingleTicker
         ],
       ),
     );
+  }
+
+  void _reprintInvoice(HistoryItem item) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Searching for MPT-II printer...'), duration: Duration(seconds: 2))
+      );
+      
+      final itemsList = await DatabaseHelper.instance.getReceiptItems(item.id!);
+      
+      if (itemsList.isEmpty) {
+        throw Exception("Could not find items for this receipt.");
+      }
+
+      await PrinterService.instance.printInvoice(
+        item.customer, 
+        itemsList,
+        date: item.date
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red,
+            content: Text('Reprint Failed: ${e.toString().replaceAll("Exception: ", "")}'),
+          )
+        );
+      }
+    }
   }
 }

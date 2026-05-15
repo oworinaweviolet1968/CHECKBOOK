@@ -9,6 +9,7 @@ import '../services/passcode_service.dart';
 import '../screens/deleted_history_screen.dart';
 import '../screens/price_update_screen.dart';
 import '../screens/debt_history_screen.dart';
+import '../services/database_helper.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class AccountScreen extends StatefulWidget {
@@ -22,6 +23,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
   final User? _user = Supabase.instance.client.auth.currentUser;
   bool _isBackingUp = false;
   late final AnimationController _spinController;
+  double _totalDebt = 0;
 
   @override
   void initState() {
@@ -30,6 +32,16 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
       vsync: this,
       duration: const Duration(seconds: 3),
     )..repeat();
+    _loadDebtData();
+  }
+
+  Future<void> _loadDebtData() async {
+    final debt = await DatabaseHelper.instance.getTotalDebt();
+    if (mounted) {
+      setState(() {
+        _totalDebt = debt;
+      });
+    }
   }
 
   @override
@@ -199,6 +211,8 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
         child: Column(
           children: [
             const SizedBox(height: 20),
+            _buildDebtSummaryCard(),
+            const SizedBox(height: 20),
             // Avatar
             Container(
               width: 120,
@@ -320,16 +334,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
               },
             ),
             const SizedBox(height: 16),
-            _buildActionCard(
-              title: 'Debt History',
-              icon: Icons.account_balance_wallet_outlined,
-              iconColor: AppColors.primaryGreen,
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const DebtHistoryScreen()),
-                );
-              },
-            ),
+            _buildDebtActionCard(),
             const SizedBox(height: 16),
             _buildActionCard(
               title: 'Delete History',
@@ -490,6 +495,135 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDebtSummaryCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppColors.primaryGreen, Color(0xFF166534)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryGreen.withValues(alpha: 0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Total Unsettled Debt',
+                style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
+              ),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.account_balance_wallet, color: Colors.white, size: 18),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'UGX ${NumberFormat("#,###").format(_totalDebt)}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Keep track of pending customer payments',
+            style: TextStyle(color: Colors.white60, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDebtActionCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: AppColors.primaryGreen.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Icon(Icons.history_edu, color: AppColors.primaryGreen),
+        ),
+        title: const Text('Debt Management', style: TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: const Text('View and settle customer debts', style: TextStyle(fontSize: 12)),
+        trailing: PopupMenuButton<int>(
+          icon: const Icon(Icons.more_vert, color: Colors.grey),
+          onSelected: (value) {
+            if (value == 0) {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DebtHistoryScreen(initialIndex: 0)),
+              );
+            } else if (value == 1) {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DebtHistoryScreen(initialIndex: 1)),
+              );
+            }
+          },
+          itemBuilder: (context) => [
+            const PopupMenuItem(
+              value: 0,
+              child: Row(
+                children: [
+                  Icon(Icons.pending_actions, size: 20, color: Colors.orange),
+                  SizedBox(width: 12),
+                  Text('Active Debts'),
+                ],
+              ),
+            ),
+            const PopupMenuItem(
+              value: 1,
+              child: Row(
+                children: [
+                  Icon(Icons.check_circle_outline, size: 20, color: AppColors.primaryGreen),
+                  SizedBox(width: 12),
+                  Text('Settled Debts'),
+                ],
+              ),
+            ),
+          ],
+        ),
+        onTap: () {
+           Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DebtHistoryScreen()),
+            );
+        },
       ),
     );
   }

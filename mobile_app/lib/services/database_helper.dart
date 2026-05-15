@@ -3,6 +3,7 @@ import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/history_item.dart';
+import '../models/sale_item.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -156,13 +157,13 @@ class DatabaseHelper {
 
     return items.map((rs) {
       return SaleItem(
-        items: rs['item'] as String,
-        qty: rs['quantity'] as String,
+        item: rs['item'] as String,
+        quantity: rs['quantity'] as String,
         unit: rs['unit'] as String,
         price: (rs['price'] as num).toStringAsFixed(0),
         amount: (rs['amount'] as num).toStringAsFixed(0),
       );
-    }).toList();
+    }).toList().cast<SaleItem>();
   }
 
 
@@ -480,6 +481,16 @@ class DatabaseHelper {
       return (result.first['total_profit'] as num).toDouble();
     }
     return 1.0; // Return 1.0 to avoid division by zero and show some change if no data
+  }
+
+  // Dashboard: Total Unsettled Debt
+  Future<double> getTotalDebt() async {
+    final db = await instance.database;
+    final result = await db.rawQuery('SELECT SUM(amount - paid_amount) as total FROM sales WHERE is_debt = 1 AND is_paid = 0');
+    if (result.isNotEmpty && result.first['total'] != null) {
+      return (result.first['total'] as num).toDouble();
+    }
+    return 0.0;
   }
   
   // Dashboard: Available Stock List
