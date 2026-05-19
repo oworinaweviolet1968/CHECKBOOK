@@ -616,6 +616,13 @@ public class SalesController implements DataManager.DataChangeListener {
         headerLabel.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 18px; -fx-padding: 15; -fx-alignment: center;");
         headerLabel.setMaxWidth(Double.MAX_VALUE);
 
+        String shopName = dataManager.getDbHelper().getSetting("receipt_shop_name");
+        Label shopNameLabel = null;
+        if (shopName != null && !shopName.trim().isEmpty()) {
+            shopNameLabel = new Label(shopName.toUpperCase());
+            shopNameLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-weight: bold; -fx-font-size: 14px; -fx-padding: 5 0;");
+        }
+
         Label subHeaderLabel = new Label("Receipt Summary");
         subHeaderLabel.setStyle("-fx-text-fill: #666; -fx-font-size: 12px; -fx-padding: 5 0 10 0;");
 
@@ -628,14 +635,26 @@ public class SalesController implements DataManager.DataChangeListener {
         itemBox.setStyle("-fx-padding: 10; -fx-background-color: #f9f9f9; -fx-border-color: #eee; -fx-border-radius: 5; -fx-background-radius: 5;");
         for (SaleItem item : items) {
             javafx.scene.layout.HBox row = new javafx.scene.layout.HBox(10);
-            Label name = new Label(item.getItems());
-            name.setStyle("-fx-font-weight: bold;");
-            Label details = new Label(item.getQty() + " - " + item.getUnit());
+            
+            // Format item title including size if valid, exactly like mobile
+            String itemName = item.getItems();
+            String size = item.getQty();
+            if (size != null && !size.trim().isEmpty() && !size.trim().equalsIgnoreCase("none")) {
+                itemName += " (" + size + ")";
+            }
+            Label name = new Label(itemName);
+            name.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
+            
+            // Format quantity and unit details exactly like mobile
+            Label details = new Label(item.getUnit());
             details.setStyle("-fx-text-fill: #777; -fx-font-size: 11px;");
+            
             javafx.scene.layout.Region spacer = new javafx.scene.layout.Region();
             javafx.scene.layout.HBox.setHgrow(spacer, javafx.scene.layout.Priority.ALWAYS);
+            
             Label price = new Label("UGX " + item.getAmount());
-            price.setStyle("-fx-font-weight: bold;");
+            price.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
+            
             row.getChildren().addAll(new javafx.scene.layout.VBox(name, details), spacer, price);
             itemBox.getChildren().add(row);
         }
@@ -647,7 +666,12 @@ public class SalesController implements DataManager.DataChangeListener {
         Label questionLabel = new Label("Do you want to print an invoice?");
         questionLabel.setStyle("-fx-font-weight: bold; -fx-text-fill: #555;");
 
-        javafx.scene.layout.VBox content = new javafx.scene.layout.VBox(5, headerLabel, subHeaderLabel, customerLabel, itemBox, totalLabel, questionLabel);
+        javafx.scene.layout.VBox content;
+        if (shopNameLabel != null) {
+            content = new javafx.scene.layout.VBox(5, headerLabel, shopNameLabel, subHeaderLabel, customerLabel, itemBox, totalLabel, questionLabel);
+        } else {
+            content = new javafx.scene.layout.VBox(5, headerLabel, subHeaderLabel, customerLabel, itemBox, totalLabel, questionLabel);
+        }
         content.setPrefWidth(400);
         content.setAlignment(javafx.geometry.Pos.TOP_CENTER);
         dialogPane.setContent(content);

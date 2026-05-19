@@ -122,21 +122,41 @@ public class DataManager {
             return t;
         });
 
-        // Run every 30 seconds as requested
+        // Run every 10 seconds as requested
         syncExecutor.scheduleAtFixedRate(() -> {
             try {
                 com.meto.inventory.services.SupabaseService service = com.meto.inventory.services.SupabaseService.getInstance();
                 
-                if (service.isLoggedIn() && isBackupEnabled && service.isSyncFailed()) {
-                    if (service.isOnline()) {
-                        System.out.println("AutoSync: Connection restored. Retrying upload...");
-                        service.uploadDatabase(getCurrentDbName());
+                if (service.isLoggedIn() && isBackupEnabled) {
+                    boolean online = service.isOnline();
+                    if (online) {
+                        if (service.isSyncFailed()) {
+                            System.out.println("AutoSync: Connection restored. Retrying upload...");
+                            
+                            // Proactively refresh session token before upload to ensure fresh credentials
+                            String savedToken = service.loadSession();
+                            if (savedToken != null) {
+                                try {
+                                    service.signInWithRefreshToken(savedToken);
+                                } catch (Exception refreshEx) {
+                                    System.err.println("AutoSync: Session refresh error during reconnection: " + refreshEx.getMessage());
+                                }
+                            }
+                            
+                            service.uploadDatabase(getCurrentDbName());
+                        } else {
+                            // Online and previous upload succeeded
+                            service.notifyStatus("Cloud: Synced");
+                        }
+                    } else {
+                        // Offline
+                        service.notifyStatus("Cloud: Offline");
                     }
                 }
             } catch (Exception e) {
                 // Silently ignore background sync errors to avoid UI popups
             }
-        }, 30, 30, TimeUnit.SECONDS);
+        }, 10, 10, TimeUnit.SECONDS);
     }
 
     public interface DataChangeListener {

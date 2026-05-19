@@ -15,6 +15,8 @@ public class Main extends Application {
         Application.setUserAgentStylesheet(new PrimerLight().getUserAgentStylesheet());
 
         com.meto.inventory.services.SupabaseService service = com.meto.inventory.services.SupabaseService.getInstance();
+        
+        // Restore last active userId from saved JSON session first if present
         String savedToken = service.loadSession();
 
         if (savedToken != null) {
@@ -34,11 +36,32 @@ public class Main extends Application {
                             }
                         });
                         return;
+                    } else {
+                        // Refresh token was invalid/expired (HTTP 400/401/etc.) -> Go to login screen
+                        javafx.application.Platform.runLater(() -> showLoginView(primaryStage));
                     }
                 } catch (Exception e) {
-                    e.printStackTrace();
+                    // Network connection failed (IOException/ConnectException/etc.) -> OFFLINE MODE
+                    System.err.println("Offline mode active: Network error during auto-login: " + e.getMessage());
+                    
+                    String localUid = service.getCurrentUserId();
+                    if (localUid != null) {
+                        // User has an active local session! Let them in offline!
+                        javafx.application.Platform.runLater(() -> {
+                            try {
+                                loadMainView(primaryStage);
+                                // Trigger offline local DB setup
+                                triggerOfflineMode(localUid);
+                            } catch (Exception ex) {
+                                ex.printStackTrace();
+                                showLoginView(primaryStage);
+                            }
+                        });
+                    } else {
+                        // No cached UID, must authenticate online
+                        javafx.application.Platform.runLater(() -> showLoginView(primaryStage));
+                    }
                 }
-                javafx.application.Platform.runLater(() -> showLoginView(primaryStage));
             }).start();
         } else {
             showLoginView(primaryStage);
@@ -87,56 +110,63 @@ public class Main extends Application {
                 if (currentUid != null) {
                     com.meto.inventory.DataManager.getInstance().switchDatabaseOnly(currentUid);
 
-                    // Fetch metadata
-                    com.google.gson.JsonObject metadata = service.getUserMetadata();
-                    
-                    // Backup check
-                    boolean backupEnabled = true;
-                    if (metadata.has("monthly_cloud_backup")) {
-                        backupEnabled = metadata.get("monthly_cloud_backup").getAsBoolean();
-                    }
-
-                    // Check backup expiry
-                    long nowMs = System.currentTimeMillis();
-                    boolean dataChanged = false;
-                    java.util.Map<String, Object> expiryUpdates = new java.util.HashMap<>();
-
-                    if (metadata.has("backup_expiry")) {
-                        try {
-                            long expiry = metadata.get("backup_expiry").getAsLong();
-                            if (expiry > 0 && nowMs > expiry) {
-                                backupEnabled = false;
-                                expiryUpdates.put("monthly_cloud_backup", false);
-                                expiryUpdates.put("backup_expiry", 0);
-                                dataChanged = true;
-                            }
-                        } catch (Exception ignore) {
-                        }
-                    }
-
-                    if (dataChanged) {
-                        service.updateUserFields(expiryUpdates);
-                    }
-
-                    com.meto.inventory.DataManager.getInstance().setBackupEnabled(backupEnabled);
-
-                    if (!backupEnabled) {
-                        String email = metadata.has("email") ? metadata.get("email").getAsString() : "your email";
-                        System.out.println("Backup disabled logic triggered. Skipping cloud sync.");
+                    // We wrap all cloud operations in a try-catch so we gracefully fall back to local database if internet goes down midway
+                    try {
+                        // Fetch metadata
+                        com.google.gson.JsonObject metadata = service.getUserMetadata();
                         
-                        javafx.application.Platform.runLater(() -> {
-                            showBackupDisabledAlert(email);
-                        });
+                        // Backup check
+                        boolean backupEnabled = true;
+                        if (metadata.has("monthly_cloud_backup")) {
+                            backupEnabled = metadata.get("monthly_cloud_backup").getAsBoolean();
+                        }
 
-                        com.meto.inventory.DataManager.getInstance().getDbHelper().initializeDatabase();
-                        com.meto.inventory.DataManager.getInstance().notifyDataChanged();
-                        return;
+                        // Check backup expiry
+                        long nowMs = System.currentTimeMillis();
+                        boolean dataChanged = false;
+                        java.util.Map<String, Object> expiryUpdates = new java.util.HashMap<>();
+
+                        if (metadata.has("backup_expiry")) {
+                            try {
+                                long expiry = metadata.get("backup_expiry").getAsLong();
+                                if (expiry > 0 && nowMs > expiry) {
+                                    backupEnabled = false;
+                                    expiryUpdates.put("monthly_cloud_backup", false);
+                                    expiryUpdates.put("backup_expiry", 0);
+                                    dataChanged = true;
+                                }
+                            } catch (Exception ignore) {
+                            }
+                        }
+
+                        if (dataChanged) {
+                            service.updateUserFields(expiryUpdates);
+                        }
+
+                        com.meto.inventory.DataManager.getInstance().setBackupEnabled(backupEnabled);
+
+                        if (!backupEnabled) {
+                            String email = metadata.has("email") ? metadata.get("email").getAsString() : "your email";
+                            System.out.println("Backup disabled logic triggered. Skipping cloud sync.");
+                            
+                            javafx.application.Platform.runLater(() -> {
+                                showBackupDisabledAlert(email);
+                            });
+
+                            com.meto.inventory.DataManager.getInstance().getDbHelper().initializeDatabase();
+                            com.meto.inventory.DataManager.getInstance().notifyDataChanged();
+                            return;
+                        }
+
+                        // Standard Sync
+                        boolean localHasData = com.meto.inventory.DataManager.getInstance().getDbHelper().hasData();
+
+                        service.syncOnLogin(com.meto.inventory.DataManager.getInstance().getCurrentDbName(), localHasData, false);
+
+                    } catch (Exception cloudEx) {
+                        System.err.println("Cloud sync failed during auto-login, falling back to local-only DB: " + cloudEx.getMessage());
+                        service.notifyStatus("Offline (Local Database)");
                     }
-
-                    // Standard Sync
-                    boolean localHasData = com.meto.inventory.DataManager.getInstance().getDbHelper().hasData();
-
-                    service.syncOnLogin(com.meto.inventory.DataManager.getInstance().getCurrentDbName(), localHasData, false);
 
                     com.meto.inventory.DataManager.getInstance().getDbHelper().connect();
                     com.meto.inventory.DataManager.getInstance().getDbHelper().initializeDatabase();
@@ -144,6 +174,23 @@ public class Main extends Application {
                     // Notify UI after everything is ready (Silent to prevent echo upload)
                     com.meto.inventory.DataManager.getInstance().notifyDataChanged(false);
                 }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
+    }
+
+    private void triggerOfflineMode(String currentUid) {
+        new Thread(() -> {
+            try {
+                System.out.println("Initializing Offline Database for: " + currentUid);
+                com.meto.inventory.DataManager.getInstance().switchDatabaseOnly(currentUid);
+                com.meto.inventory.DataManager.getInstance().getDbHelper().connect();
+                com.meto.inventory.DataManager.getInstance().getDbHelper().initializeDatabase();
+                com.meto.inventory.DataManager.getInstance().notifyDataChanged(false);
+                
+                // Let the UI know we are running in Offline Mode
+                com.meto.inventory.services.SupabaseService.getInstance().notifyStatus("Offline (Local Database)");
             } catch (Exception e) {
                 e.printStackTrace();
             }

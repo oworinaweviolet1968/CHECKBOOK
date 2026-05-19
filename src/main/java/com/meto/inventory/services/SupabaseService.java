@@ -80,7 +80,7 @@ public class SupabaseService {
         statusListeners.add(listener);
     }
 
-    private void notifyStatus(String status) {
+    public void notifyStatus(String status) {
         for (java.util.function.Consumer<String> listener : statusListeners) {
             listener.accept(status);
         }
@@ -240,8 +240,13 @@ public class SupabaseService {
     private void saveSession() {
         if (currentRefreshToken != null) {
             try {
-                String encryptedToken = encrypt(currentRefreshToken);
-                Files.writeString(Path.of(resolvePath("user_session.txt")), encryptedToken);
+                JsonObject json = new JsonObject();
+                json.addProperty("refresh_token", currentRefreshToken);
+                if (currentUserId != null) {
+                    json.addProperty("user_id", currentUserId);
+                }
+                String encryptedData = encrypt(json.toString());
+                Files.writeString(Path.of(resolvePath("user_session.txt")), encryptedData);
             } catch (Exception e) {
                 System.err.println("Encryption failed, saving plain-text fallback (NOT SECURE)");
                 e.printStackTrace();
@@ -254,12 +259,19 @@ public class SupabaseService {
             Path path = Path.of(resolvePath("user_session.txt"));
             if (Files.exists(path)) {
                 String content = Files.readString(path).trim();
-                // If it looks like a clear-text token (not base64 or too short), we might skip
-                // but decrypt will just fail.
                 try {
-                    return decrypt(content);
+                    String decrypted = decrypt(content);
+                    if (decrypted.startsWith("{") && decrypted.endsWith("}")) {
+                        JsonObject json = JsonParser.parseString(decrypted).getAsJsonObject();
+                        if (json.has("user_id")) {
+                            this.currentUserId = json.get("user_id").getAsString();
+                        }
+                        if (json.has("refresh_token")) {
+                            return json.get("refresh_token").getAsString();
+                        }
+                    }
+                    return decrypted;
                 } catch (Exception e) {
-                    // Decryption failed - could be old plain-text session or moved disk
                     System.err.println("Session decryption failed. Likely old or insecure session.");
                     return null; 
                 }
@@ -384,6 +396,7 @@ public class SupabaseService {
             // Heartbeat against Supabase Auth (health check)
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(AUTH_URL + "/health"))
+                    .header("apikey", SUPABASE_KEY)
                     .GET()
                     .timeout(java.time.Duration.ofSeconds(3))
                     .build();
@@ -550,6 +563,30 @@ public class SupabaseService {
                     .build();
 
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 401 || response.statusCode() == 403) {
+                System.out.println("SYNC: Token expired (status " + response.statusCode() + "). Attempting token refresh...");
+                if (currentRefreshToken != null) {
+                    try {
+                        boolean refreshed = signInWithRefreshToken(currentRefreshToken);
+                        if (refreshed) {
+                            System.out.println("SYNC: Token refreshed successfully. Retrying upload...");
+                            request = HttpRequest.newBuilder()
+                                    .uri(URI.create(STORAGE_URL + "/" + path))
+                                    .header("apikey", SUPABASE_KEY)
+                                    .header("Authorization", "Bearer " + currentAccessToken)
+                                    .header("Content-Type", "application/gzip")
+                                    .header("x-upsert", "true")
+                                    .POST(HttpRequest.BodyPublishers.ofByteArray(gzippedBytes))
+                                    .timeout(java.time.Duration.ofSeconds(60))
+                                    .build();
+                            response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                        }
+                    } catch (Exception refreshEx) {
+                        System.err.println("SYNC: Failed to refresh token: " + refreshEx.getMessage());
+                    }
+                }
+            }
 
             if (response.statusCode() == 200) {
                 long ts = System.currentTimeMillis();

@@ -3,6 +3,7 @@ import 'package:blue_thermal_printer/blue_thermal_printer.dart';
 import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:intl/intl.dart';
 import '../models/sale_item.dart';
+import 'database_helper.dart';
 
 class PrinterService {
   static final PrinterService instance = PrinterService._();
@@ -53,7 +54,26 @@ class PrinterService {
     // Header
     bytes += generator.text("CHECKBOOK APP", 
         styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2));
-    bytes += generator.text("Smart Inventory Management", styles: const PosStyles(align: PosAlign.center));
+    
+    final shopName = await DatabaseHelper.instance.getSetting("receipt_shop_name") ?? "";
+    final shopNum = await DatabaseHelper.instance.getSetting("receipt_shop_number") ?? "";
+    final location = await DatabaseHelper.instance.getSetting("receipt_location") ?? "";
+    final phone = await DatabaseHelper.instance.getSetting("receipt_phone") ?? "";
+
+    if (shopName.trim().isNotEmpty) {
+      bytes += generator.text(shopName.toUpperCase(), styles: const PosStyles(align: PosAlign.center, bold: true));
+    }
+    if (shopNum.trim().isNotEmpty) {
+      bytes += generator.text("Shop No: $shopNum", styles: const PosStyles(align: PosAlign.center));
+    }
+    if (location.trim().isNotEmpty) {
+      bytes += generator.text(location, styles: const PosStyles(align: PosAlign.center));
+    }
+    if (phone.trim().isNotEmpty) {
+      bytes += generator.text("Tel: $phone", styles: const PosStyles(align: PosAlign.center));
+    } else if (shopName.trim().isEmpty && shopNum.trim().isEmpty && location.trim().isEmpty) {
+      bytes += generator.text("Smart Inventory Management", styles: const PosStyles(align: PosAlign.center));
+    }
     bytes += generator.hr();
 
     // Sales Info

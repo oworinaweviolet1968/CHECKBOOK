@@ -315,8 +315,134 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
       );
   }
 
+  List<TransactionItem> _parseHistoryItemText(String itemText) {
+    final List<TransactionItem> parsedItems = [];
+    final lines = itemText.split('\n');
+
+    for (final line in lines) {
+      if (line.trim().isEmpty) continue;
+
+      final atSplit = line.split('@');
+      if (atSplit.length < 2) {
+        parsedItems.add(TransactionItem(
+          size: '',
+          itemName: line.trim(),
+          quantityStr: '',
+          priceStr: '',
+          amountStr: '',
+        ));
+        continue;
+      }
+
+      final beforeAt = atSplit[0].trim();
+      final afterAt = atSplit[1].trim();
+
+      final equalSplit = afterAt.split('=');
+      final priceStr = equalSplit[0].trim();
+      final amountStr = equalSplit.length > 1 ? equalSplit[1].trim() : '';
+
+      final words = beforeAt.split(RegExp(r'\s+'));
+      if (words.isEmpty) continue;
+
+      String size = '';
+      String qtyVal = '';
+      String unitLabel = '';
+      int itemStartIndex = 0;
+
+      final firstWord = words[0];
+      final isPureNumeric = RegExp(r'^\d+(\.\d+)?$').hasMatch(firstWord);
+      
+      if (isPureNumeric) {
+        size = '';
+        qtyVal = firstWord;
+        itemStartIndex = 1;
+      } else {
+        size = firstWord.toLowerCase() == 'none' ? '' : firstWord;
+        qtyVal = words.length > 1 ? words[1] : '';
+        itemStartIndex = 2;
+      }
+
+      if (words.length > itemStartIndex) {
+        final nextWord = words[itemStartIndex].toLowerCase();
+        if (nextWord == 'pcs' || nextWord == 'doz' || nextWord == 'dozen' || nextWord == 'crate' || nextWord == 'sack' || nextWord == 'kg' || nextWord.contains('box') || nextWord.contains('bx')) {
+          unitLabel = words[itemStartIndex];
+          itemStartIndex += 1;
+
+          // Capture and merge explicit multiplier suffixes that were split by spaces (e.g. "* 20", "*20", "20*")
+          if (itemStartIndex < words.length) {
+            final follow1 = words[itemStartIndex].toLowerCase();
+            if (follow1 == '*' && (itemStartIndex + 1) < words.length && RegExp(r'^\d+$').hasMatch(words[itemStartIndex + 1])) {
+              unitLabel += '*${words[itemStartIndex + 1]}';
+              itemStartIndex += 2;
+            } else if (follow1.startsWith('*') && RegExp(r'^\*\d+$').hasMatch(follow1)) {
+              unitLabel += '*${follow1.substring(1)}';
+              itemStartIndex += 1;
+            } else if (follow1.endsWith('*') && RegExp(r'^\d+\*$').hasMatch(follow1)) {
+              unitLabel += '*${follow1.substring(0, follow1.length - 1)}';
+              itemStartIndex += 1;
+            } else if (RegExp(r'^\d+$').hasMatch(follow1) && (itemStartIndex + 1) < words.length && words[itemStartIndex + 1] == '*') {
+              unitLabel += '*$follow1';
+              itemStartIndex += 2;
+            }
+          }
+        } else if (nextWord == 'half' && words.length > (itemStartIndex + 1) && 
+                   (words[itemStartIndex + 1].toLowerCase().startsWith('doz') || words[itemStartIndex + 1].toLowerCase().startsWith('dozen'))) {
+          final dozWord = words[itemStartIndex + 1];
+          unitLabel = 'half $dozWord';
+          itemStartIndex += 2;
+
+          // Capture and merge explicit multiplier suffixes for 'half doz' that were split by spaces (e.g. "* 6", "*6", "6*")
+          if (!dozWord.contains('*') && itemStartIndex < words.length) {
+            final follow1 = words[itemStartIndex].toLowerCase();
+            if (follow1 == '*' && (itemStartIndex + 1) < words.length && RegExp(r'^\d+$').hasMatch(words[itemStartIndex + 1])) {
+              unitLabel += '*${words[itemStartIndex + 1]}';
+              itemStartIndex += 2;
+            } else if (follow1.startsWith('*') && RegExp(r'^\*\d+$').hasMatch(follow1)) {
+              unitLabel += '*${follow1.substring(1)}';
+              itemStartIndex += 1;
+            } else if (follow1.endsWith('*') && RegExp(r'^\d+\*$').hasMatch(follow1)) {
+              unitLabel += '*${follow1.substring(0, follow1.length - 1)}';
+              itemStartIndex += 1;
+            } else if (RegExp(r'^\d+$').hasMatch(follow1) && (itemStartIndex + 1) < words.length && words[itemStartIndex + 1] == '*') {
+              unitLabel += '*$follow1';
+              itemStartIndex += 2;
+            }
+          }
+        }
+      }
+
+      final itemName = words.length > itemStartIndex 
+          ? words.sublist(itemStartIndex).join(' ') 
+          : beforeAt;
+
+      String formattedQty = '';
+      if (qtyVal.isNotEmpty) {
+        if (unitLabel.toLowerCase() == 'pcs' || unitLabel.isEmpty) {
+          formattedQty = '(x$qtyVal pc)';
+        } else {
+          formattedQty = '(x$qtyVal $unitLabel)';
+        }
+      }
+
+      parsedItems.add(TransactionItem(
+        size: size,
+        itemName: itemName,
+        quantityStr: formattedQty,
+        priceStr: priceStr,
+        amountStr: amountStr,
+      ));
+    }
+
+    return parsedItems;
+  }
+
+  String _formatAmount(String amtStr) {
+    if (amtStr.isEmpty) return "";
+    double val = double.tryParse(amtStr.replaceAll(',', '')) ?? 0;
+    return _formatter.format(val);
+  }
+
   Widget _buildHistoryCard(HistoryItem item) {
-      // Determine Type style
       Color badgeBg = Colors.grey[100]!;
       Color badgeText = Colors.grey[800]!;
       String typeLabel = item.type.toUpperCase();
@@ -331,20 +457,41 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
            badgeBg = const Color(0xFFF3E8FF); // purple-100
            badgeText = const Color(0xFF6B21A8); // purple-800
       } else {
-           // Fallback/Default
            badgeBg = const Color(0xFFF3F4F6);
            badgeText = const Color(0xFF374151);
       }
       
       bool isStock = (typeLabel == 'NEW STOCK');
 
+      // Premium styling for Device badge
+      Color deviceBg;
+      Color deviceText;
+      if (item.deviceSource.toLowerCase() == "mobile") {
+          deviceBg = const Color(0xFFEFF6FF); // blue-50
+          deviceText = const Color(0xFF1E40AF); // blue-800
+      } else {
+          deviceBg = const Color(0xFFF3F4F6); // gray-100
+          deviceText = const Color(0xFF374151); // gray-700
+      }
+
+      final parsedLines = _parseHistoryItemText(item.item);
+
+      double amountVal = double.tryParse(item.amount.replaceAll(',', '')) ?? 0;
+      double paidAmountVal = double.tryParse(item.paidAmount.replaceAll(',', '')) ?? 0;
+      double remainingVal = amountVal - paidAmountVal;
+
+      double displayAmount = amountVal;
+      if (item.isDebt && !item.isPaid) {
+          displayAmount = remainingVal;
+      }
+
       return Container(
           decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade100),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE5E7EB)), // light grey border (gray-200)
               boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.015), blurRadius: 8, offset: const Offset(0, 4))
               ]
           ),
           child: Material(
@@ -354,42 +501,49 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                 if (item.isDebt && !item.isPaid) {
                     _showPaymentModal(item);
                 }
-              }, // Detail view?
-              borderRadius: BorderRadius.circular(12),
+              },
+              borderRadius: BorderRadius.circular(16),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                        // Top Row: Date & Badge
+                        // Top Row: Date & Badges
                         Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                                Text(item.date, style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280))), // text-secondary
+                                Text(
+                                    item.date, 
+                                    style: const TextStyle(
+                                        fontSize: 14, 
+                                        fontWeight: FontWeight.w600, 
+                                        color: Color(0xFF9CA3AF) // medium gray
+                                    )
+                                ),
                                 Row(
                                   children: [
                                     Container(
                                         margin: const EdgeInsets.only(right: 8),
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                         decoration: BoxDecoration(
-                                            color: (item.deviceSource.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.1),
-                                            borderRadius: BorderRadius.circular(4),
-                                            border: Border.all(color: (item.deviceSource.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.5))
+                                            color: deviceBg,
+                                            borderRadius: BorderRadius.circular(6),
                                         ),
                                         child: Text(
                                             item.deviceSource.toUpperCase(), 
                                             style: TextStyle(
-                                                fontSize: 9, 
+                                                fontSize: 10, 
                                                 fontWeight: FontWeight.bold, 
-                                                color: item.deviceSource.toLowerCase() == "mobile" ? Colors.blue : Colors.grey, 
+                                                color: deviceText, 
                                                 letterSpacing: 0.5
                                             )
                                         ),
                                     ),
                                     Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                         decoration: BoxDecoration(
                                             color: badgeBg,
-                                            borderRadius: BorderRadius.circular(4)
+                                            borderRadius: BorderRadius.circular(6)
                                         ),
                                         child: Text(
                                             typeLabel, 
@@ -400,92 +554,113 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                 )
                             ],
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 16),
                         
-                        // Middle Row: Item & Amount
+                        // Middle Row: Items and details
+                        ...parsedLines.map((pi) => Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                    Expanded(
+                                        child: Text(
+                                            "${pi.size.isNotEmpty ? '${pi.size} ' : ''}${pi.itemName} ${pi.quantityStr}",
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.w600, 
+                                                fontSize: 13, 
+                                                color: Color(0xFF374151) // text-secondary-dark
+                                            )
+                                        ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                        _formatAmount(pi.amountStr),
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold, 
+                                            fontSize: 13,
+                                            color: Color(0xFF111827)
+                                        )
+                                    ),
+                                ],
+                            ),
+                        )).toList(),
+                        
+                        const SizedBox(height: 4),
+                        Text(
+                            isStock ? "Supplier: ${item.customer}" : "Customer: ${item.customer}",
+                            style: const TextStyle(
+                                fontSize: 13, 
+                                fontStyle: FontStyle.italic, 
+                                color: Color(0xFF9CA3AF)
+                            )
+                        ),
+
+                        const SizedBox(height: 12),
+                        const Divider(height: 1, color: Color(0xFFF3F4F6)),
+                        const SizedBox(height: 12),
+
+                        // Bottom Row: Actions (left) & UGX grand totals (right)
                         Row(
-                             crossAxisAlignment: CrossAxisAlignment.start,
-                             children: [
-                                 Expanded(
-                                     child: Column(
-                                         crossAxisAlignment: CrossAxisAlignment.start,
-                                         children: [
-                                             Row(
-                                               children: [
-                                                 Expanded(
-                                                   child: Text(
-                                                       item.item, 
-                                                       style: const TextStyle(
-                                                           fontWeight: FontWeight.bold, 
-                                                           fontSize: 16, 
-                                                           color: Color(0xFF111827) // text-primary
-                                                       )
-                                                   ),
-                                                 ),
-                                                 if (_canDelete(item.date))
-                                                   IconButton(
-                                                     icon: const Icon(
-                                                       Icons.delete_outline,
-                                                       color: Colors.red,
-                                                       size: 20
-                                                     ),
-                                                     onPressed: () => _confirmDeletion(item),
-                                                     padding: EdgeInsets.zero,
-                                                     constraints: const BoxConstraints(),
-                                                     visualDensity: VisualDensity.compact,
-                                                   ),
-                                                   if (!isStock) ...[
-                                                       const SizedBox(width: 8),
-                                                       IconButton(
-                                                           icon: const Icon(Icons.print, color: AppColors.primaryGreen, size: 20),
-                                                           onPressed: () => _reprintInvoice(item),
-                                                           padding: EdgeInsets.zero,
-                                                           constraints: const BoxConstraints(),
-                                                           visualDensity: VisualDensity.compact,
-                                                       ),
-                                                   ],
-                                               ],
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                                // Action Icons (Delete & Reprint)
+                                Row(
+                                    children: [
+                                        if (_canDelete(item.date))
+                                            IconButton(
+                                                icon: const Icon(
+                                                    Icons.delete_outline,
+                                                    color: Colors.red,
+                                                    size: 20
+                                                ),
+                                                onPressed: () => _confirmDeletion(item),
+                                                padding: EdgeInsets.zero,
+                                                constraints: const BoxConstraints(),
+                                                visualDensity: VisualDensity.compact,
+                                            ),
+                                        if (_canDelete(item.date) && !isStock)
+                                            const SizedBox(width: 12),
+                                        if (!isStock)
+                                            IconButton(
+                                                icon: const Icon(Icons.print, color: AppColors.primaryGreen, size: 20),
+                                                onPressed: () => _reprintInvoice(item),
+                                                padding: EdgeInsets.zero,
+                                                constraints: const BoxConstraints(),
+                                                visualDensity: VisualDensity.compact,
+                                            ),
+                                    ],
+                                ),
+
+                                // Totals Column
+                                Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                         Text(
+                                             "UGX ${_formatter.format(displayAmount)}", 
+                                             style: TextStyle(
+                                                 fontWeight: FontWeight.bold, 
+                                                 fontSize: 16,
+                                                 color: isStock ? const Color(0xFFEA580C) : const Color(0xFF0F766E) 
+                                             )
+                                         ),
+                                         if (!isStock) ...[
+                                             const SizedBox(height: 2),
+                                             ValueListenableBuilder<bool>(
+                                               valueListenable: PasscodeService.instance.isLocked,
+                                               builder: (context, isLocked, child) {
+                                                 if (isLocked) return const SizedBox.shrink();
+                                                 double profitVal = double.tryParse(item.profit.replaceAll(',', '')) ?? 0;
+                                                 return Text(
+                                                     "Profit: ${_formatter.format(profitVal)}", 
+                                                     style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))
+                                                 );
+                                               },
                                              ),
-                                             const SizedBox(height: 4),
-                                             Text(
-                                                 isStock ? "Supplier: ${item.customer}" : "Customer: ${item.customer}",
-                                                 style: const TextStyle(
-                                                     fontSize: 12, 
-                                                     fontStyle: FontStyle.italic, 
-                                                     color: Color(0xFF9CA3AF)
-                                                 )
-                                             ),
-                                         ],
-                                     ),
-                                 ),
-                                 const SizedBox(width: 8),
-                                 Column(
-                                     crossAxisAlignment: CrossAxisAlignment.end,
-                                     children: [
-                                          Text(
-                                               "UGX ${_formatter.format((double.tryParse(item.amount.replaceAll(',', '')) ?? 0) - (double.tryParse(item.paidAmount.replaceAll(',', '')) ?? 0))}", 
-                                               style: TextStyle(
-                                                   fontWeight: FontWeight.bold, 
-                                                   fontSize: 16,
-                                                   color: isStock ? const Color(0xFFEA580C) : const Color(0xFF10B981) 
-                                               )
-                                           ),
-                                           if (!isStock) ...[
-                                               const SizedBox(height: 4),
-                                               ValueListenableBuilder<bool>(
-                                                 valueListenable: PasscodeService.instance.isLocked,
-                                                 builder: (context, isLocked, child) {
-                                                   if (isLocked) return const SizedBox.shrink();
-                                                   return Text(
-                                                       "Profit: ${_formatter.format(double.tryParse(item.profit.replaceAll(',', '')) ?? 0)}", 
-                                                       style: const TextStyle(fontSize: 11, color: Color(0xFF6B7280))
-                                                   );
-                                                 },
-                                               ),
-                                           ]
-                                     ],
-                                 )
-                             ],
+                                         ]
+                                    ],
+                                )
+                            ],
                         )
                     ],
                 ),
@@ -787,4 +962,20 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
           ),
       );
   }
+}
+
+class TransactionItem {
+  final String size;
+  final String itemName;
+  final String quantityStr;
+  final String priceStr;
+  final String amountStr;
+
+  TransactionItem({
+    required this.size,
+    required this.itemName,
+    required this.quantityStr,
+    required this.priceStr,
+    required this.amountStr,
+  });
 }

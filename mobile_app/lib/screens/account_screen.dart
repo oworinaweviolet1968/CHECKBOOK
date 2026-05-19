@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utils/colors.dart';
 import '../screens/login_screen.dart';
@@ -167,6 +168,208 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
     return DateFormat('dd-MMM-yyyy HH:mm').format(date);
   }
 
+  void _showReceiptInfoDialog() async {
+    final name = await DatabaseHelper.instance.getSetting("receipt_shop_name") ?? "";
+    final number = await DatabaseHelper.instance.getSetting("receipt_shop_number") ?? "";
+    final location = await DatabaseHelper.instance.getSetting("receipt_location") ?? "";
+    final phone = await DatabaseHelper.instance.getSetting("receipt_phone") ?? "";
+
+    if (!mounted) return;
+
+    final nameController = TextEditingController(text: name);
+    final numberController = TextEditingController(text: number);
+    final locationController = TextEditingController(text: location);
+    final phoneController = TextEditingController(text: phone);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Receipt Information',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Add info to display under CHECKBOOK APP on printed receipts',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 24),
+              _buildModalTextField(
+                controller: nameController,
+                label: 'Shop / Company Name',
+                hint: 'e.g. Meto Electronics',
+                icon: Icons.store_rounded,
+                maxLength: 40,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9 .&()\-\/,]')),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _buildModalTextField(
+                controller: numberController,
+                label: 'Shop Number',
+                hint: 'e.g. Shop G15',
+                icon: Icons.tag_rounded,
+                maxLength: 20,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9 .#\-\/,]')),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _buildModalTextField(
+                controller: locationController,
+                label: 'Location / Address',
+                hint: 'e.g. Kampala, Uganda',
+                icon: Icons.location_on_rounded,
+                maxLength: 40,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9 .&()\-\/,]')),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _buildModalTextField(
+                controller: phoneController,
+                label: 'Phone Number / Contact',
+                hint: 'e.g. +256 701 234567',
+                icon: Icons.phone_rounded,
+                keyboardType: TextInputType.phone,
+                maxLength: 25,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9 +\-\/(),]')),
+                ],
+              ),
+              const SizedBox(height: 28),
+              ElevatedButton(
+                onPressed: () async {
+                  await DatabaseHelper.instance.saveSetting("receipt_shop_name", nameController.text.trim());
+                  await DatabaseHelper.instance.saveSetting("receipt_shop_number", numberController.text.trim());
+                  await DatabaseHelper.instance.saveSetting("receipt_location", locationController.text.trim());
+                  await DatabaseHelper.instance.saveSetting("receipt_phone", phoneController.text.trim());
+
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Receipt settings saved successfully!'),
+                        backgroundColor: AppColors.primaryGreen,
+                      ),
+                    );
+                  }
+
+                  _handleBackup();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryGreen,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'Save receipt settings',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModalTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
+    List<TextInputFormatter>? inputFormatters,
+    int? maxLength,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          maxLength: maxLength,
+          inputFormatters: inputFormatters,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+          decoration: InputDecoration(
+            hintText: hint,
+            counterText: "",
+            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+            prefixIcon: Icon(icon, color: AppColors.primaryGreen, size: 20),
+            filled: true,
+            fillColor: Colors.grey.shade50,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade200),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: Colors.grey.shade200),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.primaryGreen, width: 1.5),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+
   @override
   Widget build(BuildContext context) {
     final email = _user?.email ?? 'User';
@@ -321,6 +524,13 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
               icon: Icons.edit_note_rounded,
               iconColor: AppColors.primaryGreen,
               onTap: _handlePriceUpdateNavigation,
+            ),
+            const SizedBox(height: 16),
+            _buildActionCard(
+              title: 'Receipt Print Information',
+              icon: Icons.receipt_long_rounded,
+              iconColor: AppColors.primaryGreen,
+              onTap: _showReceiptInfoDialog,
             ),
             const SizedBox(height: 16),
             _buildActionCard(
@@ -485,12 +695,14 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
               child: Icon(icon, color: iconColor),
             ),
             const SizedBox(width: 16),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: textColor ?? AppColors.textPrimary,
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: textColor ?? AppColors.textPrimary,
+                ),
               ),
             ),
           ],

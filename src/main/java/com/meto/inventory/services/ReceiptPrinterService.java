@@ -19,6 +19,8 @@ public class ReceiptPrinterService {
     private static final byte[] ESC_LEFT = {0x1B, 0x61, 0x00};
     private static final byte[] ESC_BOLD_ON = {0x1B, 0x45, 0x01};
     private static final byte[] ESC_BOLD_OFF = {0x1B, 0x45, 0x00};
+    private static final byte[] GS_DOUBLE_SIZE = {0x1D, 0x21, 0x11};
+    private static final byte[] GS_NORMAL_SIZE = {0x1D, 0x21, 0x00};
     private static final byte[] LF = {0x0A};
 
     public static void printReceipt(ObservableList<SaleItem> items, String customer, String totalAmount) {
@@ -52,49 +54,95 @@ public class ReceiptPrinterService {
             // 2. Header
             baos.write(ESC_CENTER);
             baos.write(ESC_BOLD_ON);
+            baos.write(GS_DOUBLE_SIZE);
             baos.write("CHECKBOOK APP\n".getBytes());
+            baos.write(GS_NORMAL_SIZE);
             baos.write(ESC_BOLD_OFF);
-            baos.write("Inventory Management\n".getBytes());
-            baos.write(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss\n").format(new Date()).getBytes());
+            
+            var dbHelper = com.meto.inventory.DataManager.getInstance().getDbHelper();
+            String shopName = dbHelper.getSetting("receipt_shop_name");
+            if (shopName != null && !shopName.trim().isEmpty()) {
+                baos.write(ESC_BOLD_ON);
+                baos.write((shopName.toUpperCase() + "\n").getBytes());
+                baos.write(ESC_BOLD_OFF);
+            }
+            
+            String shopNum = dbHelper.getSetting("receipt_shop_number");
+            if (shopNum != null && !shopNum.trim().isEmpty()) {
+                baos.write(("Shop No: " + shopNum + "\n").getBytes());
+            }
+            
+            String location = dbHelper.getSetting("receipt_location");
+            if (location != null && !location.trim().isEmpty()) {
+                baos.write((location + "\n").getBytes());
+            }
+            
+            String phone = dbHelper.getSetting("receipt_phone");
+            if (phone != null && !phone.trim().isEmpty()) {
+                baos.write(("Tel: " + phone + "\n").getBytes());
+            }
+            
+            if ((shopName == null || shopName.trim().isEmpty()) && (shopNum == null || shopNum.trim().isEmpty()) && (location == null || location.trim().isEmpty())) {
+                baos.write("Inventory Management\n".getBytes());
+            }
+            
+            String formattedDate = new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date());
+            baos.write(("Date: " + formattedDate + "\n").getBytes());
+            baos.write(("Customer: " + (customer.isEmpty() ? "Walk-in Customer" : customer) + "\n").getBytes());
             baos.write("--------------------------------\n".getBytes()); // 32 chars
             
-            // 3. Customer Info
-            baos.write(ESC_LEFT);
-            baos.write(("Customer: " + (customer.isEmpty() ? "Walk-in" : customer) + "\n").getBytes());
-            baos.write("--------------------------------\n".getBytes());
-            
             // 4. Items Table
-            // Column widths for 32 chars: Item(12) Qty(8) Amount(10) + gaps
-            baos.write("Item         Qty       Amount\n".getBytes());
+            baos.write("Item                   Total\n".getBytes());
+            baos.write("--------------------------------\n".getBytes()); // 32 chars
             for (SaleItem item : items) {
                 String name = item.getItems();
-                if (name.length() > 11) name = name.substring(0, 9) + "..";
+                String size = item.getQty();
                 
-                String qtyDisplay = item.getQty();
-                if (qtyDisplay.length() > 8) qtyDisplay = qtyDisplay.substring(0, 8);
+                String displayTitle = name;
+                if (size != null && !size.trim().isEmpty() && !size.trim().equalsIgnoreCase("none")) {
+                    displayTitle += " (" + size + ")";
+                }
                 
-                // Safe numeric parsing for amount
+                // Print the title line
+                baos.write((displayTitle + "\n").getBytes());
+                
+                // Form the details & amount line
+                String unit = item.getUnit(); // e.g. "3 pc"
                 long amt = parseAmount(item.getAmount());
+                String formattedAmt = df.format(amt);
                 
-                String row = String.format("%-12s %-9s %9s\n", 
-                        name, 
-                        qtyDisplay, 
-                        df.format(amt));
-                baos.write(row.getBytes());
+                // We have 32 chars total for a standard 58mm printer line
+                String detailLine = " " + unit;
+                int remainingPadding = 32 - detailLine.length() - formattedAmt.length();
+                if (remainingPadding > 0) {
+                    detailLine += " ".repeat(remainingPadding);
+                }
+                detailLine += formattedAmt + "\n";
+                baos.write(detailLine.getBytes());
             }
             
             // 5. Total
             baos.write("--------------------------------\n".getBytes());
             baos.write(ESC_BOLD_ON);
             long total = parseAmount(totalAmount);
-            baos.write(("TOTAL: UGX " + df.format(total) + "\n").getBytes());
+            String totalLabel = "TOTAL AMOUNT";
+            String totalValStr = df.format(total);
+            String totalRow = totalLabel;
+            int totalPadding = 32 - totalLabel.length() - totalValStr.length();
+            if (totalPadding > 0) {
+                totalRow += " ".repeat(totalPadding);
+            }
+            totalRow += totalValStr + "\n";
+            baos.write(totalRow.getBytes());
             baos.write(ESC_BOLD_OFF);
             baos.write("--------------------------------\n".getBytes());
             
             // 6. Footer
             baos.write(ESC_CENTER);
+            baos.write("\n\n".getBytes()); // Feed 2 lines
             baos.write("Thank you for your business!\n".getBytes());
-            baos.write("\n\n\n".getBytes()); // Extra spacing for tear-off
+            baos.write("Powered by METO IMS\n".getBytes());
+            baos.write("\n\n\n".getBytes()); // spacing before cut
             
             // Send to printer
             byte[] bytes = baos.toByteArray();

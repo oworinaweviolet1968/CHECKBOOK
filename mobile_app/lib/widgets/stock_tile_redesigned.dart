@@ -44,34 +44,34 @@ class StockTileRedesigned extends StatelessWidget {
                      children: [
                         Row(
                           children: [
-                            Row(
-                              children: [
-                                Text(
-                                  itemName,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 14,
-                                    color: AppColors.textPrimary,
-                                  ),
+                            Expanded(
+                              child: Text(
+                                itemName,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                  color: AppColors.textPrimary,
                                 ),
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.2)),
-                                  ),
-                                  child: Text(
-                                    source.toUpperCase(),
-                                    style: TextStyle(
-                                      fontSize: 8,
-                                      fontWeight: FontWeight.bold,
-                                      color: source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey,
-                                    ),
-                                  ),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.2)),
+                              ),
+                              child: Text(
+                                source.toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                  color: source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey,
                                 ),
-                              ],
+                              ),
                             ),
                           ],
                         ),

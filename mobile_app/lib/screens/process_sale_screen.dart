@@ -859,7 +859,11 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
       );
   }
 
-  void _showSaleSummaryDialog() {
+  void _showSaleSummaryDialog() async {
+    final shopName = await DatabaseHelper.instance.getSetting("receipt_shop_name") ?? "";
+
+    if (!mounted) return;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -875,14 +879,21 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                 color: AppColors.primaryGreen,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
               ),
-              child: const Column(
+              child: Column(
                 children: [
-                   Text(
+                   const Text(
                     "CHECKBOOK APP",
                     style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 2, fontSize: 18),
                   ),
-                  SizedBox(height: 4),
-                  Text(
+                  if (shopName.trim().isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      shopName.toUpperCase(),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  const Text(
                     "Receipt Summary",
                     style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
                   ),
