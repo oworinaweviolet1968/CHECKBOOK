@@ -58,6 +58,12 @@ jobs:
             --win-menu `
             --win-shortcut
 
+      # 6.5 Rename MSI to a consistent filename
+      - name: Rename MSI
+        run: |
+          Get-ChildItem -Path output -Filter *.msi | Rename-Item -NewName "METO.IMS.msi"
+
+
       # 7. Release MSI to beckhamz777/cb repository
       - name: Create Release in cb repository
         uses: softprops/action-gh-release@v2
