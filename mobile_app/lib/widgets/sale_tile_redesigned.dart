@@ -8,6 +8,7 @@ class SaleTileRedesigned extends StatelessWidget {
   final String profit; // "Profit: UGX 10.00"
   final bool isPositiveProfit;
   final String source;
+  final bool isDebt;
 
   const SaleTileRedesigned({
     super.key,
@@ -17,6 +18,7 @@ class SaleTileRedesigned extends StatelessWidget {
     required this.profit,
     this.isPositiveProfit = true,
     this.source = "System",
+    this.isDebt = false,
   });
 
   @override
@@ -25,9 +27,9 @@ class SaleTileRedesigned extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: AppColors.cardBackground,
+        color: isDebt ? Colors.red.shade50 : AppColors.cardBackground,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade100),
+        border: Border.all(color: isDebt ? Colors.red.shade200 : Colors.grey.shade100),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.02),
@@ -65,39 +67,18 @@ class SaleTileRedesigned extends StatelessWidget {
                   children: [
                     // Main Text (Item Name / Customer)
                     Expanded(
-                      child: Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              customer,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
-                                color: AppColors.textPrimary,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.2)),
-                            ),
-                            child: Text(
-                              source.toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 8,
-                                fontWeight: FontWeight.bold,
-                                color: source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey,
-                              ),
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        customer,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                          color: AppColors.textPrimary,
+                        ),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
+                    const SizedBox(width: 8),
                     
                     // Amount
                     Column(
@@ -105,33 +86,61 @@ class SaleTileRedesigned extends StatelessWidget {
                         children: [
                             Text(
                               amount,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                                color: AppColors.textPrimary,
+                                fontSize: 13,
+                                color: isDebt ? Colors.red.shade700 : AppColors.textPrimary,
                               ),
                             ),
-                            Text(
-                              profit,
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.primaryGreen, // Always green for profit label? HTML has text-primary green
+                            if (isDebt)
+                              Text(
+                                "DEBT",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.red.shade700,
+                                  letterSpacing: 0.5,
+                                ),
                               ),
-                            ),
+                            if (profit.isNotEmpty)
+                              Text(
+                                profit,
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primaryGreen,
+                                ),
+                              ),
                         ]
                     )
                   ],
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 4),
                 // Subtext (Order info)
                 Row(
                     children: [
                         Text(
                           orderInfo,
                           style: const TextStyle(
-                            fontSize: 10, // HTML says xs (12px usually, but maybe 10 here to fit)
+                            fontSize: 10,
                             color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.2)),
+                          ),
+                          child: Text(
+                            source.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                              color: source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey,
+                            ),
                           ),
                         ),
                     ]

@@ -13,7 +13,7 @@ public class MainController {
     private static MainController instance;
 
     @FXML
-    private Button navNewStock, navRetail, navHistory, navInshock, navMore, navLogout;
+    private Button navRetail, navHistory, navInshock, navMore, navLogout;
     @FXML
     private StackPane contentPane;
 
@@ -40,7 +40,7 @@ public class MainController {
         setView(inShockView, navInshock);
 
         // Wire nav actions
-        navNewStock.setOnAction(e -> setView(newStockView, navNewStock));
+        // navNewStock button removed
         navRetail.setOnAction(e -> setView(retailView, navRetail));
         navHistory.setOnAction(e -> setView(historyView, navHistory));
         navInshock.setOnAction(e -> setView(inShockView, navInshock));
@@ -88,7 +88,7 @@ public class MainController {
     public void navigateTo(String viewName) {
         switch (viewName.toLowerCase()) {
             case "newstock":
-                setView(newStockView, navNewStock);
+                setView(newStockView, null);
                 break;
             case "retail":
                 setView(retailView, navRetail);
@@ -107,13 +107,15 @@ public class MainController {
 
     private void updateNavStyles(Button selectedBtn) {
         // List of all your nav buttons
-        Button[] navButtons = { navNewStock, navRetail, navHistory, navInshock, navMore };
+        Button[] navButtons = { navRetail, navHistory, navInshock, navMore };
 
         for (Button btn : navButtons) {
             // Remove the active class from everyone
             btn.getStyleClass().remove("nav-active");
         }
-        // Add the active class to the selected one
-        selectedBtn.getStyleClass().add("nav-active");
+        // Add the active class to the selected one (if not null)
+        if (selectedBtn != null) {
+            selectedBtn.getStyleClass().add("nav-active");
+        }
     }
 }

@@ -644,6 +644,14 @@ public class NewStockController implements DataManager.DataChangeListener {
         String unitText = unitField.getText().trim().toLowerCase();
         String priceRaw = priceField.getText().trim().replaceAll("[^0-9.]", "");
 
+        // BLOCK DUPLICATE ITEMS IN PREVIEW LIST
+        for (StockItem existing : items) {
+            if (existing.getItems().equalsIgnoreCase(itemName) && existing.getQty().equalsIgnoreCase(qtyRaw)) {
+                showAlert("You already have '" + itemName + " " + qtyRaw + "' in the preview list! Please save or delete it first before adding a different unit to avoid average-cost calculation conflicts.");
+                return;
+            }
+        }
+
         // CHECK FOR NEW QTY: Check if the typed size exists in the dropdown list
         boolean sizeExists = qtyComboBox.getItems().contains(qtyRaw);
 
@@ -751,7 +759,9 @@ public class NewStockController implements DataManager.DataChangeListener {
             return;
         }
 
-        for (StockItem s : items) { // Iterating through the table items
+        java.util.Iterator<StockItem> iterator = items.iterator();
+        while (iterator.hasNext()) {
+            StockItem s = iterator.next();
             String item = s.getItems();
             String qty = s.getQty();
             String unit = s.getUnit();
@@ -772,34 +782,35 @@ public class NewStockController implements DataManager.DataChangeListener {
                         // 3. If user says OK, merge with forceSave = true
                         dataManager.getDbHelper().mergeStock(item, qty, unit, price, supplier, true);
                     } else {
-                        continue; // Skip this item and move to next, or 'return' to stop everything
+                        break; // Stop processing further items so user can fix the price
                     }
                 }
             } else {
                 dataManager.getDbHelper().addStock(supplier, item, qty, unit, price, LocalDate.now().toString());
             }
 
-            // Parse Total Amount from the StockItem (which has it stored as a String)
+            // Parse Total Amount from the StockItem
             double totalAmount = 0.0;
             try {
                 totalAmount = Double.parseDouble(s.getAmount().replaceAll("[^0-9.]", ""));
-            } catch (Exception e) {
-                // If parsing fails, fall back to calculating it manually
-                extractNumericValue(unit); // Note: This might return the 1.5 logic...
-                // Ideally we trust the input Price as Total Price if Unit is singular?
-                // But in NewStockController logic (line 614), totalAmount = count * inputPrice.
-                // So let's just rely on the stored Amount string which computed it correctly
-                // during onAdd().
-            }
+            } catch (Exception e) {}
+            
             dataManager.getDbHelper().addSaleWithProfit(supplier, item, qty, unit, price, totalAmount, "NEW STOCK", false, null);
+            
+            // Item successfully processed, remove it from the list
+            iterator.remove();
         }
 
-        showAlert("Stock saved successfully!");
-        items.clear(); // Clear the ObservableList
-        supplierNameComboBox.getEditor().clear();
-        supplierNameComboBox.setValue(null);
+        if (items.isEmpty()) {
+            showAlert("Stock saved successfully!");
+            supplierNameComboBox.getEditor().clear();
+            supplierNameComboBox.setValue(null);
+        } else {
+            // Some items were left in the list (because of cancellation)
+            showAlert("Save process aborted. Please fix the items remaining in the preview list.");
+        }
+        
         dataManager.notifyDataChanged();
-        // --- refreshDropdown to show added item ---
         refreshDropdowns();
     }
 

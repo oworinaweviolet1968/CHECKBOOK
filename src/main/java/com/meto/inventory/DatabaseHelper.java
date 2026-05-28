@@ -266,8 +266,6 @@ public class DatabaseHelper {
                 if (sacks > 0)
                     return String.format("%d Sacks", sacks);
                 return String.format("%.1f kg", remainingKg);
-            } else {
-                return String.format("%,.1f kg", totalBase);
             }
         }
 
@@ -591,9 +589,9 @@ public class DatabaseHelper {
                         rs.getString("type"),
                         rs.getString("quantity"),
                         rs.getString("unit"),
-                        String.format("%,.2f", rs.getDouble("price")),
-                        String.format("%,.2f", amount),
-                        String.format("%,.2f", profitVal),
+                        String.format("%,.0f", rs.getDouble("price")),
+                        String.format("%,.0f", amount),
+                        String.format("%,.0f", profitVal),
                         rs.getString("date"),
                         rs.getInt("is_debt") == 1,
                         rs.getInt("is_paid") == 1,
@@ -876,6 +874,10 @@ public class DatabaseHelper {
                     if (val > 0) return val;
                 } catch (Exception e) {}
             }
+            
+            // Fallback if no star but it's a known bulk term
+            if (normalizedType.contains("carton")) return 24.0;
+            if (normalizedType.contains("crate")) return 25.0;
             return 20.0; // Standard fallback for generic box
         }
 

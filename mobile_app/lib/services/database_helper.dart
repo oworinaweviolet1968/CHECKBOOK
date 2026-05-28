@@ -393,7 +393,8 @@ class DatabaseHelper {
      // Filter: date = today AND type != 'NEW STOCK'
      final result = await db.rawQuery('''
        SELECT 
-         SUM(amount) as total_sales,
+         SUM(CASE WHEN is_debt = 0 THEN amount ELSE 0 END) as total_sales,
+         SUM(CASE WHEN is_debt = 1 THEN amount ELSE 0 END) as total_debt,
          SUM(amount - (cost_price * base_quantity)) as total_profit
        FROM sales 
        WHERE date = ? AND type != 'NEW STOCK'
@@ -402,10 +403,11 @@ class DatabaseHelper {
      if (result.isNotEmpty) {
        return {
          'sales': (result.first['total_sales'] as num?)?.toDouble() ?? 0.0,
+         'debt': (result.first['total_debt'] as num?)?.toDouble() ?? 0.0,
          'profit': (result.first['total_profit'] as num?)?.toDouble() ?? 0.0,
        };
      }
-     return {'sales': 0.0, 'profit': 0.0};
+     return {'sales': 0.0, 'debt': 0.0, 'profit': 0.0};
   }
 
   // Dashboard: Yesterday's Profit (for % calc)
@@ -672,8 +674,6 @@ class DatabaseHelper {
               }
               if (sacks > 0) return "$sacks Sacks";
               return "${remainingKg.toStringAsFixed(1)} kg";
-          } else {
-              return "${availablePieces.toStringAsFixed(1)} kg";
           }
       }
 

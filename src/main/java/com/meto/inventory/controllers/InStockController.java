@@ -23,7 +23,7 @@ public class InStockController implements DataManager.DataChangeListener {
     @FXML
     private Button refreshBtn, addItemBtn, viewAllBtn;
     @FXML
-    private Label dailySaleLabel, stockCountLabel, transactionCountLabel, lowStockNoticeLabel, inventorySublabel,
+    private Label dailySaleLabel, dailyDebtLabel, stockCountLabel, transactionCountLabel, lowStockNoticeLabel, inventorySublabel,
             salesSublabel;
     @FXML
     private TextField searchField;
@@ -263,12 +263,16 @@ public class InStockController implements DataManager.DataChangeListener {
             @Override
             protected void updateItem(String item, boolean empty) {
                 super.updateItem(item, empty);
-                if (empty || item == null) {
+                if (empty || item == null || getTableRow() == null || getTableRow().getItem() == null) {
                     setGraphic(null);
                     setText(null);
                 } else {
+                    HistoryItem hi = getTableRow().getItem();
                     Label label = new Label("UGX " + item);
                     label.getStyleClass().add("amount-vibrant");
+                    if (hi.isIsDebt()) {
+                        label.setStyle("-fx-text-fill: red; -fx-font-weight: bold;");
+                    }
                     setGraphic(label);
                     setAlignment(javafx.geometry.Pos.CENTER_LEFT);
                 }
@@ -304,11 +308,17 @@ public class InStockController implements DataManager.DataChangeListener {
         transactionCountLabel.setText(String.valueOf(todaySales.size()));
 
         double totalRevenue = 0;
+        double totalDebt = 0;
 
         for (HistoryItem item : todaySales) {
             try {
                 // Amount is the total money collected
-                totalRevenue += Double.parseDouble(item.getAmount().replaceAll("[^0-9.]", ""));
+                double amount = Double.parseDouble(item.getAmount().replaceAll("[^0-9.]", ""));
+                if (item.isIsDebt()) {
+                    totalDebt += amount;
+                } else {
+                    totalRevenue += amount;
+                }
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -316,6 +326,9 @@ public class InStockController implements DataManager.DataChangeListener {
 
         // Ensure this fx:id matches exactly what you have in your FXML
         dailySaleLabel.setText(String.format("UGX %,.0f", totalRevenue));
+        if (dailyDebtLabel != null) {
+            dailyDebtLabel.setText(String.format("Debt: UGX %,.0f", totalDebt));
+        }
         salesSublabel.setText(todaySales.size() + " transactions • UGX " + String.format("%,.0f", totalRevenue));
     }
 

@@ -31,11 +31,6 @@
                          <Region styleClass="icon, icon-check"/>
                      </graphic>
                 </Button>
-                <Button fx:id="navNewStock" text="New Stock" styleClass="nav-button" maxWidth="Infinity">
-                    <graphic>
-                        <Region styleClass="icon, icon-box"/>
-                    </graphic>
-                </Button>
                 <Button fx:id="navRetail" text="Sales Section" styleClass="nav-button" maxWidth="Infinity">
                     <graphic>
                          <Region styleClass="icon, icon-cart"/>

@@ -369,9 +369,20 @@ class DashboardScreenState extends State<DashboardScreen> {
                                    future: _todaysStats,
                                    builder: (context, snap) {
                                      final total = snap.data?['sales'] ?? 0.0;
-                                     return Text(
-                                       "Total: UGX ${_formatter.format(total)}",
-                                       style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primaryGreen),
+                                     final debt = snap.data?['debt'] ?? 0.0;
+                                     return Column(
+                                       crossAxisAlignment: CrossAxisAlignment.start,
+                                       children: [
+                                         Text(
+                                           "Total: UGX ${_formatter.format(total)}",
+                                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primaryGreen),
+                                         ),
+                                         if (debt > 0)
+                                           Text(
+                                             "Debt: UGX ${_formatter.format(debt)}",
+                                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.red),
+                                           ),
+                                       ],
                                      );
                                    },
                                  ),
@@ -405,6 +416,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                                      final time = sale['created_at'].toString().split(' ')[1].substring(0, 5); 
                                      
                                      final unitSold = sale['unit']; 
+                                     final isDebt = (sale['is_debt'] as int? ?? 0) == 1;
                                                                           return ValueListenableBuilder<bool>(
                                          valueListenable: PasscodeService.instance.isLocked,
                                          builder: (context, isLocked, child) {
@@ -415,6 +427,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                                                  profit: isLocked ? "" : "Profit: UGX ${_formatter.format(profit)}",
                                                  source: sale['device_source'] as String? ?? "System",
                                                  isPositiveProfit: profit >= 0,
+                                                 isDebt: isDebt,
                                              );
                                          },
                                       );

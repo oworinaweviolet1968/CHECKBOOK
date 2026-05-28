@@ -44,7 +44,8 @@ jobs:
           jpackage `
             --type msi `
             --name "METO.IMS" `
-            --app-version 1.9 `
+            --app-version 1.9.${{ github.run_number }} `
+            --win-upgrade-uuid 38e83dd9-5692-4035-90af-56b8c3d149b5 `
             --dest output `
             --input dist `
             --main-jar ManagementSYS-1.9.jar `

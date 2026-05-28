@@ -38,8 +38,8 @@
                 <VBox styleClass="metric-card, metric-card-green" HBox.hgrow="ALWAYS" spacing="12">
                     <Label text="Today's Total Sales" style="-fx-font-size: 11px; -fx-text-fill: #6B7280; -fx-font-weight: 600;"/>
                     <Label fx:id="dailySaleLabel" text="UGX 0" style="-fx-font-size: 22px; -fx-font-weight: 800; -fx-text-fill: -fx-primary;"/>
-                    <Label text="+12.5% from yesterday" style="-fx-font-size: 11px; -fx-text-fill: -fx-primary; -fx-font-weight: 600;">
-                        <graphic><Region styleClass="icon, icon-clock" style="-fx-scale-x: 0.6; -fx-scale-y: 0.6; -fx-background-color: -fx-primary;"/></graphic>
+                    <Label fx:id="dailyDebtLabel" text="Debt: UGX 0" style="-fx-font-size: 12px; -fx-text-fill: red; -fx-font-weight: bold;">
+                        <graphic><Region styleClass="icon, icon-clock" style="-fx-scale-x: 0.6; -fx-scale-y: 0.6; -fx-background-color: red;"/></graphic>
                     </Label>
                 </VBox>
                 
