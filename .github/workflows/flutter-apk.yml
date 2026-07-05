@@ -36,7 +36,7 @@ jobs:
       # 5. Build APK (release mode with release signing and dynamic build number)
       - name: Build APK
         working-directory: mobile_app
-        run: flutter build apk --release --build-name=1.9.0 --build-number=${{ github.run_number }}
+        run: flutter build apk --release --build-name=2.0.0 --build-number=${{ github.run_number }}
         
       # 6. Rename APK
       - name: Rename APK
@@ -49,8 +49,8 @@ jobs:
         with:
           repository: beckhamz777/cb
           token: ${{ secrets.RELEASE_TOKEN }}
-          tag_name: v1.9
-          name: Release v1.9
+          tag_name: v2.0
+          name: Release v2.0
           draft: false
           prerelease: false
           files: |
