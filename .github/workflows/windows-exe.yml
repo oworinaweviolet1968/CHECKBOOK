@@ -34,7 +34,7 @@ jobs:
       # 5. Extract logo.png from JAR and convert to .ico for jpackage using ImageMagick
       - name: Extract and convert logo to ICO
         run: |
-          jar xf dist/ManagementSYS-2.0.jar com/meto/inventory/views/images/logo.png
+          jar xf dist/ManagementSYS-2.1.jar com/meto/inventory/views/images/logo.png
           magick convert com/meto/inventory/views/images/logo.png -define icon:auto-resize=256,128,64,32,16 app_icon.ico
           Write-Host "app_icon.ico created perfectly from logo.png using ImageMagick"
 
