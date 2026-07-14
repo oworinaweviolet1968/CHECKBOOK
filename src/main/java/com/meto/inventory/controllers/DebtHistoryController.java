@@ -18,7 +18,7 @@ public class DebtHistoryController implements DataManager.DataChangeListener {
     @FXML private TableColumn<DebtPaymentLog, String> logCustomerCol, logAmountCol, logDateCol;
     @FXML private TableView<HistoryItem> settledTable;
     @FXML private TableColumn<HistoryItem, String> settledCustomerCol, settledItemCol, settledAmountCol, settledDateCol;
-    @FXML private Button refreshBtn;
+    @FXML private Button refreshBtn, notificationsBtn;
 
     private DataManager dataManager;
 
@@ -28,9 +28,52 @@ public class DebtHistoryController implements DataManager.DataChangeListener {
         dataManager.addDataChangeListener(this);
 
         setupTableColumns();
+
+        // Set constrained resize policy so columns fill the table width
+        unsettledTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        settledTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+
         loadData();
 
-        refreshBtn.setOnAction(e -> loadData());
+        refreshBtn.setOnAction(e -> {
+            refreshBtn.setDisable(true);
+            new Thread(() -> {
+                try {
+                    com.meto.inventory.services.SupabaseService.getInstance().syncOnLogin(
+                        dataManager.getCurrentDbName(), 
+                        dataManager.getDbHelper().hasData(), 
+                        true
+                    );
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                } finally {
+                    javafx.application.Platform.runLater(() -> {
+                        loadData();
+                        refreshBtn.setDisable(false);
+                    });
+                }
+            }).start();
+        });
+
+        if (notificationsBtn != null) {
+            notificationsBtn.setGraphic(com.meto.inventory.components.BellIcon.create(12, javafx.scene.paint.Color.web("#6B7280")));
+            notificationsBtn.setOnAction(e -> {
+                try {
+                    javafx.fxml.FXMLLoader loader = new javafx.fxml.FXMLLoader(getClass().getResource("/com/meto/inventory/views/Notifications.fxml"));
+                    javafx.scene.Node notifView = loader.load();
+                    NotificationsController notifController = loader.getController();
+                    
+                    // Allow navigating back
+                    notifController.setOnBackAction(() -> {
+                        MainController.getInstance().navigateTo("debthistory");
+                    });
+                    
+                    MainController.getInstance().setView(notifView);
+                } catch (java.io.IOException ex) {
+                    ex.printStackTrace();
+                }
+            });
+        }
     }
 
     private void setupTableColumns() {
@@ -142,7 +185,8 @@ public class DebtHistoryController implements DataManager.DataChangeListener {
         result.ifPresent(amountStr -> {
             try {
                 double amount = Double.parseDouble(amountStr);
-                dataManager.getDbHelper().markSaleAsPaid(item.getId(), amount);
+                dataManager.getDbHelper().markDebtAsPaid(item.getName(), amount);
+                dataManager.notifyDataChanged(); // Trigger cloud sync
                 loadData(); 
             } catch (NumberFormatException e) {
                 com.meto.inventory.utils.DialogHelper.showAlert("Invalid input. Please enter a number.");

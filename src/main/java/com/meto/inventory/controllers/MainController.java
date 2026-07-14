@@ -25,6 +25,9 @@ public class MainController {
 
     @FXML
     private javafx.scene.control.Label backupStatusLabel;
+    
+    @FXML
+    private com.meto.inventory.components.LoadingBar syncLoadingBar;
 
     @FXML
     public void initialize() throws IOException {
@@ -50,27 +53,34 @@ public class MainController {
         // Listen for Backup Status
         com.meto.inventory.services.SupabaseService.getInstance().addStatusListener(status -> {
             javafx.application.Platform.runLater(() -> {
-                if (backupStatusLabel != null) {
-                    backupStatusLabel.setText(status);
-                    if (status.contains("Synced")) {
-                        backupStatusLabel
-                                .setStyle("-fx-text-fill: #4CAF50; -fx-padding: 10 10 0 10; -fx-font-size: 11px;");
+                if (backupStatusLabel != null && syncLoadingBar != null) {
+                    if (status.contains("Syncing") || status.contains("Downloading")) {
+                        syncLoadingBar.start();
+                        backupStatusLabel.setText("Syncing...");
+                        backupStatusLabel.setStyle("-fx-text-fill: #2196F3; -fx-font-size: 11px; -fx-font-weight: normal;");
                     } else if (status.contains("Error") || status.contains("Offline")) {
-                        backupStatusLabel
-                                .setStyle("-fx-text-fill: #F44336; -fx-padding: 10 10 0 10; -fx-font-size: 11px;");
+                        syncLoadingBar.stop();
+                        backupStatusLabel.setText("Cloud: Offline");
+                        backupStatusLabel.setStyle("-fx-text-fill: #F44336; -fx-font-size: 11px; -fx-font-weight: bold;");
                     } else {
-                        backupStatusLabel
-                                .setStyle("-fx-text-fill: #2196F3; -fx-padding: 10 10 0 10; -fx-font-size: 11px;");
+                        // Success state (Synced, Integrated, or timestamp)
+                        syncLoadingBar.stop();
+                        backupStatusLabel.setText("Cloud: Connected");
+                        backupStatusLabel.setStyle("-fx-text-fill: #4CAF50; -fx-font-size: 11px; -fx-font-weight: normal;");
                     }
                 }
             });
         });
     }
 
-    private void setView(Node node, Button activeBtn) {
+    public void setView(Node node, Button activeBtn) {
         contentPane.getChildren().clear();
         contentPane.getChildren().add(node);
         updateNavStyles(activeBtn);
+    }
+    
+    public void setView(Node node) {
+        setView(node, null);
     }
 
     private void handleLogout() {

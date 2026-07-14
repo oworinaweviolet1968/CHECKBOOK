@@ -14,7 +14,19 @@ class SupasService {
   static final SupasService _instance = SupasService._privateConstructor();
   static SupasService get instance => _instance;
 
-  SupasService._privateConstructor();
+  SupasService._privateConstructor() {
+    client.auth.onAuthStateChange.listen((data) {
+      final event = data.event;
+      if (event == AuthChangeEvent.tokenRefreshed || event == AuthChangeEvent.signedIn) {
+        if (userId != null) {
+          _restartRealtime();
+        }
+      } else if (event == AuthChangeEvent.signedOut) {
+        _realtimeChannel?.unsubscribe();
+        _realtimeChannel = null;
+      }
+    });
+  }
 
   final SupabaseClient client = Supabase.instance.client;
   final ValueNotifier<SyncStatus> syncStatus = ValueNotifier(SyncStatus.idle);
@@ -37,61 +49,98 @@ class SupasService {
   bool _isSyncing = false;
 
   Future<void> syncDatabase({bool isManual = false}) async {
-    if (_isSyncing) {
-        print('SYNC: Skipping syncDatabase - another operation in progress.');
-        return;
-    }
+    if (_isSyncing) return;
     _isSyncing = true;
     try {
       if (userId == null) return;
-
       syncStatus.value = SyncStatus.syncing;
-      print('SYNC: Starting sync for user $userId');
+      print('SYNC: Starting Delta Sync for user $userId');
       
-      // 1. Get Metadata & Local Info
-      final meta = await refreshUserMetadata();
-      final cloudTs = meta?['last_backup_timestamp'] as int? ?? 0;
-      final isBackupEnabled = meta?['monthly_cloud_backup'] as bool? ?? true;
-      final backupExpiry = meta?['backup_expiry'] as int? ?? 0;
-      
-      // Check if subscription has expired (if expiry is set)
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final isBackupActive = isBackupEnabled && (backupExpiry == 0 || backupExpiry > now);
+      initializeRealtime();
 
-      if (!isBackupActive) {
-          print('SYNC: Backup disabled or subscription expired for this user.');
-          syncStatus.value = SyncStatus.offline;
-          return;
+      // 1. PUSH local changes to Postgres
+      final dirtyStock = await DatabaseHelper.instance.getDirtyStock();
+      print('SYNC: PUSHING dirty stock: ${dirtyStock.length} items');
+      if (dirtyStock.isNotEmpty) {
+          final nowIso = DateTime.now().toUtc().toIso8601String();
+          final mapped = dirtyStock.map((e) => {...e, 'user_id': userId, 'updated_at': nowIso}).toList();
+          await client.from('stock').upsert(mapped, onConflict: 'sync_id');
       }
 
-      final dbPath = await _getLocalDbPath();
-      final localHasData = await DatabaseHelper.instance.hasData();
+      final dirtySales = await DatabaseHelper.instance.getDirtySales();
+      print('SYNC: PUSHING dirty sales: ${dirtySales.length} items');
+      if (dirtySales.isNotEmpty) {
+          final nowIso = DateTime.now().toUtc().toIso8601String();
+          final mapped = dirtySales.map((e) => {...e, 'user_id': userId, 'updated_at': nowIso}).toList();
+          await client.from('sales').upsert(mapped, onConflict: 'sync_id');
+      }
 
-      // Read internal version directly from the database file
+      final deletedStock = await DatabaseHelper.instance.getDirtyDeletedStock();
+      print('SYNC: PUSHING dirty deleted stock: ${deletedStock.length} items');
+      if (deletedStock.isNotEmpty) {
+          final ids = deletedStock.map((e) => e['sync_id']).toList();
+          await client.from('stock').delete().inFilter('sync_id', ids);
+      }
+
+      final deletedHistory = await DatabaseHelper.instance.getDirtyDeletedHistory();
+      print('SYNC: PUSHING dirty deleted sales: ${deletedHistory.length} items');
+      if (deletedHistory.isNotEmpty) {
+          final ids = deletedHistory.map((e) => e['sync_id']).toList();
+          await client.from('sales').delete().inFilter('sync_id', ids);
+      }
+
+      await DatabaseHelper.instance.clearDirtyFlags();
+
+      // 2. PULL remote changes from Postgres
       final localVersionStr = await DatabaseHelper.instance.getSetting('last_backup_timestamp');
       final localVersionTs = int.tryParse(localVersionStr ?? '0') ?? 0;
+      final queryTs = localVersionTs > 300000 ? localVersionTs - 300000 : 0;
+      final isoTs = DateTime.fromMillisecondsSinceEpoch(queryTs).toUtc().toIso8601String();
+      print('SYNC: PULLING remote changes since $isoTs (original TS: $localVersionTs)');
 
-      print('SYNC: Cloud=$cloudTs, LocalVersion=$localVersionTs, LocalHasData=$localHasData');
-
-      if (cloudTs > localVersionTs) {
-          print('SYNC: Cloud is newer. Downloading...');
-          await _downloadDatabase(userId!, dbPath);
-          
-          // CRITICAL: After download, we must update the internal version to match what we just fetched
-          await DatabaseHelper.instance.reopen();
-          await DatabaseHelper.instance.saveSetting('last_backup_timestamp', cloudTs.toString());
-          _lastKnownCloudTimestamp = cloudTs;
-
-      } else {
-          print('SYNC: Cloud is up-to-date or local is newer.');
+      // Pull stock
+      var stockQuery = client.from('stock').select();
+      if (localVersionTs > 0 && !isManual) {
+          stockQuery = stockQuery.gt('updated_at', isoTs);
       }
+      final cloudStock = await stockQuery;
+      print('SYNC: PULLED remote stock: ${cloudStock.length} items');
+      // Only accept cloud available_pieces on manual/first sync to correct drift.
+      // During incremental sync, delta merge from sales handles stock adjustments.
+      bool acceptPieces = isManual || localVersionTs == 0;
+      await DatabaseHelper.instance.upsertCloudStock(cloudStock, forceAcceptPieces: acceptPieces);
+
+      // Pull sales
+      var salesQuery = client.from('sales').select();
+      if (localVersionTs > 0 && !isManual) {
+          salesQuery = salesQuery.gt('updated_at', isoTs);
+      }
+      final cloudSales = await salesQuery;
+      print('SYNC: PULLED remote sales: ${cloudSales.length} items');
+      bool isIncremental = localVersionTs > 0;
+      await DatabaseHelper.instance.upsertCloudSales(cloudSales, isIncremental);
+
+      // We do not have a deleted_stock/deleted_sales table on cloud so physical deletions are hard to pull incrementally.
+      // However, Realtime will push deletions instantly while online.
+      
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      await DatabaseHelper.instance.saveSetting('last_backup_timestamp', ts.toString());
+      await client.from('users').update({'last_backup_timestamp': ts}).eq('id', userId!);
+
+      _lastKnownCloudTimestamp = ts;
       syncStatus.value = SyncStatus.synced;
+      print('SYNC: Finished successfully!');
     } catch (e) {
       print('SYNC ERROR: $e');
       syncStatus.value = SyncStatus.error;
     } finally {
       _isSyncing = false;
     }
+  }
+
+  // Deprecated wrapper for backward compatibility
+  Future<void> uploadDatabase() async {
+      await syncDatabase();
   }
 
   Future<void> ensureUserMetadataExists(String email) async {
@@ -152,143 +201,6 @@ class SupasService {
     } catch (e) {
       print('MIGRATION ERROR: $e');
     }
-  }
-
-  Future<void> uploadDatabase() async {
-    if (userId == null) return;
-    if (_isSyncing) {
-        print('SYNC: Skipping uploadDatabase - another operation in progress.');
-        return;
-    }
-    _isSyncing = true;
-    try {
-       syncStatus.value = SyncStatus.syncing;
-       // Collision Check: Verify cloud hasn't been updated since our last sync
-       // Logic: Read the version ID (timestamp) from INSIDE the database file
-       final localVersionStr = await DatabaseHelper.instance.getSetting('last_backup_timestamp');
-       final localVersionTs = int.tryParse(localVersionStr ?? '0') ?? 0;
-
-       final meta = await refreshUserMetadata();
-       final cloudTs = meta?['last_backup_timestamp'] as int? ?? 0;
-       if (cloudTs > localVersionTs) {
-          print('SYNC: Upload blocked. Cloud is newer ($cloudTs > $localVersionTs)');
-          syncStatus.value = SyncStatus.synced; 
-          return;
-       }
-
-       if (!await DatabaseHelper.instance.hasData()) {
-          print('SYNC: Skip upload - No local data');
-          syncStatus.value = SyncStatus.synced;
-          return;
-       }
-
-       final file = File(await _getLocalDbPath());
-       if (!await file.exists()) {
-          syncStatus.value = SyncStatus.error;
-          return;
-       }
-
-        final bytes = await file.readAsBytes();
-        
-        // 1. Compress the database file
-        print('SYNC: Compressing database...');
-        final compressedBytes = GZipEncoder().encode(bytes);
-        if (compressedBytes == null) throw Exception("Compression failed");
-        
-        final cloudFileName = file.path.split(Platform.pathSeparator).last;
-        final path = '$userId/$cloudFileName.gz'; // Append .gz extension
-
-        print('SYNC: Uploading compressed database (${(compressedBytes.length / 1024).toStringAsFixed(1)} KB)...');
-        
-        // 2. Upload with 60s timeout
-        await client.storage.from('backups').uploadBinary(
-            path,
-            Uint8List.fromList(compressedBytes),
-            fileOptions: const FileOptions(upsert: true, contentType: 'application/gzip'),
-        ).timeout(const Duration(seconds: 60));
-
-        final ts = DateTime.now().millisecondsSinceEpoch;
-        await client.from('users').update({
-            'last_backup_timestamp': ts,
-        }).eq('id', userId!).timeout(const Duration(seconds: 15));
-        
-        print('SYNC: Upload complete. TS=$ts');
-        
-        // Persist version ID into the database itself
-        await DatabaseHelper.instance.saveSetting('last_backup_timestamp', ts.toString());
-        
-        _lastKnownCloudTimestamp = ts;
-        syncStatus.value = SyncStatus.synced;
-    } catch (e) {
-       print('UPLOAD ERROR: $e');
-       syncStatus.value = SyncStatus.error;
-    } finally {
-       _isSyncing = false;
-    }
-  }
-
-  Future<void> _downloadDatabase(String uid, String savePath) async {
-      try {
-          final fileName = savePath.split(Platform.pathSeparator).last;
-          Uint8List? data;
-          
-          try {
-            // Priority: Try to download the compressed version first
-            data = await client.storage.from('backups').download('$uid/$fileName.gz').timeout(const Duration(seconds: 60));
-            
-            if (data != null) {
-                print('SYNC: Decompressing database...');
-                final decompressed = GZipDecoder().decodeBytes(data);
-                data = Uint8List.fromList(decompressed);
-            }
-          } catch (e) {
-            print('SYNC: Compressed download failed or not found ($e). Falling back to legacy...');
-            try {
-                // Secondary: Try uncompressed file
-                data = await client.storage.from('backups').download('$uid/$fileName').timeout(const Duration(seconds: 60));
-            } catch (_) {
-                // Final fallback for generic name
-                data = await client.storage.from('backups').download('$uid/inventory.db').timeout(const Duration(seconds: 60));
-            }
-          }
-          
-          if (data != null) {
-            // CONFLICT MERGE: Capture local changes before download wipes the file
-            final dirtyStock = await DatabaseHelper.instance.getDirtyRecords('stock');
-            final dirtySales = await DatabaseHelper.instance.getDirtyRecords('sales');
-            final delStock = await DatabaseHelper.instance.getDeletedStock();
-            final delHistory = await DatabaseHelper.instance.getDeletedHistoryRaw();
-            
-            print('SYNC MERGE: Captured ${dirtyStock.length} stock, ${dirtySales.length} sales and ${delHistory.length} deletions.');
-
-            // CRITICAL: Close the database connection to release the file handle
-            // to avoid OS-level file locking issues during overwrite.
-            await DatabaseHelper.instance.close();
-
-            final file = File(savePath);
-            await file.writeAsBytes(data);
-            print('SYNC: Download and restoration complete to $savePath');
-
-            // Reopen the database after successful overwrite
-            await DatabaseHelper.instance.reopen();
-
-            // RE-APPLY CHANGES
-            for (var r in dirtyStock) await DatabaseHelper.instance.applyDirtyRecord('stock', r);
-            for (var r in dirtySales) await DatabaseHelper.instance.applyDirtyRecord('sales', r);
-            for (var m in delStock) await DatabaseHelper.instance.applyStockDeletion(m['item'], m['quantity']);
-            for (var m in delHistory) await DatabaseHelper.instance.applyHistoryDeletion(
-              m['customer'] as String, 
-              m['item'] as String, 
-              (m['amount'] is int) ? (m['amount'] as int).toDouble() : m['amount'] as double, 
-              m['date'] as String
-            );
-            
-            await DatabaseHelper.instance.clearDirtyFlags();
-            print('SYNC MERGE: Successfully re-applied local changes to restored cloud file.');
-          }
-      } catch (e) {
-          print('DOWNLOAD ERROR: $e');
-      }
   }
 
   Future<Map<String, dynamic>?> refreshUserMetadata() async {
@@ -400,24 +312,13 @@ class SupasService {
 
       final cloudTs = meta['last_backup_timestamp'] as int? ?? 0;
 
-      // First call: just cache the value, don't trigger a sync
-      if (_lastKnownCloudTimestamp == 0) {
-        _lastKnownCloudTimestamp = cloudTs;
-        return false;
-      }
+      final localVersionStr = await DatabaseHelper.instance.getSetting('last_backup_timestamp');
+      final localVersionTs = int.tryParse(localVersionStr ?? '0') ?? 0;
 
-      // If cloud timestamp is newer than what we last knew, another app uploaded
-      if (cloudTs > _lastKnownCloudTimestamp) {
-        print('SYNC POLL: Remote change detected! Cloud=$cloudTs, LastKnown=$_lastKnownCloudTimestamp');
-        _lastKnownCloudTimestamp = cloudTs;
-
-        // Download the newer database
-        final dbPath = await _getLocalDbPath();
-        await DatabaseHelper.instance.close();
-        await _downloadDatabase(userId!, dbPath);
-        await DatabaseHelper.instance.reopen();
-
-        syncStatus.value = SyncStatus.synced;
+      // If cloud timestamp is newer than our local database version, another app uploaded
+      if (cloudTs > localVersionTs) {
+        print('SYNC POLL: Remote change detected! Cloud=$cloudTs, Local=$localVersionTs');
+        await syncDatabase();
         return true;
       }
 
@@ -431,5 +332,42 @@ class SupasService {
   /// Call this after a successful upload to update the cached timestamp
   void updateLastKnownTimestamp(int ts) {
     _lastKnownCloudTimestamp = ts;
+  }
+
+  RealtimeChannel? _realtimeChannel;
+
+  void _restartRealtime() {
+    if (_realtimeChannel != null) {
+      client.removeChannel(_realtimeChannel!);
+      _realtimeChannel = null;
+    }
+    initializeRealtime();
+  }
+
+  void initializeRealtime() {
+    if (userId == null || _realtimeChannel != null) return;
+
+    print('REALTIME: Subscribing to Postgres changes...');
+    try {
+      _realtimeChannel = client
+          .channel('public:users')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            callback: (payload) {
+               print('REALTIME EVENT: \${payload.eventType} on \${payload.table}');
+               syncDatabase();
+            },
+          )
+          .subscribe((status, [error]) {
+             if (status == RealtimeSubscribeStatus.closed || status == RealtimeSubscribeStatus.channelError) {
+                print('REALTIME STATUS: $status, ERROR: $error');
+                _realtimeChannel = null;
+             }
+          });
+    } catch (e) {
+      print('REALTIME INIT ERROR: $e');
+      _realtimeChannel = null;
+    }
   }
 }

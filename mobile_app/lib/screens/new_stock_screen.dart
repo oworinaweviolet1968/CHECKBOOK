@@ -943,6 +943,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
 
   void _saveStock() async {
       try {
+          String receiptId = DatabaseHelper.generateUUID();
           for (var item in _items) {
                double price = double.parse(item.price);
                
@@ -959,8 +960,14 @@ class _NewStockScreenState extends State<NewStockScreen> {
                
                double amount = double.parse(item.amount);
                await DatabaseHelper.instance.addSaleWithProfit(
-                   item.supplier, item.item, item.quantity, item.unit, price, amount, "NEW STOCK"
+                   item.supplier, item.item, item.quantity, item.unit, price, amount, "NEW STOCK", receiptId: receiptId
                );
+          }
+
+          if (_items.isNotEmpty) {
+              String itemsStr = _items.map((e) => e.item).join(", ");
+              String supplier = _items.first.supplier;
+              await DatabaseHelper.instance.addNotification("Added $itemsStr from $supplier", "Mobile");
           }
 
           if (mounted) {

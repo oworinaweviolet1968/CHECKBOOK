@@ -46,6 +46,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
   ];
 
   bool _isBulkItem = false; 
+  bool _isCheckingOut = false;
   final _formatter = NumberFormat("#,###");
 
   @override
@@ -1009,6 +1010,10 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
   }
 
   void _checkout({bool shouldPrint = false}) async {
+    if (_isCheckingOut) return;
+    setState(() {
+      _isCheckingOut = true;
+    });
     if (shouldPrint) {
       // Capture data for printing before state is cleared
       final cartToPrint = List<SaleItem>.from(_cart);
@@ -1017,6 +1022,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
     }
       try {
           String customer = _customerController.text;
+          String receiptId = DatabaseHelper.generateUUID();
           for (var item in _cart) {
               double price = double.parse(item.price);
               double amount = double.parse(item.amount);
@@ -1026,11 +1032,18 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                   type = "WHOLESALE";
               }
               await DatabaseHelper.instance.addSaleWithProfit(
-                  customer, item.item, item.quantity, item.unit, price, amount, type, isDebt: item.isDebt
+                  customer, item.item, item.quantity, item.unit, price, amount, type, isDebt: item.isDebt, receiptId: receiptId
               );
               await DatabaseHelper.instance.updateStockQuantity(
                   item.item, item.quantity, item.unit
               );
+          }
+
+          // Add combined notification
+          if (_cart.isNotEmpty) {
+              String itemsStr = _cart.map((e) => e.item).join(", ");
+              String action = _cart.any((e) => e.isDebt) ? "Debt recorded" : "Sale made";
+              await DatabaseHelper.instance.addNotification("$action for $customer: $itemsStr", "Mobile");
           }
 
           // Trigger background upload
@@ -1049,6 +1062,10 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
           }
       } catch (e) {
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      } finally {
+          setState(() {
+              _isCheckingOut = false;
+          });
       }
   }
 

@@ -98,7 +98,7 @@ public class DataManager {
 
                     // Simple debounce or just run it.
                     // For better UX, we could verify hashing, but for now we upload.
-                    com.meto.inventory.services.SupabaseService.getInstance().uploadDatabase(getCurrentDbName());
+                    com.meto.inventory.services.SupabaseService.getInstance().uploadDatabase(getCurrentDbName(), true);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -130,25 +130,26 @@ public class DataManager {
                 if (service.isLoggedIn() && isBackupEnabled) {
                     boolean online = service.isOnline();
                     if (online) {
-                        if (service.isSyncFailed()) {
-                            System.out.println("AutoSync: Connection restored. Retrying upload...");
-                            
-                            // Proactively refresh session token before upload to ensure fresh credentials
-                            String savedToken = service.loadSession();
-                            if (savedToken != null) {
-                                try {
-                                    service.signInWithRefreshToken(savedToken);
-                                } catch (Exception refreshEx) {
-                                    System.err.println("AutoSync: Session refresh error during reconnection: " + refreshEx.getMessage());
+                            if (service.isSyncFailed()) {
+                                System.out.println("AutoSync: Connection restored. Retrying upload...");
+                                String savedToken = service.loadSession();
+                                if (savedToken != null) {
+                                    try { service.signInWithRefreshToken(savedToken); } 
+                                    catch (Exception ex) {}
                                 }
+                                service.uploadDatabase(getCurrentDbName(), true);
+                            } else {
+                                // Online: Poll for any new changes from mobile app
+                                boolean downloaded = service.syncOnLogin(getCurrentDbName(), true, false);
+                                if (downloaded) {
+                                    notifyDataChanged();
+                                }
+                                service.notifyStatus("Cloud: Synced");
                             }
                             
-                            service.uploadDatabase(getCurrentDbName());
+                            // Check for unread notifications
+                            checkAndDisplayNotifications();
                         } else {
-                            // Online and previous upload succeeded
-                            service.notifyStatus("Cloud: Synced");
-                        }
-                    } else {
                         // Offline
                         service.notifyStatus("Cloud: Offline");
                     }
@@ -157,6 +158,25 @@ public class DataManager {
                 // Silently ignore background sync errors to avoid UI popups
             }
         }, 10, 10, TimeUnit.SECONDS);
+    }
+
+    private void checkAndDisplayNotifications() {
+        if (dbHelper == null) return;
+        java.util.List<DatabaseHelper.NotificationItem> notifs = dbHelper.getNotifications();
+        for (DatabaseHelper.NotificationItem notif : notifs) {
+            if (!notif.isRead() && "Mobile".equals(notif.getSource())) {
+                javafx.application.Platform.runLater(() -> {
+                    org.controlsfx.control.Notifications.create()
+                        .title("Mobile App Input")
+                        .text(notif.getMessage())
+                        .position(javafx.geometry.Pos.TOP_RIGHT)
+                        .showInformation();
+                });
+                dbHelper.markNotificationAsRead(notif.getId());
+                // Notify UI to refresh Notifications view
+                notifyDataChanged(false); 
+            }
+        }
     }
 
     public interface DataChangeListener {

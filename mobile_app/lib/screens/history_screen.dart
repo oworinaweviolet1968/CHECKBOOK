@@ -40,6 +40,23 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
     _tabController = TabController(length: 4, vsync: this);
     _tabController.addListener(_handleTabSelection);
     _loadHistory();
+    SupasService.instance.syncStatus.addListener(_onSyncStatusChanged);
+  }
+
+  void _onSyncStatusChanged() {
+    if (SupasService.instance.syncStatus.value == SyncStatus.synced) {
+        if (mounted) {
+            _loadHistory(showLoading: false);
+        }
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _searchController.dispose();
+    SupasService.instance.syncStatus.removeListener(_onSyncStatusChanged);
+    super.dispose();
   }
 
   void _handleTabSelection() {
@@ -59,8 +76,8 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
     });
   }
 
-  Future<void> _loadHistory() async {
-      setState(() => _isLoading = true);
+  Future<void> _loadHistory({bool showLoading = true}) async {
+      if (showLoading) setState(() => _isLoading = true);
       // Fetch ALL filtered items from DB initially? Or just fetch everything and filter locally?
       // "ALL" fetches everything.
       final items = await DatabaseHelper.instance.getHistory("ALL");
@@ -131,12 +148,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
       }
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    _searchController.dispose();
-    super.dispose();
-  }
+
 
   bool _canDelete(String dateString) {
       try {
@@ -906,7 +918,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                                   double currentRemaining = total - alreadyPaid;
                                                   double finalRemaining = currentRemaining - entered;
                                                   
-                                                  await DatabaseHelper.instance.markSaleAsPaid(item.id!, entered);
+                                                  await DatabaseHelper.instance.markDebtAsPaid(item.customer, entered);
                                                   // Trigger background upload
                                                   SupasService.instance.uploadDatabase();
                                                   

@@ -19,11 +19,31 @@ public class ReceiptPrinterService {
     private static final byte[] ESC_LEFT = {0x1B, 0x61, 0x00};
     private static final byte[] ESC_BOLD_ON = {0x1B, 0x45, 0x01};
     private static final byte[] ESC_BOLD_OFF = {0x1B, 0x45, 0x00};
+    // GS ! n — bit 0-2: char width (0-7), bit 4-6: char height (0-7)
+    // 0x77 = 0111 0111 = width x8, height x8 (max size for CHECKBOOK header)
+    private static final byte[] GS_MAX_SIZE = {0x1D, 0x21, 0x77};
+    // 0x11 = double width + double height (for TOTAL line)
     private static final byte[] GS_DOUBLE_SIZE = {0x1D, 0x21, 0x11};
     private static final byte[] GS_NORMAL_SIZE = {0x1D, 0x21, 0x00};
     private static final byte[] LF = {0x0A};
 
+    /**
+     * Prints a long-format receipt matching the mobile app layout.
+     * Overload for printing from history (with a specific date).
+     */
+    public static void printReceipt(ObservableList<SaleItem> items, String customer, String totalAmount, String date) {
+        doPrint(items, customer, totalAmount, date);
+    }
+
+    /**
+     * Prints a long-format receipt matching the mobile app layout.
+     * Uses current date/time.
+     */
     public static void printReceipt(ObservableList<SaleItem> items, String customer, String totalAmount) {
+        doPrint(items, customer, totalAmount, null);
+    }
+
+    private static void doPrint(ObservableList<SaleItem> items, String customer, String totalAmount, String date) {
         // Try multiple keywords to find the thermal printer
         PrintService printer = findThermalPrinter();
         
@@ -48,17 +68,25 @@ public class ReceiptPrinterService {
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             java.text.DecimalFormat df = new java.text.DecimalFormat("#,###");
             
-            // 1. Initialize
+            // ═══════════════════════════════════════════
+            // 1. INITIALIZE PRINTER
+            // ═══════════════════════════════════════════
             baos.write(ESC_INIT);
             
-            // 2. Header
+            // ═══════════════════════════════════════════
+            // 2. HEADER — "CHECKBOOK APP" in maximum size
+            // ═══════════════════════════════════════════
             baos.write(ESC_CENTER);
             baos.write(ESC_BOLD_ON);
-            baos.write(GS_DOUBLE_SIZE);
-            baos.write("CHECKBOOK APP\n".getBytes());
+            baos.write(GS_MAX_SIZE);
+            baos.write("CHECKBOOK\n".getBytes());
+            baos.write("APP\n".getBytes());
             baos.write(GS_NORMAL_SIZE);
             baos.write(ESC_BOLD_OFF);
             
+            // ═══════════════════════════════════════════
+            // 3. SHOP INFO (from receipt settings)
+            // ═══════════════════════════════════════════
             var dbHelper = com.meto.inventory.DataManager.getInstance().getDbHelper();
             String shopName = dbHelper.getSetting("receipt_shop_name");
             if (shopName != null && !shopName.trim().isEmpty()) {
@@ -81,37 +109,62 @@ public class ReceiptPrinterService {
             if (phone != null && !phone.trim().isEmpty()) {
                 baos.write(("Tel: " + phone + "\n").getBytes());
             }
-            
-            if ((shopName == null || shopName.trim().isEmpty()) && (shopNum == null || shopNum.trim().isEmpty()) && (location == null || location.trim().isEmpty())) {
-                baos.write("Inventory Management\n".getBytes());
+
+            String phone2 = dbHelper.getSetting("receipt_phone2");
+            if (phone2 != null && !phone2.trim().isEmpty()) {
+                baos.write(("Tel: " + phone2 + "\n").getBytes());
             }
             
-            String formattedDate = new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date());
+            // Fallback if nothing is set
+            if ((shopName == null || shopName.trim().isEmpty()) 
+                && (shopNum == null || shopNum.trim().isEmpty()) 
+                && (location == null || location.trim().isEmpty())
+                && (phone == null || phone.trim().isEmpty())
+                && (phone2 == null || phone2.trim().isEmpty())) {
+                baos.write("Smart Inventory Management\n".getBytes());
+            }
+            
+            // ═══════════════════════════════════════════
+            // 4. HORIZONTAL RULE
+            // ═══════════════════════════════════════════
+            baos.write(ESC_LEFT);
+            baos.write("--------------------------------\n".getBytes());
+            
+            // ═══════════════════════════════════════════
+            // 5. DATE & CUSTOMER
+            // ═══════════════════════════════════════════
+            String formattedDate = (date != null && !date.trim().isEmpty()) 
+                ? date 
+                : new SimpleDateFormat("yyyy-MM-dd HH:mm").format(new Date());
             baos.write(("Date: " + formattedDate + "\n").getBytes());
             baos.write(("Customer: " + (customer.isEmpty() ? "Walk-in Customer" : customer) + "\n").getBytes());
-            baos.write("--------------------------------\n".getBytes()); // 32 chars
+            baos.write("--------------------------------\n".getBytes());
             
-            // 4. Items Table
-            baos.write("Item                   Total\n".getBytes());
-            baos.write("--------------------------------\n".getBytes()); // 32 chars
+            // ═══════════════════════════════════════════
+            // 6. ITEMS — Long format (matching mobile)
+            //    Each item: bold title line, then detail + amount line
+            // ═══════════════════════════════════════════
             for (SaleItem item : items) {
                 String name = item.getItems();
                 String size = item.getQty();
                 
+                // Build display title: "ItemName (Size)" like mobile
                 String displayTitle = name;
                 if (size != null && !size.trim().isEmpty() && !size.trim().equalsIgnoreCase("none")) {
                     displayTitle += " (" + size + ")";
                 }
                 
-                // Print the title line
+                // Print the item name in bold on its own line
+                baos.write(ESC_BOLD_ON);
                 baos.write((displayTitle + "\n").getBytes());
+                baos.write(ESC_BOLD_OFF);
                 
-                // Form the details & amount line
+                // Print the unit details and amount on the next line
                 String unit = item.getUnit(); // e.g. "3 pc"
                 long amt = parseAmount(item.getAmount());
                 String formattedAmt = df.format(amt);
                 
-                // We have 32 chars total for a standard 58mm printer line
+                // 32 chars for 58mm paper
                 String detailLine = " " + unit;
                 int remainingPadding = 32 - detailLine.length() - formattedAmt.length();
                 if (remainingPadding > 0) {
@@ -121,30 +174,37 @@ public class ReceiptPrinterService {
                 baos.write(detailLine.getBytes());
             }
             
-            // 5. Total
+            // ═══════════════════════════════════════════
+            // 7. TOTAL SECTION
+            // ═══════════════════════════════════════════
             baos.write("--------------------------------\n".getBytes());
             baos.write(ESC_BOLD_ON);
+            baos.write(GS_DOUBLE_SIZE);
             long total = parseAmount(totalAmount);
             String totalLabel = "TOTAL AMOUNT";
             String totalValStr = df.format(total);
-            String totalRow = totalLabel;
-            int totalPadding = 32 - totalLabel.length() - totalValStr.length();
-            if (totalPadding > 0) {
-                totalRow += " ".repeat(totalPadding);
-            }
-            totalRow += totalValStr + "\n";
-            baos.write(totalRow.getBytes());
+            // In double-size mode, effective chars per line halves to ~16
+            // So we print label on one line, amount on the next for clarity
+            baos.write(ESC_CENTER);
+            baos.write((totalLabel + "\n").getBytes());
+            baos.write((totalValStr + "\n").getBytes());
+            baos.write(GS_NORMAL_SIZE);
             baos.write(ESC_BOLD_OFF);
+            baos.write(ESC_LEFT);
             baos.write("--------------------------------\n".getBytes());
             
-            // 6. Footer
+            // ═══════════════════════════════════════════
+            // 8. FOOTER
+            // ═══════════════════════════════════════════
             baos.write(ESC_CENTER);
-            baos.write("\n\n".getBytes()); // Feed 2 lines
+            baos.write("\n\n".getBytes());
             baos.write("Thank you for your business!\n".getBytes());
             baos.write("Powered by METO IMS\n".getBytes());
             baos.write("\n\n\n".getBytes()); // spacing before cut
             
-            // Send to printer
+            // ═══════════════════════════════════════════
+            // 9. SEND TO PRINTER
+            // ═══════════════════════════════════════════
             byte[] bytes = baos.toByteArray();
             DocFlavor flavor = DocFlavor.BYTE_ARRAY.AUTOSENSE;
             Doc doc = new SimpleDoc(bytes, flavor, null);

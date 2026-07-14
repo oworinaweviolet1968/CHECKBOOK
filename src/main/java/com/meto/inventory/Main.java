@@ -171,8 +171,8 @@ public class Main extends Application {
                     com.meto.inventory.DataManager.getInstance().getDbHelper().connect();
                     com.meto.inventory.DataManager.getInstance().getDbHelper().initializeDatabase();
 
-                    // Notify UI after everything is ready (Silent to prevent echo upload)
-                    com.meto.inventory.DataManager.getInstance().notifyDataChanged(false);
+                    // Notify UI after everything is ready (Trigger cloud sync push for unsynced local data)
+                    com.meto.inventory.DataManager.getInstance().notifyDataChanged(true);
                 }
             } catch (Exception e) {
                 e.printStackTrace();

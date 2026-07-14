@@ -337,7 +337,7 @@ public class HistoryController implements DataManager.DataChangeListener {
                     showAlert("Please enter a valid amount.");
                     return;
                 }
-                dataManager.getDbHelper().markSaleAsPaid(item.getId(), amount);
+                dataManager.getDbHelper().markDebtAsPaid(item.getName(), amount);
                 dataManager.notifyDataChanged();
                 showAlert("Payment recorded successfully!");
             } catch (NumberFormatException e) {
@@ -370,7 +370,8 @@ public class HistoryController implements DataManager.DataChangeListener {
         com.meto.inventory.services.ReceiptPrinterService.printReceipt(
             observableItems, 
             item.getName(), 
-            String.format("%,.0f", total)
+            String.format("%,.0f", total),
+            item.getDate()
         );
         showAlert("Receipt sent to printer!");
     }

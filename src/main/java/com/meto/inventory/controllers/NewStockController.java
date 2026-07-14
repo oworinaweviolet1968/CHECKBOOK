@@ -394,10 +394,8 @@ public class NewStockController implements DataManager.DataChangeListener {
 
                 if (costPerPiece > 0) {
                     double multiplier = dataManager.getDbHelper().getUnitMultiplier(newVal, size, newVal);
-                    double count = extractNumericValue(newVal);
-
-                    double totalAmount = count * multiplier * costPerPiece;
-                    priceField.setText(String.format("%.2f", totalAmount));
+                    double unitPrice = multiplier * costPerPiece;
+                    priceField.setText(String.format("%.2f", unitPrice));
 
                     // Lock it for auto-calculated prices
                     priceField.setEditable(false);
@@ -796,13 +794,16 @@ public class NewStockController implements DataManager.DataChangeListener {
             } catch (Exception e) {}
             
             dataManager.getDbHelper().addSaleWithProfit(supplier, item, qty, unit, price, totalAmount, "NEW STOCK", false, null);
+            com.meto.inventory.services.NotificationService.getInstance().sendDesktopActionNotification("INventory Updated", unit + " have been added to " + item + " of " + qty + ". Tap to see whats new");
             
             // Item successfully processed, remove it from the list
             iterator.remove();
         }
+        supplier = supplierNameComboBox.getEditor().getText().trim();
 
         if (items.isEmpty()) {
             showAlert("Stock saved successfully!");
+            dataManager.getDbHelper().addNotification("Added stock from " + supplier, "Desktop");
             supplierNameComboBox.getEditor().clear();
             supplierNameComboBox.setValue(null);
         } else {

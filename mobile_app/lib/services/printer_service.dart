@@ -59,6 +59,7 @@ class PrinterService {
     final shopNum = await DatabaseHelper.instance.getSetting("receipt_shop_number") ?? "";
     final location = await DatabaseHelper.instance.getSetting("receipt_location") ?? "";
     final phone = await DatabaseHelper.instance.getSetting("receipt_phone") ?? "";
+    final phone2 = await DatabaseHelper.instance.getSetting("receipt_phone2") ?? "";
 
     if (shopName.trim().isNotEmpty) {
       bytes += generator.text(shopName.toUpperCase(), styles: const PosStyles(align: PosAlign.center, bold: true));
@@ -71,7 +72,11 @@ class PrinterService {
     }
     if (phone.trim().isNotEmpty) {
       bytes += generator.text("Tel: $phone", styles: const PosStyles(align: PosAlign.center));
-    } else if (shopName.trim().isEmpty && shopNum.trim().isEmpty && location.trim().isEmpty) {
+    }
+    if (phone2.trim().isNotEmpty) {
+      bytes += generator.text("Tel: $phone2", styles: const PosStyles(align: PosAlign.center));
+    }
+    if (phone.trim().isEmpty && phone2.trim().isEmpty && shopName.trim().isEmpty && shopNum.trim().isEmpty && location.trim().isEmpty) {
       bytes += generator.text("Smart Inventory Management", styles: const PosStyles(align: PosAlign.center));
     }
     bytes += generator.hr();

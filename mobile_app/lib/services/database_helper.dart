@@ -1,13 +1,50 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/history_item.dart';
 import '../models/sale_item.dart';
+import '../main.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
+
+  static String generateUUID() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0F) | 0x40;
+    bytes[8] = (bytes[8] & 0x3F) | 0x80;
+    
+    final charCodes = <int>[];
+    for (int i = 0; i < 16; i++) {
+      if (i == 4 || i == 6 || i == 8 || i == 10) {
+        charCodes.add(45); // '-'
+      }
+      final byte = bytes[i];
+      charCodes.add(_hexDigit(byte >> 4));
+      charCodes.add(_hexDigit(byte & 0x0F));
+    }
+    return String.fromCharCodes(charCodes);
+  }
+
+  static int _hexDigit(int value) => value < 10 ? 48 + value : 97 + value - 10;
+
+  static int _getSecondsDifference(String? t1, String? t2) {
+    if (t1 == null || t2 == null) return 9999;
+    try {
+      final cleanT1 = t1.replaceAll('Z', '').replaceAll(' ', 'T');
+      final cleanT2 = t2.replaceAll('Z', '').replaceAll(' ', 'T');
+      if (cleanT1.length >= 19 && cleanT2.length >= 19) {
+        final dt1 = DateTime.parse(cleanT1.substring(0, 19));
+        final dt2 = DateTime.parse(cleanT2.substring(0, 19));
+        return (dt1.difference(dt2)).inSeconds.abs();
+      }
+    } catch (_) {}
+    return 9999;
+  }
 
   DatabaseHelper._init();
 
@@ -72,11 +109,11 @@ class DatabaseHelper {
     final db = await instance.database;
     final String sql;
     if (filter == "DEBTS") {
-      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(paid_amount) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales WHERE is_debt = 1 AND is_paid = 0 GROUP BY COALESCE(receipt_id, created_at || customer) ORDER BY date DESC, created_at DESC";
+      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount || ' (' || date || ')', '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, MAX(date) as date, is_debt, is_paid, is_edited, device_source FROM sales WHERE is_debt = 1 AND is_paid = 0 AND customer != 'Walk-in Customer' GROUP BY customer ORDER BY MAX(date) DESC, MAX(REPLACE(created_at, 'T', ' ')) DESC";
     } else if (filter != "ALL") {
-      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(paid_amount) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales WHERE type = ? GROUP BY COALESCE(receipt_id, created_at || customer) ORDER BY date DESC, created_at DESC";
+      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales WHERE type = ? GROUP BY COALESCE(NULLIF(receipt_id, ''), CASE WHEN (created_at IS NOT NULL AND created_at != '') THEN (created_at || customer) ELSE id END) ORDER BY date DESC, REPLACE(created_at, 'T', ' ') DESC";
     } else {
-      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(paid_amount) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales GROUP BY COALESCE(receipt_id, created_at || customer) ORDER BY date DESC, created_at DESC";
+      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales GROUP BY COALESCE(NULLIF(receipt_id, ''), CASE WHEN (created_at IS NOT NULL AND created_at != '') THEN (created_at || customer) ELSE id END) ORDER BY date DESC, REPLACE(created_at, 'T', ' ') DESC";
     }
 
     final List<Map<String, dynamic>> result = await db.rawQuery(
@@ -106,11 +143,83 @@ class DatabaseHelper {
     }).toList().cast<HistoryItem>();
   }
 
+  Future<List<HistoryItem>> getSettledDebts() async {
+    final db = await instance.database;
+    final String sql = '''
+      SELECT 
+          MIN(s.id) as id, 
+          s.customer, 
+          GROUP_CONCAT(s.quantity || ' ' || s.unit || ' ' || s.item || ' @ ' || s.price || ' = ' || s.amount, '\\n') as item, 
+          s.type, 
+          SUM(s.amount) as amount, 
+          SUM(COALESCE(s.paid_amount, 0)) as paid_amount, 
+          SUM(s.amount - (s.cost_price * s.base_quantity)) as profit, 
+          s.date, 
+          s.is_debt, 
+          s.is_paid, 
+          s.is_edited, 
+          s.device_source,
+          MAX(COALESCE(dp.created_at, s.created_at)) as last_paid_at
+      FROM sales s
+      LEFT JOIN debt_payments dp ON s.id = dp.sale_id
+      WHERE s.is_debt = 1 AND s.is_paid = 1 AND s.customer != 'Walk-in Customer'
+      GROUP BY COALESCE(NULLIF(s.receipt_id, ''), CASE WHEN (s.created_at IS NOT NULL AND s.created_at != '') THEN (s.created_at || s.customer) ELSE s.id END)
+      ORDER BY last_paid_at DESC
+    ''';
+
+    final List<Map<String, dynamic>> result = await db.rawQuery(sql);
+
+    return result.map((rs) {
+      double amount = (rs['amount'] as num).toDouble();
+      double profitVal = (rs['profit'] as num).toDouble();
+
+      return HistoryItem(
+        id: rs['id'] as int,
+        customer: rs['customer'] as String,
+        item: rs['item'] as String,
+        type: rs['type'] as String,
+        quantity: "-",
+        unit: "-",
+        price: "-",
+        amount: amount.toStringAsFixed(0),
+        paidAmount: (rs['paid_amount'] as num? ?? 0).toStringAsFixed(0),
+        profit: profitVal.toStringAsFixed(0),
+        date: rs['date'] as String,
+        isDebt: (rs['is_debt'] as int? ?? 0) == 1,
+        isPaid: (rs['is_paid'] as int? ?? 0) == 1,
+        isEdited: (rs['is_edited'] as int? ?? 0) == 1,
+        deviceSource: rs['device_source'] as String? ?? "System",
+      );
+    }).toList().cast<HistoryItem>();
+  }
+
+  Future<int> getDebtorCount() async {
+    final db = await instance.database;
+    final result = await db.rawQuery(
+      "SELECT COUNT(DISTINCT customer) as count FROM sales WHERE is_debt = 1 AND is_paid = 0 AND customer != 'Walk-in Customer'"
+    );
+    if (result.isNotEmpty) {
+      return result.first['count'] as int? ?? 0;
+    }
+    return 0;
+  }
+
+  Future<double> getTotalOutstandingDebt() async {
+    final db = await instance.database;
+    final result = await db.rawQuery(
+      "SELECT SUM(amount - COALESCE(paid_amount, 0)) as total FROM sales WHERE is_debt = 1 AND is_paid = 0 AND customer != 'Walk-in Customer'"
+    );
+    if (result.isNotEmpty && result.first['total'] != null) {
+      return (result.first['total'] as num).toDouble();
+    }
+    return 0.0;
+  }
+
   Future<List<HistoryItem>> getTodaysSales() async {
     final db = await instance.database;
     final today = DateTime.now().toIso8601String().split('T')[0];
     
-    final String sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(paid_amount) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales WHERE date = ? AND type != 'NEW STOCK' GROUP BY COALESCE(receipt_id, created_at || customer) ORDER BY created_at DESC";
+    final String sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales WHERE date = ? AND type != 'NEW STOCK' GROUP BY COALESCE(NULLIF(receipt_id, ''), CASE WHEN (created_at IS NOT NULL AND created_at != '') THEN (created_at || customer) ELSE id END) ORDER BY REPLACE(created_at, 'T', ' ') DESC";
 
     final List<Map<String, dynamic>> result = await db.rawQuery(sql, [today]);
 
@@ -198,29 +307,6 @@ class DatabaseHelper {
             )
           ''');
 
-          // Migration Helper (Clean)
-          Future<void> addCol(String tbl, String col, String type) async {
-              var columns = await db.rawQuery("PRAGMA table_info($tbl)");
-              bool exists = columns.any((c) => c['name'] == col);
-              if (!exists) {
-                  await db.execute("ALTER TABLE $tbl ADD COLUMN $col $type");
-              }
-          }
-          
-          await addCol("sales", "is_debt", "INTEGER DEFAULT 0");
-          await addCol("sales", "is_paid", "INTEGER DEFAULT 0");
-          await addCol("sales", "paid_amount", "REAL DEFAULT 0");
-          await addCol("sales", "is_edited", "INTEGER DEFAULT 0");
-          await addCol("stock", "is_edited", "INTEGER DEFAULT 0");
-          await addCol("sales", "device_source", "TEXT DEFAULT 'Desktop'");
-          await addCol("stock", "device_source", "TEXT DEFAULT 'Desktop'");
-          await addCol("deleted_history", "is_debt", "INTEGER DEFAULT 0");
-          await addCol("deleted_history", "is_paid", "INTEGER DEFAULT 0");
-          await addCol("deleted_history", "paid_amount", "REAL DEFAULT 0");
-          await addCol("deleted_history", "is_edited", "INTEGER DEFAULT 0");
-          await addCol("sales", "receipt_id", "TEXT");
-          await addCol("deleted_history", "device_source", "TEXT DEFAULT 'Desktop'");
-
           // Create deleted_history table if it doesn't exist
           await db.execute('''
             CREATE TABLE IF NOT EXISTS deleted_history (
@@ -252,6 +338,197 @@ class DatabaseHelper {
               deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
           ''');
+
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS debt_payments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sale_id INTEGER NOT NULL,
+                amount_paid REAL NOT NULL,
+                payment_date TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                sync_id TEXT,
+                FOREIGN KEY (sale_id) REFERENCES sales(id)
+            )
+          ''');
+
+          // Migration Helper (Clean)
+          Future<void> addCol(String tbl, String col, String type) async {
+              var columns = await db.rawQuery("PRAGMA table_info($tbl)");
+              bool exists = columns.any((c) => c['name'] == col);
+              if (!exists) {
+                  await db.execute("ALTER TABLE $tbl ADD COLUMN $col $type");
+              }
+          }
+          
+          await addCol("sales", "is_debt", "INTEGER DEFAULT 0");
+          await addCol("sales", "is_paid", "INTEGER DEFAULT 0");
+          await addCol("sales", "paid_amount", "REAL DEFAULT 0");
+          await addCol("sales", "is_edited", "INTEGER DEFAULT 0");
+          await addCol("stock", "is_edited", "INTEGER DEFAULT 0");
+          await addCol("sales", "device_source", "TEXT DEFAULT 'Desktop'");
+          await addCol("stock", "device_source", "TEXT DEFAULT 'Desktop'");
+          await addCol("deleted_history", "is_debt", "INTEGER DEFAULT 0");
+          await addCol("deleted_history", "is_paid", "INTEGER DEFAULT 0");
+          await addCol("deleted_history", "paid_amount", "REAL DEFAULT 0");
+          await addCol("deleted_history", "is_edited", "INTEGER DEFAULT 0");
+          await addCol("sales", "receipt_id", "TEXT");
+          await addCol("deleted_history", "device_source", "TEXT DEFAULT 'Desktop'");
+          
+          // Postgres Sync Migration
+          await addCol("stock", "sync_id", "TEXT");
+          await addCol("sales", "sync_id", "TEXT");
+          await addCol("deleted_history", "sync_id", "TEXT");
+          await addCol("deleted_stock", "sync_id", "TEXT");
+          await addCol("debt_payments", "sync_id", "TEXT");
+          await addCol("notifications", "sync_id", "TEXT");
+          
+          // Backfill sync_id if null using standard dashed UUIDs
+          final uuidGenSql = "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))";
+          await db.execute("UPDATE stock SET sync_id = $uuidGenSql WHERE sync_id IS NULL");
+          await db.execute("UPDATE sales SET sync_id = $uuidGenSql WHERE sync_id IS NULL");
+          await db.execute("UPDATE deleted_history SET sync_id = $uuidGenSql WHERE sync_id IS NULL");
+          await db.execute("UPDATE deleted_stock SET sync_id = $uuidGenSql WHERE sync_id IS NULL");
+
+          // Normalize any existing 32-character hex sync_ids to standard 36-character dashed UUIDs
+          final tables = ["stock", "sales", "deleted_history", "deleted_stock", "notifications", "debt_payments"];
+          for (var t in tables) {
+            try {
+              await db.execute("UPDATE $t SET sync_id = substr(sync_id, 1, 8) || '-' || substr(sync_id, 9, 4) || '-' || substr(sync_id, 13, 4) || '-' || substr(sync_id, 17, 4) || '-' || substr(sync_id, 21, 12) WHERE length(sync_id) = 32");
+            } catch (e) {
+              print("Failed to normalize sync_id on table $t: $e");
+              try {
+                // If update failed due to UNIQUE constraint, delete the undashed duplicate (length 32)
+                // whose normalized version already exists in the table as a 36-character dashed UUID.
+                await db.execute('''
+                  DELETE FROM $t 
+                  WHERE length(sync_id) = 32 
+                    AND (substr(sync_id, 1, 8) || '-' || substr(sync_id, 9, 4) || '-' || substr(sync_id, 13, 4) || '-' || substr(sync_id, 17, 4) || '-' || substr(sync_id, 21, 12)) 
+                        IN (SELECT sync_id FROM $t WHERE length(sync_id) = 36)
+                ''');
+                // Retry the update
+                await db.execute("UPDATE $t SET sync_id = substr(sync_id, 1, 8) || '-' || substr(sync_id, 9, 4) || '-' || substr(sync_id, 13, 4) || '-' || substr(sync_id, 17, 4) || '-' || substr(sync_id, 21, 12) WHERE length(sync_id) = 32");
+              } catch (innerErr) {
+                print("Failed to resolve unique constraint conflict on table $t: $innerErr");
+              }
+            }
+          }
+
+          // Normalize is_debt and is_paid to strict 0 and 1 integers
+          await db.execute("UPDATE sales SET is_debt = CASE WHEN is_debt = 'true' OR is_debt = 1 THEN 1 ELSE 0 END, is_paid = CASE WHEN is_paid = 'true' OR is_paid = 1 THEN 1 ELSE 0 END");
+          await db.execute("UPDATE deleted_history SET is_debt = CASE WHEN is_debt = 'true' OR is_debt = 1 THEN 1 ELSE 0 END, is_paid = CASE WHEN is_paid = 'true' OR is_paid = 1 THEN 1 ELSE 0 END");
+
+
+          // --- ENFORCE UNIQUE INDEXES FOR DELTA SYNC ---
+          try {
+            // One-time cleanup for zombie duplicates from previous sync bugs
+            final hasReset = await db.rawQuery("SELECT value FROM settings WHERE key = 'has_reset_zombies_v3'");
+            if (hasReset.isEmpty) {
+                await db.execute("DELETE FROM sales WHERE is_edited = 0");
+                await db.execute("DELETE FROM stock WHERE is_edited = 0");
+                await db.execute("UPDATE settings SET value = '0' WHERE key = 'last_backup_timestamp'");
+                await db.execute("INSERT INTO settings (key, value) VALUES ('has_reset_zombies_v3', '1')");
+                print("ZOMBIE CLEANUP: Wiped corrupt local cloud data and reset sync cursor.");
+            }
+
+            // One-time migration to re-sync all sales to restore any missing records deleted by buggy deduplication
+            try {
+              final hasReSynced = await db.rawQuery("SELECT value FROM settings WHERE key = 'has_re_synced_missing_sales_v3'");
+              if (hasReSynced.isEmpty) {
+                await db.execute("UPDATE sales SET is_edited = 1");
+                await db.execute("DELETE FROM deleted_history"); // Clear all stale deletion logs!
+                await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('last_backup_timestamp', '0')"); // force sync cursor reset
+                await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('has_re_synced_missing_sales_v3', '1')");
+                print("RE-SYNC MIGRATION: Marked all sales as edited and reset sync cursor.");
+              }
+            } catch (e) {
+              print("Failed to run re-sync migration: $e");
+            }
+
+            await db.execute("DELETE FROM stock WHERE id NOT IN (SELECT MAX(id) FROM stock GROUP BY item, quantity)");
+            await db.execute("DELETE FROM sales WHERE id NOT IN (SELECT MAX(id) FROM sales GROUP BY created_at, customer, item, amount, date)");
+            
+            await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_item_qty ON stock(item, quantity)");
+            await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_sync_id ON stock(sync_id)");
+            await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_sales_sync_id ON sales(sync_id)");
+
+            await db.execute("UPDATE sales SET receipt_id = NULL, is_edited = 1 WHERE receipt_id = '' OR receipt_id = 'null'");
+
+            // Reconcile/cleanup legacy sales that lack a receipt_id but were created around the same time for the same customer
+            try {
+              final legacySales = await db.rawQuery(
+                "SELECT id, customer, date, created_at FROM sales WHERE (receipt_id IS NULL OR receipt_id = '') AND customer != 'Walk-in Customer' ORDER BY customer, created_at"
+              );
+              
+              int i = 0;
+              while (i < legacySales.length) {
+                final base = legacySales[i];
+                final baseId = base['id'] as int;
+                final baseCustomer = base['customer'] as String;
+                final baseCreatedAt = base['created_at'] as String?;
+                
+                final List<int> idsToGroup = [baseId];
+                
+                int j = i + 1;
+                while (j < legacySales.length) {
+                  final next = legacySales[j];
+                  final nextId = next['id'] as int;
+                  final nextCustomer = next['customer'] as String;
+                  final nextCreatedAt = next['created_at'] as String?;
+                  
+                  if (baseCustomer == nextCustomer) {
+                    final diffSeconds = _getSecondsDifference(baseCreatedAt, nextCreatedAt);
+                    if (diffSeconds >= 0 && diffSeconds <= 30) {
+                      idsToGroup.add(nextId);
+                      j++;
+                    } else {
+                      break;
+                    }
+                  } else {
+                    break;
+                  }
+                }
+                
+                if (idsToGroup.length > 1) {
+                  final newReceiptId = DatabaseHelper.generateUUID();
+                  final idsCsv = idsToGroup.join(",");
+                  await db.rawUpdate(
+                    "UPDATE sales SET receipt_id = ?, is_edited = 1 WHERE id IN ($idsCsv)",
+                    [newReceiptId]
+                  );
+                  print("DEBUG: Consolidated legacy sales: $idsToGroup under receipt_id: $newReceiptId");
+                }
+                i = j;
+              }
+            } catch (e) {
+              print("Failed to clean up legacy sales: $e");
+            }
+
+            // Deduplicate zombie duplicate sales entries (e.g. from checkout double-taps)
+            try {
+              final duplicateSales = await db.rawQuery('''
+                SELECT id, sync_id, customer 
+                FROM sales 
+                WHERE sync_id IS NOT NULL AND id NOT IN (
+                  SELECT MIN(id) 
+                  FROM sales 
+                  GROUP BY sync_id
+                )
+              ''');
+              
+              for (var row in duplicateSales) {
+                final dupId = row['id'] as int;
+                final dupSyncId = row['sync_id'] as String?;
+                final dupCustomer = row['customer'] as String? ?? '';
+                
+                await db.rawDelete('DELETE FROM sales WHERE id = ?', [dupId]);
+                print("DEDUPLICATE CLEANUP: Deleted duplicate sale ID: $dupId (sync_id: $dupSyncId) for customer: $dupCustomer");
+              }
+            } catch (e) {
+              print("Failed to deduplicate sales: $e");
+            }
+          } catch (e) {
+            print("Index creation failed: $e");
+          }
       }
     );
   }
@@ -278,6 +555,7 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS stock (
         id $idType,
+        sync_id TEXT,
         supplier $textType,
         item $textType,
         quantity $textType,
@@ -286,6 +564,7 @@ class DatabaseHelper {
         available_pieces $realDefault0,
         is_edited INTEGER DEFAULT 0,
         date $dateType,
+        device_source TEXT DEFAULT 'Mobile',
         created_at $dateTimeDefault
       )
     ''');
@@ -294,6 +573,7 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS sales (
         id $idType,
+        sync_id TEXT,
         customer $textType,
         item $textType,
         quantity $textType,
@@ -308,6 +588,8 @@ class DatabaseHelper {
         is_paid INTEGER DEFAULT 0,
         paid_amount $realDefault0,
         is_edited INTEGER DEFAULT 0,
+        device_source TEXT DEFAULT 'Mobile',
+        receipt_id TEXT,
         created_at $dateTimeDefault
       )
     ''');
@@ -350,6 +632,30 @@ class DatabaseHelper {
         deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     ''');
+
+    // Notifications Table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message TEXT,
+        source TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        is_read INTEGER DEFAULT 0
+      )
+    ''');
+
+    // Debt Payments Table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS debt_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sale_id INTEGER NOT NULL,
+        amount_paid REAL NOT NULL,
+        payment_date TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        sync_id TEXT,
+        FOREIGN KEY (sale_id) REFERENCES sales(id)
+      )
+    ''');
   }
 
   Future<void> clearAllData() async {
@@ -386,43 +692,50 @@ class DatabaseHelper {
 
   // Dashboard: Today's Profit
   Future<Map<String, double>> getTodaysStats() async {
-     final db = await instance.database;
-     final today = DateTime.now().toIso8601String().split('T')[0]; // YYYY-MM-DD
-     
-     // Profit = amount - (cost_price * base_quantity)
-     // Filter: date = today AND type != 'NEW STOCK'
-     final result = await db.rawQuery('''
-       SELECT 
-         SUM(CASE WHEN is_debt = 0 THEN amount ELSE 0 END) as total_sales,
-         SUM(CASE WHEN is_debt = 1 THEN amount ELSE 0 END) as total_debt,
-         SUM(amount - (cost_price * base_quantity)) as total_profit
-       FROM sales 
-       WHERE date = ? AND type != 'NEW STOCK'
-     ''', [today]);
-     
-     if (result.isNotEmpty) {
-       return {
-         'sales': (result.first['total_sales'] as num?)?.toDouble() ?? 0.0,
-         'debt': (result.first['total_debt'] as num?)?.toDouble() ?? 0.0,
-         'profit': (result.first['total_profit'] as num?)?.toDouble() ?? 0.0,
-       };
+     try {
+       final db = await instance.database;
+       final today = DateTime.now().toIso8601String().split('T')[0]; // YYYY-MM-DD
+       
+       // Profit = amount - (cost_price * base_quantity)
+       // Filter: date = today AND type != 'NEW STOCK'
+       final result = await db.rawQuery('''
+         SELECT 
+           SUM(CASE WHEN is_debt = 0 THEN amount ELSE 0 END) as total_sales,
+           SUM(CASE WHEN is_debt = 1 THEN amount ELSE 0 END) as total_debt,
+           SUM(amount - (cost_price * base_quantity)) as total_profit
+         FROM sales 
+         WHERE date = ? AND type != 'NEW STOCK'
+       ''', [today]);
+       
+       if (result.isNotEmpty) {
+         return {
+           'sales': (result.first['total_sales'] as num?)?.toDouble() ?? 0.0,
+           'debt': (result.first['total_debt'] as num?)?.toDouble() ?? 0.0,
+           'profit': (result.first['total_profit'] as num?)?.toDouble() ?? 0.0,
+         };
+       }
+     } catch (e) {
+       print("Error fetching todays stats: $e");
      }
      return {'sales': 0.0, 'debt': 0.0, 'profit': 0.0};
   }
 
-  // Dashboard: Yesterday's Profit (for % calc)
   Future<double> getYesterdaysProfit() async {
-     final db = await instance.database;
-     final yesterday = DateTime.now().subtract(const Duration(days: 1)).toIso8601String().split('T')[0];
-     
-     final result = await db.rawQuery('''
-       SELECT SUM(amount - (cost_price * base_quantity)) as total_profit
-       FROM sales 
-       WHERE date = ? AND type != 'NEW STOCK'
-     ''', [yesterday]);
-     
-     if (result.isNotEmpty && result.first['total_profit'] != null) {
-       return (result.first['total_profit'] as num).toDouble();
+     try {
+       final db = await instance.database;
+       final yesterday = DateTime.now().subtract(const Duration(days: 1)).toIso8601String().split('T')[0];
+       
+       final result = await db.rawQuery('''
+         SELECT SUM(amount - (cost_price * base_quantity)) as total_profit
+         FROM sales 
+         WHERE date = ? AND type != 'NEW STOCK'
+       ''', [yesterday]);
+       
+       if (result.isNotEmpty && result.first['total_profit'] != null) {
+         return (result.first['total_profit'] as num).toDouble();
+       }
+     } catch (e) {
+       print("Error fetching yesterday's profit: $e");
      }
      return 0.0;
   }
@@ -488,7 +801,7 @@ class DatabaseHelper {
   // Dashboard: Total Unsettled Debt
   Future<double> getTotalDebt() async {
     final db = await instance.database;
-    final result = await db.rawQuery('SELECT SUM(amount - paid_amount) as total FROM sales WHERE is_debt = 1 AND is_paid = 0');
+    final result = await db.rawQuery('SELECT SUM(amount - COALESCE(paid_amount, 0)) as total FROM sales WHERE is_debt = 1 AND is_paid = 0 AND customer != \'Walk-in Customer\'');
     if (result.isNotEmpty && result.first['total'] != null) {
       return (result.first['total'] as num).toDouble();
     }
@@ -508,7 +821,7 @@ class DatabaseHelper {
     final db = await instance.database;
     final today = DateTime.now().toIso8601String().split('T')[0];
     return await db.rawQuery(
-      "SELECT * FROM sales WHERE date = ? AND type != 'NEW STOCK' ORDER BY created_at DESC", 
+      "SELECT * FROM sales WHERE date = ? AND type != 'NEW STOCK' ORDER BY REPLACE(created_at, 'T', ' ') DESC", 
       [today]
     );
   }
@@ -529,10 +842,41 @@ class DatabaseHelper {
 
   Future<void> updateItemPrice(int id, double newPrice) async {
     final db = await instance.database;
-    await db.rawUpdate(
-      'UPDATE stock SET price = ?, is_edited = 1 WHERE id = ?',
-      [newPrice, id]
+    final List<Map<String, dynamic>> result = await db.query(
+      'stock',
+      columns: ['item', 'quantity', 'price', 'unit'],
+      where: 'id = ?',
+      whereArgs: [id],
     );
+
+    if (result.isNotEmpty) {
+      final item = result.first;
+      final String itemName = item['item'] as String? ?? 'Unknown';
+      final String size = item['quantity'] as String? ?? '';
+      final double oldPiecePrice = (item['price'] as num? ?? 0.0).toDouble();
+      final String unit = item['unit'] as String? ?? 'pcs';
+      final double multiplier = getUnitMultiplier(unit, size, unit);
+      
+      final double oldUnitPrice = oldPiecePrice * multiplier;
+      final double newUnitPrice = newPrice * multiplier;
+
+      await db.rawUpdate(
+        'UPDATE stock SET price = ?, is_edited = 1 WHERE id = ?',
+        [newPrice, id]
+      );
+
+      if (oldPiecePrice != newPrice) {
+        await addNotification(
+          "Price updated for $itemName ($size): UGX ${oldUnitPrice.toStringAsFixed(0)} ➔ UGX ${newUnitPrice.toStringAsFixed(0)} per $unit",
+          "Mobile"
+        );
+      }
+    } else {
+      await db.rawUpdate(
+        'UPDATE stock SET price = ?, is_edited = 1 WHERE id = ?',
+        [newPrice, id]
+      );
+    }
   }
 
   Future<bool> mergeStock(String itemName, String size, String newUnit, double newPrice, String supplier, {bool forceSave = false}) async {
@@ -592,10 +936,10 @@ class DatabaseHelper {
     
     // Price per single piece (base unit)
     double pricePerSinglePiece = p / (multiplier > 0 ? multiplier : 1); 
-
+    String syncId = generateUUID();
     await db.rawInsert(
-      "INSERT INTO stock(supplier, item, quantity, unit, price, available_pieces, date, is_edited, device_source) VALUES(?, ?, ?, ?, ?, ?, ?, 1, 'Mobile')",
-      [s, i, q, cleanUnitLabel(u), pricePerSinglePiece, totalPieces, d]
+      "INSERT INTO stock(sync_id, supplier, item, quantity, unit, price, available_pieces, date, is_edited, device_source) VALUES(?, ?, ?, ?, ?, ?, ?, ?, 1, 'Mobile')",
+      [syncId, s, i, q, cleanUnitLabel(u), pricePerSinglePiece, totalPieces, d]
     );
   }
 
@@ -747,10 +1091,11 @@ class DatabaseHelper {
            baseQty = baseQty / sizeVal;
       }
 
+      String syncId = generateUUID();
       await db.rawInsert(
-          "INSERT INTO sales(customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited, device_source, receipt_id, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'Mobile', ?, ?)",
+          "INSERT INTO sales(sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited, device_source, receipt_id, created_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'Mobile', ?, ?)",
           [
-              customer, item, size, unit, sellingPrice, 
+              syncId, customer, item, size, unit, sellingPrice, 
               costPrice, baseQty, totalAmount, type, 
               DateTime.now().toIso8601String().split('T')[0],
               isDebt ? 1 : 0, isDebt ? 0 : 1, isDebt ? 0 : totalAmount,
@@ -771,11 +1116,51 @@ class DatabaseHelper {
           double updatedPaid = currentPaid + newPayment;
           
           if (updatedPaid >= totalAmount) {
-              await db.rawUpdate('UPDATE sales SET paid_amount = amount, is_paid = 1 WHERE id = ?', [id]);
+              await db.rawUpdate('UPDATE sales SET paid_amount = amount, is_paid = 1, is_edited = 1 WHERE id = ?', [id]);
           } else {
-              await db.rawUpdate('UPDATE sales SET paid_amount = ? WHERE id = ?', [updatedPaid, id]);
+              await db.rawUpdate('UPDATE sales SET paid_amount = ?, is_edited = 1 WHERE id = ?', [updatedPaid, id]);
           }
       }
+  }
+
+  Future<void> markDebtAsPaid(String customer, double newPayment) async {
+      final db = await instance.database;
+      
+      final result = await db.rawQuery('SELECT id, amount, paid_amount FROM sales WHERE customer = ? AND is_debt = 1 AND is_paid = 0 ORDER BY date ASC, created_at ASC', [customer]);
+      
+      double remainingPayment = newPayment;
+      
+      for (var row in result) {
+          if (remainingPayment <= 0) break;
+          
+          int id = row['id'] as int;
+          double totalAmount = (row['amount'] as num).toDouble();
+          double currentPaid = (row['paid_amount'] as num? ?? 0).toDouble();
+          double debtRemainingOnItem = totalAmount - currentPaid;
+          
+          double amountToApply = debtRemainingOnItem < remainingPayment ? debtRemainingOnItem : remainingPayment;
+          double updatedPaid = currentPaid + amountToApply;
+          remainingPayment -= amountToApply;
+          
+          // Do not set is_paid = 1 yet. Wait until the whole debt is cleared.
+          await db.rawUpdate('UPDATE sales SET paid_amount = ?, is_edited = 1 WHERE id = ?', [updatedPaid, id]);
+          
+          // Record payment locally
+          final uuidGenSql = "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))";
+          await db.rawInsert('''
+            INSERT INTO debt_payments (sale_id, amount_paid, payment_date, sync_id)
+            VALUES (?, ?, ?, ($uuidGenSql))
+          ''', [id, amountToApply, DateTime.now().toIso8601String().split('T')[0]]);
+      }
+      
+      // Check if total outstanding debt for this customer is cleared
+      final debtCheck = await db.rawQuery('SELECT SUM(amount - COALESCE(paid_amount, 0)) as total FROM sales WHERE customer = ? AND is_debt = 1 AND is_paid = 0', [customer]);
+      if (debtCheck.isNotEmpty && (debtCheck.first['total'] as num? ?? 0).toDouble() <= 0) {
+          // Entire debt cycle cleared! Mark all as paid.
+          await db.rawUpdate('UPDATE sales SET is_paid = 1, is_edited = 1 WHERE customer = ? AND is_debt = 1 AND is_paid = 0', [customer]);
+      }
+      
+      await addNotification("Payment of $newPayment received for $customer", "Mobile");
   }
 
   Future<double> getLastRecordedPrice(String item, String size) async {
@@ -807,6 +1192,7 @@ class DatabaseHelper {
 
     // 2. Insert into deleted_history
     await db.insert('deleted_history', {
+      'sync_id': item['sync_id'],
       'customer': item['customer'],
       'item': item['item'],
       'quantity': item['quantity'],
@@ -820,6 +1206,7 @@ class DatabaseHelper {
       'is_debt': item['is_debt'],
       'is_paid': item['is_paid'],
       'paid_amount': item['paid_amount'],
+      'is_edited': 1,
     });
 
     // 3. Revert stock
@@ -863,13 +1250,25 @@ class DatabaseHelper {
       // and it results in 0 pieces, we might want to remove it entirely.
       // The user requested: "unless if its new stock is deleted entirely."
       if (type == 'NEW STOCK' && newPieces <= 0) {
-          await db.insert('deleted_stock', {'item': itemName, 'quantity': size});
+          await db.insert('deleted_stock', {
+              'sync_id': stockResult.first['sync_id'],
+              'item': itemName, 
+              'quantity': size
+          });
           await db.delete('stock', where: 'id = ?', whereArgs: [stockId]);
       }
     }
 
     // 4. Delete from sales
     await db.delete('sales', where: 'id = ?', whereArgs: [id]);
+
+    // 5. Record a notification for audit trail
+    String customer = item['customer'] as String;
+    double amount = (item['amount'] as num).toDouble();
+    String actionLabel = type == 'NEW STOCK'
+        ? 'Deleted stock entry: $itemName'
+        : 'Deleted sale for $customer: $itemName (UGX ${amount.toStringAsFixed(0)})';
+    await addNotification(actionLabel, 'Mobile');
   }
 
 
@@ -1059,7 +1458,11 @@ class DatabaseHelper {
   Future<List<String>> getRecentSuppliers() async {
       final db = await instance.database;
       final result = await db.rawQuery(
-          "SELECT DISTINCT supplier FROM stock WHERE supplier IS NOT NULL AND supplier != '' ORDER BY created_at DESC LIMIT 10"
+          "SELECT supplier FROM ("
+          "SELECT supplier, created_at FROM stock WHERE supplier IS NOT NULL AND supplier != '' "
+          "UNION ALL "
+          "SELECT customer AS supplier, created_at FROM sales WHERE type = 'NEW STOCK' AND customer IS NOT NULL AND customer != ''"
+          ") GROUP BY supplier ORDER BY MAX(created_at) DESC LIMIT 10"
       );
       return result.map((row) => row['supplier'] as String).toList();
   }
@@ -1084,15 +1487,279 @@ class DatabaseHelper {
 
   Future<String?> getSetting(String key) async {
     final db = await instance.database;
-    final maps = await db.query(
+    final result = await db.query(
       'settings',
       where: 'key = ?',
       whereArgs: [key],
     );
-    if (maps.isNotEmpty) {
-      return maps.first['value'] as String?;
+    if (result.isNotEmpty) {
+      return result.first['value'] as String?;
     }
     return null;
+  }
+
+  // --- POSTGRES SYNC HELPERS ---
+
+  Future<void> clearDirtyFlags() async {
+    final db = await instance.database;
+    await db.rawUpdate("UPDATE stock SET is_edited = 0");
+    await db.rawUpdate("UPDATE sales SET is_edited = 0");
+    await db.rawDelete("DELETE FROM deleted_stock");
+  }
+
+  Future<List<Map<String, dynamic>>> getDirtyStock() async {
+    final db = await instance.database;
+    return await db.rawQuery("SELECT sync_id, item, quantity, unit, price, available_pieces, device_source, date FROM stock WHERE is_edited = 1 AND sync_id IS NOT NULL");
+  }
+
+  Future<List<Map<String, dynamic>>> getDirtySales() async {
+    final db = await instance.database;
+    return await db.rawQuery("SELECT sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, receipt_id, device_source, created_at FROM sales WHERE is_edited = 1 AND sync_id IS NOT NULL");
+  }
+
+  Future<List<Map<String, dynamic>>> getDirtyDeletedStock() async {
+    final db = await instance.database;
+    return await db.rawQuery("SELECT sync_id, item, quantity, deleted_at FROM deleted_stock WHERE sync_id IS NOT NULL");
+  }
+
+  Future<List<Map<String, dynamic>>> getDirtyDeletedHistory() async {
+    final db = await instance.database;
+    return await db.rawQuery("SELECT sync_id, customer, item, amount, date, deleted_at FROM deleted_history WHERE sync_id IS NOT NULL");
+  }
+
+  /// Pull cloud stock into local DB.
+  /// [forceAcceptPieces] = true on manual/full sync to correct drift.
+  /// During incremental background sync, set false so delta merge handles counts.
+  Future<void> upsertCloudStock(List<dynamic> cloudStock, {bool forceAcceptPieces = false}) async {
+    if (cloudStock.isEmpty) return;
+    final db = await instance.database;
+    
+    for (var obj in cloudStock) {
+      final existing = await db.rawQuery('SELECT is_edited, price, item, quantity, unit FROM stock WHERE sync_id = ?', [obj['sync_id']]);
+      if (existing.isNotEmpty) {
+        bool localIsDirty = (existing.first['is_edited'] as int? ?? 0) == 1;
+
+        double parsePrice(dynamic v) {
+          if (v == null) return 0.0;
+          if (v is num) return v.toDouble();
+          if (v is String) return double.tryParse(v) ?? 0.0;
+          return 0.0;
+        }
+
+        final double oldPrice = parsePrice(existing.first['price']);
+        final double newPrice = parsePrice(obj['price']);
+        final String deviceSource = obj['device_source'] ?? 'Cloud';
+
+        if (oldPrice != newPrice && deviceSource != 'Mobile') {
+          final String itemName = existing.first['item'] as String? ?? obj['item'] ?? 'Unknown';
+          final String size = existing.first['quantity'] as String? ?? obj['quantity'] ?? '';
+          final String unit = existing.first['unit'] as String? ?? obj['unit'] ?? 'pcs';
+          final double multiplier = getUnitMultiplier(unit, size, unit);
+
+          final double oldUnitPrice = oldPrice * multiplier;
+          final double newUnitPrice = newPrice * multiplier;
+
+          await addNotification(
+            "Price updated for $itemName ($size): UGX ${oldUnitPrice.toStringAsFixed(0)} ➔ UGX ${newUnitPrice.toStringAsFixed(0)} per $unit",
+            deviceSource
+          );
+        }
+
+        if (!localIsDirty && forceAcceptPieces) {
+          // Manual/full sync: accept cloud available_pieces to correct any drift
+          await db.rawUpdate('''
+            UPDATE stock SET supplier=?, item=?, quantity=?, unit=?, price=?, available_pieces=?, device_source=?, date=?, is_edited=0 WHERE sync_id=?
+          ''', [
+            obj['supplier'] ?? 'Unknown',
+            obj['item'] ?? 'Unknown',
+            obj['quantity'] ?? '0',
+            obj['unit'] ?? '',
+            obj['price'] ?? 0,
+            obj['available_pieces'] ?? 0,
+            obj['device_source'] ?? 'Cloud',
+            obj['date'] ?? DateTime.now().toIso8601String().split('T')[0],
+            obj['sync_id']
+          ]);
+        } else {
+          // Incremental sync OR local is dirty: preserve local available_pieces, delta merge handles adjustments
+          await db.rawUpdate('''
+            UPDATE stock SET supplier=?, item=?, quantity=?, unit=?, price=?, device_source=?, date=? WHERE sync_id=?
+          ''', [
+            obj['supplier'] ?? 'Unknown',
+            obj['item'] ?? 'Unknown',
+            obj['quantity'] ?? '0',
+            obj['unit'] ?? '',
+            obj['price'] ?? 0,
+            obj['device_source'] ?? 'Cloud',
+            obj['date'] ?? DateTime.now().toIso8601String().split('T')[0],
+            obj['sync_id']
+          ]);
+        }
+      } else {
+        // New stock row: always accept cloud available_pieces
+        await db.rawInsert('''
+          INSERT INTO stock (sync_id, supplier, item, quantity, unit, price, available_pieces, device_source, date, is_edited) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        ''', [
+          obj['sync_id'],
+          obj['supplier'] ?? 'Unknown',
+          obj['item'] ?? 'Unknown',
+          obj['quantity'] ?? '0',
+          obj['unit'] ?? '',
+          obj['price'] ?? 0,
+          obj['available_pieces'] ?? 0,
+          obj['device_source'] ?? 'Cloud',
+          obj['date'] ?? DateTime.now().toIso8601String().split('T')[0]
+        ]);
+      }
+    }
+  }
+
+  Future<void> upsertCloudSales(List<dynamic> cloudSales, bool isIncremental) async {
+    if (cloudSales.isEmpty) return;
+    final db = await instance.database;
+    
+    for (var obj in cloudSales) {
+      final existing = await db.rawQuery('SELECT id, paid_amount FROM sales WHERE sync_id = ?', [obj['sync_id']]);
+      bool isNew = existing.isEmpty;
+      int localId = isNew ? -1 : existing.first['id'] as int;
+      double localPaidAmount = isNew ? 0.0 : double.tryParse(existing.first['paid_amount']?.toString() ?? '0') ?? 0.0;
+      
+      int isDebtVal = (obj['is_debt'] == true || obj['is_debt'] == 1 || obj['is_debt'] == 'true') ? 1 : 0;
+      int isPaidVal = (obj['is_paid'] == true || obj['is_paid'] == 1 || obj['is_paid'] == 'true') ? 1 : 0;
+      double cloudPaidAmount = double.tryParse(obj['paid_amount']?.toString() ?? '0') ?? 0.0;
+      String deviceSource = obj['device_source'] ?? 'Cloud';
+      String type = obj['type'] ?? '';
+      String item = obj['item'] ?? '';
+      double amount = double.tryParse(obj['amount']?.toString() ?? '0') ?? 0.0;
+      String customer = obj['customer'] ?? '';
+
+      String? receiptId = obj['receipt_id'];
+      if (receiptId == '' || receiptId == 'null') {
+        receiptId = null;
+      }
+
+      if (isNew) {
+        await db.rawInsert('''
+          INSERT INTO sales (sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, receipt_id, device_source, created_at, is_edited) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+        ''', [
+          obj['sync_id'],
+          customer,
+          item,
+          obj['quantity'] ?? '0',
+          obj['unit'] ?? '',
+          obj['price'] ?? 0,
+          obj['cost_price'] ?? 0,
+          obj['base_quantity'] ?? 0,
+          amount,
+          type,
+          obj['date'] ?? DateTime.now().toIso8601String().split('T')[0],
+          isDebtVal,
+          isPaidVal,
+          cloudPaidAmount,
+          receiptId,
+          deviceSource,
+          obj['created_at'] ?? DateTime.now().toIso8601String()
+        ]);
+      } else {
+        await db.rawUpdate('''
+          UPDATE sales SET customer = ?, item = ?, quantity = ?, unit = ?, price = ?, cost_price = ?, base_quantity = ?, amount = ?, type = ?, date = ?, is_debt = ?, is_paid = ?, paid_amount = ?, receipt_id = ?, device_source = ?, is_edited = 0 WHERE sync_id = ?
+        ''', [
+          customer,
+          item,
+          obj['quantity'] ?? '0',
+          obj['unit'] ?? '',
+          obj['price'] ?? 0,
+          obj['cost_price'] ?? 0,
+          obj['base_quantity'] ?? 0,
+          amount,
+          type,
+          obj['date'] ?? DateTime.now().toIso8601String().split('T')[0],
+          isDebtVal,
+          isPaidVal,
+          cloudPaidAmount,
+          receiptId,
+          deviceSource,
+          obj['sync_id']
+        ]);
+      }
+      
+      if (isNew) {
+        if (deviceSource == 'Desktop' && isIncremental) {
+          if (type == 'NEW STOCK') {
+            await addNotification("Added stock: $item", "Desktop");
+          } else {
+            await addNotification("Sale recorded for $customer: $item (UGX ${amount.toStringAsFixed(0)})", "Desktop");
+          }
+        }
+
+        if (isIncremental && item.isNotEmpty && (obj['quantity'] ?? '').isNotEmpty && (obj['unit'] ?? '').isNotEmpty) {
+          double multiplier = getUnitMultiplier(obj['unit'] ?? '', obj['quantity'] ?? '');
+          double count = extractNumericValue(obj['unit'] ?? '') * multiplier;
+          
+          if (type == 'NEW STOCK') {
+             await db.rawUpdate('''
+               UPDATE stock SET available_pieces = available_pieces + ?, supplier = ?, is_edited = 1 WHERE item = ? AND quantity = ?
+             ''', [count, customer, item, obj['quantity']]);
+          } else if (type.isNotEmpty && type != 'Debt Payment' && type != 'Payment') {
+             await db.rawUpdate('''
+               UPDATE stock SET available_pieces = available_pieces - ?, is_edited = 1 WHERE item = ? AND quantity = ?
+             ''', [count, item, obj['quantity']]);
+          }
+        }
+      } else {
+        if (cloudPaidAmount > localPaidAmount) {
+          double diff = cloudPaidAmount - localPaidAmount;
+          if (deviceSource == 'Desktop' && isIncremental) {
+            await addNotification("Payment of UGX ${diff.toStringAsFixed(0)} received for $customer", "Desktop");
+          }
+          if (localId != -1) {
+            final uuidGenSql = "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))";
+            await db.rawInsert('''
+              INSERT INTO debt_payments (sale_id, amount_paid, payment_date, sync_id)
+              VALUES (?, ?, ?, ($uuidGenSql))
+            ''', [localId, diff, DateTime.now().toIso8601String().split('T')[0]]);
+          }
+        }
+      }
+    }
+  }
+
+  Future<void> processCloudDeletions(List<dynamic> deletedStock, List<dynamic> deletedSales) async {
+    final db = await instance.database;
+
+    // Notify for each desktop-originated stock deletion
+    for (var obj in deletedStock) {
+      final syncId = obj['sync_id'];
+      final existing = await db.rawQuery('SELECT item, quantity FROM stock WHERE sync_id = ?', [syncId]);
+      if (existing.isNotEmpty) {
+        String item = existing.first['item'] as String;
+        await addNotification('Deleted stock: $item', 'Desktop');
+      }
+    }
+
+    // Notify for each desktop-originated sale deletion
+    for (var obj in deletedSales) {
+      final syncId = obj['sync_id'];
+      final existing = await db.rawQuery('SELECT customer, item, amount FROM sales WHERE sync_id = ?', [syncId]);
+      if (existing.isNotEmpty) {
+        String customer = existing.first['customer'] as String;
+        String item = existing.first['item'] as String;
+        double amount = (existing.first['amount'] as num).toDouble();
+        await addNotification('Deleted sale for $customer: $item (UGX ${amount.toStringAsFixed(0)})', 'Desktop');
+      }
+    }
+
+    // Now perform the actual deletions
+    Batch batch = db.batch();
+    for (var obj in deletedStock) {
+      batch.rawDelete("DELETE FROM stock WHERE sync_id = ?", [obj['sync_id']]);
+    }
+    for (var obj in deletedSales) {
+      batch.rawDelete("DELETE FROM sales WHERE sync_id = ?", [obj['sync_id']]);
+    }
+    await batch.commit(noResult: true);
   }
 
   // --- CONFLICT MERGING HELPERS ---
@@ -1195,13 +1862,56 @@ class DatabaseHelper {
     );
   }
 
-  Future<void> clearDirtyFlags() async {
-    final db = await instance.database;
-    await db.transaction((txn) async {
-      await txn.update('stock', {'is_edited': 0});
-      await txn.update('sales', {'is_edited': 0});
-      await txn.execute('DELETE FROM deleted_stock');
-    });
+
+
+  Future<void> showLocalNotification(String title, String body) async {
+    if (Platform.isAndroid || Platform.isIOS) {
+      try {
+        await flutterLocalNotificationsPlugin.show(
+          body.hashCode,
+          title,
+          body,
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'high_importance_channel',
+              'High Importance Notifications',
+              channelDescription: 'This channel is used for important notifications.',
+              icon: '@mipmap/ic_launcher',
+              importance: Importance.max,
+              priority: Priority.high,
+            ),
+          ),
+        );
+      } catch (e) {
+        print("Error showing local notification: $e");
+      }
+    }
+  }
+
+  Future<void> addNotification(String message, String source) async {
+      final db = await instance.database;
+      String syncId = generateUUID();
+      await db.rawInsert(
+          "INSERT INTO notifications (message, source, sync_id) VALUES (?, ?, ?)",
+          [message, source, syncId]
+      );
+      if (source == 'Desktop') {
+          await showLocalNotification("Desktop App Input", message);
+      }
+  }
+
+  Future<List<Map<String, dynamic>>> getNotifications() async {
+      try {
+          final db = await instance.database;
+          return await db.rawQuery("SELECT id, message, source, created_at, is_read FROM notifications ORDER BY created_at DESC");
+      } catch (e) {
+          print("Error fetching notifications: $e");
+          return [];
+      }
+  }
+
+  Future<void> markNotificationAsRead(int id) async {
+      final db = await instance.database;
+      await db.rawUpdate("UPDATE notifications SET is_read = 1 WHERE id = ?", [id]);
   }
 }
-

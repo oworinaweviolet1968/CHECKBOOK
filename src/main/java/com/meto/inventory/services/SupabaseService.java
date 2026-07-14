@@ -134,16 +134,42 @@ public class SupabaseService {
         if (response.statusCode() == 200 || response.statusCode() == 201) {
             // DO NOT parseAuthResponse (would overwrite Admin session)
 
-            // However, we DO want to ensure the metadata row exists immediately
-            // But we can't easily get the new User ID without parsing the response.
-            // And even if we parse it, we can't insert into public.users AS THE ADMIN for
-            // the NEW USER
-            // unless we have RLS policies allowing Admin to INSERT for others.
-            // We added "Admins can view/update all data" but not INSERT.
-            // Let's rely on the user's first login to trigger ensureUserMetadataExists
-            // OR add the INSERT policy.
+            // Parse the new user's ID and email from the response so we can insert
+            // a row into public.users immediately (admin's token is used for INSERT).
+            try {
+                com.google.gson.JsonObject newUserJson = com.google.gson.JsonParser.parseString(response.body()).getAsJsonObject();
+                String newUserId = null;
+                String newUserEmail = email;
+                if (newUserJson.has("id")) {
+                    newUserId = newUserJson.get("id").getAsString();
+                } else if (newUserJson.has("user") && !newUserJson.get("user").isJsonNull()) {
+                    com.google.gson.JsonObject userObj = newUserJson.getAsJsonObject("user");
+                    if (userObj.has("id")) newUserId = userObj.get("id").getAsString();
+                    if (userObj.has("email")) newUserEmail = userObj.get("email").getAsString();
+                }
 
-            // For now, simple return true.
+                if (newUserId != null) {
+                    com.google.gson.JsonObject row = new com.google.gson.JsonObject();
+                    row.addProperty("id", newUserId);
+                    row.addProperty("email", newUserEmail);
+                    row.addProperty("ownership_payment", false);
+                    row.addProperty("monthly_cloud_backup", true);
+
+                    HttpRequest insertReq = HttpRequest.newBuilder()
+                            .uri(URI.create(REST_URL + "/users"))
+                            .header("apikey", SUPABASE_KEY)
+                            .header("Authorization", "Bearer " + currentAccessToken)
+                            .header("Content-Type", "application/json")
+                            .header("Prefer", "resolution=ignore-duplicates")
+                            .POST(HttpRequest.BodyPublishers.ofString(row.toString()))
+                            .build();
+                    HttpResponse<String> insertRes = client.send(insertReq, HttpResponse.BodyHandlers.ofString());
+                    System.out.println("DEBUG: adminCreateUser insert status=" + insertRes.statusCode() + " body=" + insertRes.body());
+                }
+            } catch (Exception ex) {
+                System.err.println("adminCreateUser: failed to insert public.users row: " + ex.getMessage());
+            }
+
             return true;
         } else {
             // Log error but don't throw to allow GUI to show it
@@ -503,8 +529,19 @@ public class SupabaseService {
     // --- STORAGE (BACKUPS) ---
 
     public boolean uploadDatabase(String filePath) {
-        if (!syncLock.tryLock()) {
-            System.out.println("SYNC: Upload skipped - another sync operation is in progress.");
+        return uploadDatabase(filePath, false);
+    }
+
+    public boolean uploadDatabase(String filePath, boolean isSilent) {
+        try {
+            if (!syncLock.tryLock(5, java.util.concurrent.TimeUnit.SECONDS)) {
+                System.out.println("SYNC: Upload skipped - lock timeout.");
+                lastSyncFailed = true; // FORCE RETRY
+                return false;
+            }
+        } catch (InterruptedException e) {
+            System.out.println("SYNC: Upload interrupted while waiting for lock.");
+            lastSyncFailed = true;
             return false;
         }
         try {
@@ -513,103 +550,115 @@ public class SupabaseService {
                 return false;
             }
 
-            File file = new File(filePath);
-            if (!file.exists()) {
-                lastSyncFailed = true;
-                return false;
-            }
-
-            // Collision Check: Verify cloud hasn't been updated since our last sync
-            // Logic: Read the version ID (timestamp) from INSIDE the database file
-            String localVersionStr = com.meto.inventory.DataManager.getInstance().getDbHelper().getSetting("last_backup_timestamp");
-            long localVersionTs = (localVersionStr != null) ? Long.parseLong(localVersionStr) : 0;
-
-            JsonObject meta = getUserMetadata();
-            long cloudTs = 0;
-            if (meta.has("last_backup_timestamp") && !meta.get("last_backup_timestamp").isJsonNull()) {
-                cloudTs = meta.get("last_backup_timestamp").getAsLong();
-            }
-
-            if (cloudTs > localVersionTs) {
-                System.out.println("SYNC: Upload blocked. Cloud is newer (" + cloudTs + " > " + localVersionTs + ")");
-                notifyStatus("Cloud: Update Required");
-                return false;
-            }
-
-            notifyStatus("Compressing...");
-            byte[] rawBytes = Files.readAllBytes(file.toPath());
+            com.meto.inventory.DatabaseHelper db = com.meto.inventory.DataManager.getInstance().getDbHelper();
             
-            // 1. GZIP compress
-            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-            try (java.util.zip.GZIPOutputStream gzos = new java.util.zip.GZIPOutputStream(baos)) {
-                gzos.write(rawBytes);
+            // Check for changes
+            JsonArray dirtyStock = db.getDirtyStock();
+            JsonArray dirtySales = db.getDirtySales();
+            JsonArray delStock = db.getDirtyDeletedStock();
+            JsonArray delSales = db.getDirtyDeletedHistory();
+
+            boolean hasChanges = dirtyStock.size() > 0 || dirtySales.size() > 0 || delStock.size() > 0 || delSales.size() > 0;
+            if (!hasChanges) {
+                return true; // Silent success, no need to trigger UI or push empty updates
             }
-            byte[] gzippedBytes = baos.toByteArray();
 
-            notifyStatus("Uploading (" + (gzippedBytes.length / 1024) + " KB)...");
+            if (!isSilent) {
+                notifyStatus("Syncing with Postgres...");
+            }
             
-            // CHANGE: Append .gz to filename and use application/gzip
-            String cloudFileName = file.getName() + ".gz";
-            String path = "backups/" + currentUserId + "/" + cloudFileName;
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(STORAGE_URL + "/" + path))
-                    .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
-                    .header("Content-Type", "application/gzip")
-                    .header("x-upsert", "true")
-                    .POST(HttpRequest.BodyPublishers.ofByteArray(gzippedBytes))
-                    .timeout(java.time.Duration.ofSeconds(60)) // Add timeout
-                    .build();
-
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() == 401 || response.statusCode() == 403) {
-                System.out.println("SYNC: Token expired (status " + response.statusCode() + "). Attempting token refresh...");
-                if (currentRefreshToken != null) {
-                    try {
-                        boolean refreshed = signInWithRefreshToken(currentRefreshToken);
-                        if (refreshed) {
-                            System.out.println("SYNC: Token refreshed successfully. Retrying upload...");
-                            request = HttpRequest.newBuilder()
-                                    .uri(URI.create(STORAGE_URL + "/" + path))
-                                    .header("apikey", SUPABASE_KEY)
-                                    .header("Authorization", "Bearer " + currentAccessToken)
-                                    .header("Content-Type", "application/gzip")
-                                    .header("x-upsert", "true")
-                                    .POST(HttpRequest.BodyPublishers.ofByteArray(gzippedBytes))
-                                    .timeout(java.time.Duration.ofSeconds(60))
-                                    .build();
-                            response = client.send(request, HttpResponse.BodyHandlers.ofString());
-                        }
-                    } catch (Exception refreshEx) {
-                        System.err.println("SYNC: Failed to refresh token: " + refreshEx.getMessage());
-                    }
+            // --- 1. PUSH ---
+            // STOCK
+            if (dirtyStock.size() > 0) {
+                String nowIso = java.time.Instant.now().toString();
+                for (JsonElement el : dirtyStock) {
+                    JsonObject o = el.getAsJsonObject();
+                    o.addProperty("user_id", currentUserId);
+                    o.addProperty("updated_at", nowIso);
                 }
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(REST_URL + "/stock?on_conflict=sync_id"))
+                        .header("apikey", SUPABASE_KEY)
+                        .header("Authorization", "Bearer " + currentAccessToken)
+                        .header("Content-Type", "application/json")
+                        .header("Prefer", "resolution=merge-duplicates")
+                        .POST(HttpRequest.BodyPublishers.ofString(dirtyStock.toString()))
+                        .build();
+                HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+                System.out.println("STOCK UPLOAD RESPONSE: " + res.statusCode() + " " + res.body());
+            }
+            
+            // SALES
+            if (dirtySales.size() > 0) {
+                String nowIso = java.time.Instant.now().toString();
+                for (JsonElement el : dirtySales) {
+                    JsonObject o = el.getAsJsonObject();
+                    o.addProperty("user_id", currentUserId);
+                    o.addProperty("updated_at", nowIso);
+                }
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(REST_URL + "/sales?on_conflict=sync_id"))
+                        .header("apikey", SUPABASE_KEY)
+                        .header("Authorization", "Bearer " + currentAccessToken)
+                        .header("Content-Type", "application/json")
+                        .header("Prefer", "resolution=merge-duplicates")
+                        .POST(HttpRequest.BodyPublishers.ofString(dirtySales.toString()))
+                        .build();
+                HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+                System.out.println("SALES UPLOAD RESPONSE: " + res.statusCode() + " " + res.body());
             }
 
-            if (response.statusCode() == 200) {
-                long ts = System.currentTimeMillis();
-                Map<String, Object> updates = new HashMap<>();
-                updates.put("last_backup_timestamp", ts);
-                updateUserFields(updates);
+            // DELETIONS
+            if (delStock.size() > 0) {
+                List<String> ids = new ArrayList<>();
+                for (JsonElement el : delStock) ids.add(el.getAsJsonObject().get("sync_id").getAsString());
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(REST_URL + "/stock?sync_id=in.(" + String.join(",", ids) + ")"))
+                        .header("apikey", SUPABASE_KEY)
+                        .header("Authorization", "Bearer " + currentAccessToken)
+                        .DELETE().build();
+                client.send(req, HttpResponse.BodyHandlers.ofString());
+            }
 
-                // Persist version ID into the database itself
-                com.meto.inventory.DataManager.getInstance().getDbHelper().saveSetting("last_backup_timestamp", String.valueOf(ts));
-                
-                this.lastKnownCloudTimestamp = ts;
-                notifyStatus("Cloud: Synced");
-                lastSyncFailed = false;
-                return true;
+            if (delSales.size() > 0) {
+                List<String> ids = new ArrayList<>();
+                for (JsonElement el : delSales) ids.add(el.getAsJsonObject().get("sync_id").getAsString());
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(REST_URL + "/sales?sync_id=in.(" + String.join(",", ids) + ")"))
+                        .header("apikey", SUPABASE_KEY)
+                        .header("Authorization", "Bearer " + currentAccessToken)
+                        .DELETE().build();
+                client.send(req, HttpResponse.BodyHandlers.ofString());
+            }
+
+            db.clearDirtyFlags();
+            lastSyncFailed = false;
+
+            // Update timestamp
+            long ts = System.currentTimeMillis();
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("last_backup_timestamp", ts);
+            updateUserFields(updates);
+            db.saveSetting("last_backup_timestamp", String.valueOf(ts));
+            lastKnownCloudTimestamp = ts;
+            notifyStatus("Cloud: " + new java.util.Date(ts).toString());
+
+            return true;
+        } catch (IOException e) {
+            if (e.getMessage() != null && e.getMessage().contains("401")) {
+                System.out.println("SYNC: Token expired (401), attempting to refresh session in background...");
+                try {
+                    if (currentRefreshToken != null) {
+                        signInWithRefreshToken(currentRefreshToken);
+                    }
+                } catch (Exception ignored) {}
             } else {
-                System.err.println("Upload failed: " + response.body());
-                notifyStatus("Cloud: Error");
-                lastSyncFailed = true;
-                return false;
+                e.printStackTrace();
             }
+            lastSyncFailed = true;
+            return false;
         } catch (Exception e) {
             e.printStackTrace();
-            notifyStatus("Cloud: Offline");
             lastSyncFailed = true;
             return false;
         } finally {
@@ -633,149 +682,100 @@ public class SupabaseService {
     }
 
     public boolean syncOnLogin(String dbPath, boolean localHasData, boolean isManual) {
-        if (!syncLock.tryLock()) {
-            System.out.println("SYNC: Sync skipped - another sync operation is in progress.");
-            return false;
-        }
+        if (!syncLock.tryLock()) return false;
         try {
-            if (currentUserId == null)
-                return false;
+            if (currentUserId == null) return false;
 
+            String localVersionStr = com.meto.inventory.DataManager.getInstance().getDbHelper().getSetting("last_backup_timestamp");
+            long localVersionTs = (localVersionStr != null) ? Long.parseLong(localVersionStr) : 0;
+            long queryTs = localVersionTs > 300000 ? localVersionTs - 300000 : 0;
+            String isoTimestamp = java.time.Instant.ofEpochMilli(queryTs).toString();
+
+            if (isManual) {
+                notifyStatus("Downloading Updates...");
+            }
+            com.meto.inventory.DatabaseHelper db = com.meto.inventory.DataManager.getInstance().getDbHelper();
+
+            // PULL STOCK (Full Sync for stock to handle physical deletions easily since stock is small)
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/stock"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .GET().build();
+            boolean stockPulled = false;
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() == 200) {
+                JsonArray arr = JsonParser.parseString(res.body()).getAsJsonArray();
+                if (arr.size() > 0) {
+                    boolean acceptPieces = isManual || localVersionTs == 0;
+                    db.upsertCloudStock(arr, acceptPieces);
+                    stockPulled = true;
+                }
+            }
+
+            // PULL SALES (Incremental, or Full if manual refresh)
+            String salesUrl = REST_URL + "/sales";
+            if (!isManual) {
+                salesUrl += "?updated_at=gt." + isoTimestamp;
+            }
+            req = HttpRequest.newBuilder()
+                    .uri(URI.create(salesUrl))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .GET().build();
+            boolean salesPulled = false;
+            res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            if (res.statusCode() == 200) {
+                JsonArray arr = JsonParser.parseString(res.body()).getAsJsonArray();
+                if (arr.size() > 0) {
+                    boolean isIncremental = localVersionTs > 0;
+                    db.upsertCloudSales(arr, isIncremental);
+                    salesPulled = true;
+                }
+            }
+
+            // Check if cloud timestamp increased
             JsonObject meta = getUserMetadata();
             long cloudTs = 0;
             if (meta.has("last_backup_timestamp") && !meta.get("last_backup_timestamp").isJsonNull()) {
                 cloudTs = meta.get("last_backup_timestamp").getAsLong();
             }
-            this.lastFetchCloudTs = cloudTs;
 
-            File local = new File(dbPath);
-            long localTs = local.exists() ? local.lastModified() : 0;
-            String localVersionStr = com.meto.inventory.DataManager.getInstance().getDbHelper().getSetting("last_backup_timestamp");
-            long localVersionTs = (localVersionStr != null) ? Long.parseLong(localVersionStr) : 0;
-
-            System.out.println("SYNC DEBUG: Cloud=" + cloudTs + ", LocalFileTime=" + localTs + ", LocalVersion=" + localVersionTs);
-
-            String cloudFileName = local.getName();
-
+            boolean anyPulled = stockPulled || salesPulled;
             if (cloudTs > localVersionTs) {
-                System.out.println("Cloud is newer. Attempting download...");
-                notifyStatus("Downloading...");
-                return downloadWithProgress(cloudFileName, dbPath);
-
-            } else {
+                db.saveSetting("last_backup_timestamp", String.valueOf(cloudTs));
+                this.lastKnownCloudTimestamp = cloudTs;
                 notifyStatus("Cloud: Integrated");
+                return true;
+            } else if (anyPulled) {
+                notifyStatus("Cloud: Updated");
+                return true;
+            } else {
+                notifyStatus("Cloud: Synced");
+                return false;
             }
+        } catch (IOException e) {
+            if (e.getMessage() != null && e.getMessage().contains("401")) {
+                System.out.println("SYNC: Token expired (401), attempting to refresh session in background...");
+                try {
+                    if (currentRefreshToken != null) {
+                        signInWithRefreshToken(currentRefreshToken);
+                    }
+                } catch (Exception ignored) {}
+            } else {
+                e.printStackTrace();
+            }
+            notifyStatus("Cloud: Error");
+            return false;
         } catch (Exception e) {
             e.printStackTrace();
+            notifyStatus("Cloud: Error");
+            return false;
         } finally {
             syncLock.unlock();
         }
-        return false;
     }
 
-    private boolean downloadWithProgress(String cloudFileName, String localPath) {
-        try {
-            // CONFLICT MERGE: Capture local changes before download wipes the file
-            var helper = com.meto.inventory.DataManager.getInstance().getDbHelper();
-            List<com.meto.inventory.DatabaseHelper.DirtyRecord> dirtyStock = helper.getDirtyRecords("stock");
-            List<com.meto.inventory.DatabaseHelper.DirtyRecord> dirtySales = helper.getDirtyRecords("sales");
-            List<Map<String, String>> deletedStock = helper.getDeletedStock();
-            List<Map<String, String>> deletedHistory = helper.getDeletedHistory();
-
-            System.out.println("SYNC MERGE: Captured " + dirtyStock.size() + " stock, " + dirtySales.size() + " sales and " + deletedHistory.size() + " deletions.");
-
-            // Priority: Compressed version (.gz)
-            boolean success = performDownload(cloudFileName + ".gz", localPath, true);
-            if (!success) {
-                System.out.println("Compressed download failed. Falling back to legacy...");
-                success = performDownload(cloudFileName, localPath, false);
-            }
-            if (!success && !cloudFileName.equals("inventory.db")) {
-                System.out.println("Trying generic legacy name...");
-                success = performDownload("inventory.db", localPath, false);
-            }
-
-            if (success) {
-                // RE-APPLY CHANGES (Connection was reopened in performDownload)
-                var newHelper = com.meto.inventory.DataManager.getInstance().getDbHelper();
-                for (var r : dirtyStock) newHelper.applyDirtyRecord("stock", r);
-                for (var r : dirtySales) newHelper.applyDirtyRecord("sales", r);
-                for (var m : deletedStock) newHelper.applyStockDeletion(m.get("item"), m.get("quantity"));
-                for (var m : deletedHistory) newHelper.applyHistoryDeletion(m.get("customer"), m.get("item"), m.get("amount"), m.get("date"));
-                
-                newHelper.clearDirtyFlags();
-                System.out.println("SYNC MERGE: Successfully re-applied local changes to restored cloud file.");
-                
-                // Silent Push of the merged result
-                // javafx.application.Platform.runLater(() -> uploadDatabase(localPath, false));
-            }
-
-            return success;
-        } catch (Exception e) {
-            e.printStackTrace();
-            return false;
-        }
-    }
-
-    private boolean performDownload(String cloudPathSegment, String localPath, boolean isGzipped) {
-        try {
-            String path = "backups/" + currentUserId + "/" + cloudPathSegment;
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(STORAGE_URL + "/" + path))
-                    .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
-                    .GET()
-                    .timeout(java.time.Duration.ofSeconds(60))
-                    .build();
-
-            HttpResponse<java.io.InputStream> response = client.send(request,
-                    HttpResponse.BodyHandlers.ofInputStream());
-
-            if (response.statusCode() == 200) {
-                long totalBytes = response.headers().firstValueAsLong("Content-Length").orElse(-1L);
-                
-                // CRITICAL: Close the database connection to release the file handle
-                // to avoid OS-level file locking issues during overwrite.
-                com.meto.inventory.DataManager.getInstance().getDbHelper().close();
-
-                try (java.io.InputStream rawIs = response.body();
-                     java.io.InputStream is = isGzipped ? new java.util.zip.GZIPInputStream(rawIs) : rawIs;
-                     java.io.FileOutputStream fos = new java.io.FileOutputStream(localPath)) {
-
-                    byte[] buffer = new byte[8192];
-                    int bytesRead;
-                    long totalRead = 0;
-
-                    while ((bytesRead = is.read(buffer)) != -1) {
-                        fos.write(buffer, 0, bytesRead);
-                        totalRead += bytesRead;
-                        if (totalBytes > 0 && !isGzipped) {
-                            // Only accurate for non-gzipped. For Gzip, we don't know the exact decompressed size.
-                            notifyProgress((double) totalRead / totalBytes);
-                        }
-                    }
-                }
-                
-                notifyProgress(1.0);
-                
-                // CRITICAL: After successful download/replacement, record the new version ID in the DB
-                if (lastFetchCloudTs > 0) {
-                    System.out.println("Updating internal database version to " + lastFetchCloudTs);
-                    // We must reconnect first to ensure we write to the NEW file
-                    com.meto.inventory.DataManager.getInstance().getDbHelper().connect();
-                    com.meto.inventory.DataManager.getInstance().getDbHelper().saveSetting("last_backup_timestamp", String.valueOf(lastFetchCloudTs));
-                    this.lastKnownCloudTimestamp = lastFetchCloudTs;
-                }
-
-                System.out.println("Restored " + (isGzipped ? "(GZ) " : "") + "to " + localPath);
-                return true;
-            }
-            return false;
-        } catch (Exception e) {
-            System.err.println("Download failed for " + cloudPathSegment + ": " + e.getMessage());
-            return false;
-        }
-    }
 
     // --- ADMIN ---
 

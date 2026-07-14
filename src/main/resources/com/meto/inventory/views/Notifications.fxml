@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<VBox spacing="20" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.meto.inventory.controllers.NotificationsController" styleClass="main-container">
+    <padding>
+        <Insets top="20" right="20" bottom="20" left="20"/>
+    </padding>
+
+    <!-- Header Section -->
+    <HBox alignment="CENTER_LEFT" spacing="15">
+        <Button fx:id="backBtn" text="Back" styleClass="btn-secondary">
+            <graphic>
+                <Region styleClass="icon, icon-logout" style="-fx-scale-x: -1; -fx-scale-y: 1;"/>
+            </graphic>
+        </Button>
+        <VBox>
+            <Label text="Notifications" styleClass="h1"/>
+            <Label text="Recent activity from mobile and desktop applications" styleClass="text-muted"/>
+        </VBox>
+        <Region HBox.hgrow="ALWAYS"/>
+    </HBox>
+
+    <VBox VBox.vgrow="ALWAYS" styleClass="card" style="-fx-padding: 10;">
+        <ListView fx:id="notificationsList" VBox.vgrow="ALWAYS" styleClass="edge-to-edge"/>
+    </VBox>
+</VBox>

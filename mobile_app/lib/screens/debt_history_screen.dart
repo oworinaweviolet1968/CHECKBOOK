@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../models/history_item.dart';
 import '../services/database_helper.dart';
 import '../services/printer_service.dart';
+import '../services/supabase_service.dart';
 import '../models/sale_item.dart';
 import '../utils/colors.dart';
 
@@ -21,24 +22,44 @@ class _DebtHistoryScreenState extends State<DebtHistoryScreen> with SingleTicker
   bool _isLoading = true;
   final _formatter = NumberFormat("#,###");
   String _searchQuery = "";
+  double _totalRemainingDebt = 0.0;
+  int _debtorCount = 0;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this, initialIndex: widget.initialIndex);
+    SupasService.instance.syncStatus.addListener(_onSyncStatusChanged);
     _loadDebts();
   }
 
-  Future<void> _loadDebts() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    SupasService.instance.syncStatus.removeListener(_onSyncStatusChanged);
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _onSyncStatusChanged() {
+    if (SupasService.instance.syncStatus.value == SyncStatus.synced) {
+      _loadDebts(showLoading: false);
+    }
+  }
+
+  Future<void> _loadDebts({bool showLoading = true}) async {
+    if (showLoading) setState(() => _isLoading = true);
     final debts = await DatabaseHelper.instance.getHistory("DEBTS");
-    // We also want settled debts, so we might need a different filter or fetch all and filter locally
-    final allHistory = await DatabaseHelper.instance.getHistory("ALL");
-    final settledDebts = allHistory.where((i) => i.isDebt && i.isPaid).toList();
+    final settledDebts = await DatabaseHelper.instance.getSettledDebts();
+    
+    final dbCount = await DatabaseHelper.instance.getDebtorCount();
+    final dbTotalDebt = await DatabaseHelper.instance.getTotalOutstandingDebt();
     
     if (mounted) {
       setState(() {
         _allDebts = [...debts, ...settledDebts];
+        _allDebts.removeWhere((item) => item.customer == "Walk-in Customer");
+        _debtorCount = dbCount;
+        _totalRemainingDebt = dbTotalDebt;
         _applyFilters();
         _isLoading = false;
       });
@@ -58,18 +79,6 @@ class _DebtHistoryScreenState extends State<DebtHistoryScreen> with SingleTicker
         }
       }).toList();
     });
-  }
-
-  double get _totalRemainingDebt {
-    return _allDebts.where((d) => !d.isPaid).fold(0, (sum, d) {
-      double total = double.tryParse(d.amount.replaceAll(',', '')) ?? 0;
-      double paid = double.tryParse(d.paidAmount.replaceAll(',', '')) ?? 0;
-      return sum + (total - paid);
-    });
-  }
-
-  int get _debtorCount {
-    return _allDebts.where((d) => !d.isPaid).map((d) => d.customer).toSet().length;
   }
 
   @override
@@ -311,7 +320,9 @@ class _DebtHistoryScreenState extends State<DebtHistoryScreen> with SingleTicker
               double payment = double.tryParse(controller.text) ?? 0;
               if (payment <= 0) return;
               
-              await DatabaseHelper.instance.markSaleAsPaid(debt.id!, payment);
+              await DatabaseHelper.instance.markDebtAsPaid(debt.customer, payment);
+              // Trigger cloud sync to immediately upload the payment
+              SupasService.instance.syncDatabase();
               if (mounted) {
                 Navigator.pop(context);
                 _loadDebts();

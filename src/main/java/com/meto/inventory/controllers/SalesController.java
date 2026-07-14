@@ -116,10 +116,11 @@ public class SalesController implements DataManager.DataChangeListener {
             if (newText.matches("[0-9 /*]*")) {
                 // APPLY 9 DIGIT LIMIT to the numbers only
                 String numericOnly = newText.replaceAll("[^0-9]", "");
-                if (numericOnly.length() > 9) return null;
+                if (numericOnly.length() > 9)
+                    return null;
                 return change;
             }
-            
+
             // ... strict button logic continues ...
 
             // 3. Strict Button-Only Logic:
@@ -145,19 +146,21 @@ public class SalesController implements DataManager.DataChangeListener {
         priceField.getEditor().setTextFormatter(new TextFormatter<>(change -> {
             if (change.isContentChange()) {
                 String newText = change.getControlNewText().replaceAll(",", "");
-                
+
                 // 1. Digit Limit (9 digits)
-                if (newText.length() > 9) return null;
-                
+                if (newText.length() > 9)
+                    return null;
+
                 // 2. Allow only digits
-                if (!newText.matches("\\d*")) return null;
-                
+                if (!newText.matches("\\d*"))
+                    return null;
+
                 // 3. Auto-format with commas while protecting the cursor
                 if (!newText.isEmpty()) {
                     try {
                         long value = Long.parseLong(newText);
                         String formatted = priceDf.format(value);
-                        
+
                         // We must be careful not to trigger infinite loops
                         // The TextFormatter handles the 'change' object directly
                         change.setText(formatted);
@@ -215,7 +218,7 @@ public class SalesController implements DataManager.DataChangeListener {
                 } else {
                     setFlowLevel(3);
                 }
-                
+
                 // --- PRICE HISTORY UPDATE ---
                 refreshPriceHistory(itemsComboBox.getValue(), newVal);
             }
@@ -512,11 +515,11 @@ public class SalesController implements DataManager.DataChangeListener {
     private String extractBaseQuantity(String text) {
         if (text == null || text.trim().isEmpty())
             return "1";
-        
+
         // Match numbers, dots, or fractions at the VERY START of the string
         java.util.regex.Pattern p = java.util.regex.Pattern.compile("^([0-9./]+)");
         java.util.regex.Matcher m = p.matcher(text.trim());
-        
+
         if (m.find()) {
             return m.group(1);
         }
@@ -551,15 +554,19 @@ public class SalesController implements DataManager.DataChangeListener {
 
             double totalCost = 0;
             double piecesForStock = 0;
-            
+
             // Retrieve bulk unit from stock to ensure correct multiplier detection
             String bulkUnit = "";
-            try (java.sql.PreparedStatement pstmt = dataManager.getDbHelper().getConnection().prepareStatement("SELECT unit FROM stock WHERE item = ? AND quantity = ? LIMIT 1")) {
+            try (java.sql.PreparedStatement pstmt = dataManager.getDbHelper().getConnection()
+                    .prepareStatement("SELECT unit FROM stock WHERE item = ? AND quantity = ? LIMIT 1")) {
                 pstmt.setString(1, item);
                 pstmt.setString(2, size);
                 java.sql.ResultSet rs = pstmt.executeQuery();
-                if (rs.next()) bulkUnit = rs.getString("unit");
-            } catch (java.sql.SQLException e) { e.printStackTrace(); }
+                if (rs.next())
+                    bulkUnit = rs.getString("unit");
+            } catch (java.sql.SQLException e) {
+                e.printStackTrace();
+            }
 
             double quantityCount = dataManager.getDbHelper().extractNumericValue(countUnit);
             double multiplier = dataManager.getDbHelper().getUnitMultiplier(countUnit, size, bulkUnit);
@@ -597,7 +604,7 @@ public class SalesController implements DataManager.DataChangeListener {
         String customer = customerNameComboBox.getEditor().getText().trim();
         if (customer.isEmpty() && customerNameComboBox.getValue() != null)
             customer = customerNameComboBox.getValue().trim();
-        
+
         if (customer.isEmpty() || items.isEmpty()) {
             showAlert("Customer name and items required");
             return;
@@ -613,14 +620,16 @@ public class SalesController implements DataManager.DataChangeListener {
 
         // Header
         Label headerLabel = new Label("CHECKBOOK APP");
-        headerLabel.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 18px; -fx-padding: 15; -fx-alignment: center;");
+        headerLabel.setStyle(
+                "-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 18px; -fx-padding: 15; -fx-alignment: center;");
         headerLabel.setMaxWidth(Double.MAX_VALUE);
 
         String shopName = dataManager.getDbHelper().getSetting("receipt_shop_name");
         Label shopNameLabel = null;
         if (shopName != null && !shopName.trim().isEmpty()) {
             shopNameLabel = new Label(shopName.toUpperCase());
-            shopNameLabel.setStyle("-fx-text-fill: #2e7d32; -fx-font-weight: bold; -fx-font-size: 14px; -fx-padding: 5 0;");
+            shopNameLabel
+                    .setStyle("-fx-text-fill: #2e7d32; -fx-font-weight: bold; -fx-font-size: 14px; -fx-padding: 5 0;");
         }
 
         Label subHeaderLabel = new Label("Receipt Summary");
@@ -632,10 +641,11 @@ public class SalesController implements DataManager.DataChangeListener {
 
         // Item List (Simplified View)
         javafx.scene.layout.VBox itemBox = new javafx.scene.layout.VBox(5);
-        itemBox.setStyle("-fx-padding: 10; -fx-background-color: #f9f9f9; -fx-border-color: #eee; -fx-border-radius: 5; -fx-background-radius: 5;");
+        itemBox.setStyle(
+                "-fx-padding: 10; -fx-background-color: #f9f9f9; -fx-border-color: #eee; -fx-border-radius: 5; -fx-background-radius: 5;");
         for (SaleItem item : items) {
             javafx.scene.layout.HBox row = new javafx.scene.layout.HBox(10);
-            
+
             // Format item title including size if valid, exactly like mobile
             String itemName = item.getItems();
             String size = item.getQty();
@@ -644,17 +654,17 @@ public class SalesController implements DataManager.DataChangeListener {
             }
             Label name = new Label(itemName);
             name.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
-            
+
             // Format quantity and unit details exactly like mobile
             Label details = new Label(item.getUnit());
             details.setStyle("-fx-text-fill: #777; -fx-font-size: 11px;");
-            
+
             javafx.scene.layout.Region spacer = new javafx.scene.layout.Region();
             javafx.scene.layout.HBox.setHgrow(spacer, javafx.scene.layout.Priority.ALWAYS);
-            
+
             Label price = new Label("UGX " + item.getAmount());
             price.setStyle("-fx-font-weight: bold; -fx-font-size: 13px;");
-            
+
             row.getChildren().addAll(new javafx.scene.layout.VBox(name, details), spacer, price);
             itemBox.getChildren().add(row);
         }
@@ -668,9 +678,11 @@ public class SalesController implements DataManager.DataChangeListener {
 
         javafx.scene.layout.VBox content;
         if (shopNameLabel != null) {
-            content = new javafx.scene.layout.VBox(5, headerLabel, shopNameLabel, subHeaderLabel, customerLabel, itemBox, totalLabel, questionLabel);
+            content = new javafx.scene.layout.VBox(5, headerLabel, shopNameLabel, subHeaderLabel, customerLabel,
+                    itemBox, totalLabel, questionLabel);
         } else {
-            content = new javafx.scene.layout.VBox(5, headerLabel, subHeaderLabel, customerLabel, itemBox, totalLabel, questionLabel);
+            content = new javafx.scene.layout.VBox(5, headerLabel, subHeaderLabel, customerLabel, itemBox, totalLabel,
+                    questionLabel);
         }
         content.setPrefWidth(400);
         content.setAlignment(javafx.geometry.Pos.TOP_CENTER);
@@ -686,7 +698,7 @@ public class SalesController implements DataManager.DataChangeListener {
         // Style the buttons
         javafx.scene.Node printNode = dialogPane.lookupButton(printBtn);
         printNode.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold;");
-        
+
         dialog.showAndWait().ifPresent(response -> {
             if (response == printBtn) {
                 saveSale(true);
@@ -698,9 +710,9 @@ public class SalesController implements DataManager.DataChangeListener {
 
     private void saveSale(boolean shouldPrint) {
         if (shouldPrint) {
-            ReceiptPrinterService.printReceipt(items, 
-                customerNameComboBox.getEditor().getText().trim(), 
-                totalAmountLabel.getText());
+            ReceiptPrinterService.printReceipt(items,
+                    customerNameComboBox.getEditor().getText().trim(),
+                    totalAmountLabel.getText());
         }
 
         String customer = customerNameComboBox.getEditor().getText().trim();
@@ -720,12 +732,49 @@ public class SalesController implements DataManager.DataChangeListener {
         String saleType = determineSaleType();
         boolean isDebt = debtCheckBox.isSelected();
         String receiptId = java.util.UUID.randomUUID().toString();
+
+        double profitPeakBefore = dataManager.getDbHelper().getProfitPeak();
+        double todaysProfitBefore = dataManager.getDbHelper().getTodaysProfit();
+
         for (SaleItem item : items) {
             double price = Double.parseDouble(item.getPrice().replaceAll("[^0-9.]", ""));
             double amount = Double.parseDouble(item.getAmount().replaceAll("[^0-9.]", ""));
             dataManager.getDbHelper().addSaleWithProfit(customer, item.getItems(), item.getQty(), item.getUnit(), price,
                     amount, saleType, isDebt, receiptId);
             updateStock(item.getItems(), item.getQty(), item.getUnit());
+
+            // Check Low Stock
+            double piecesLeft = dataManager.getDbHelper().getAvailablePieces(item.getItems(), item.getQty());
+            if (piecesLeft < 12) {
+                com.meto.inventory.services.NotificationService.getInstance().sendDesktopActionNotification("Low Stock",
+                        item.getItems() + " is running low [" + String.format("%.0f", piecesLeft) + " pcs left]");
+            }
+        }
+
+        double todaysProfitAfter = dataManager.getDbHelper().getTodaysProfit();
+        if (todaysProfitAfter > profitPeakBefore && todaysProfitBefore <= profitPeakBefore) {
+            com.meto.inventory.services.NotificationService.getInstance().sendDesktopActionNotification(
+                    "🎉New profit Record", "you have surpassed your previous profit peak");
+        }
+
+        if (!items.isEmpty()) {
+            java.util.List<String> itemNames = new java.util.ArrayList<>();
+            for (SaleItem item : items) {
+                itemNames.add(item.getItems());
+            }
+            String itemsStr = String.join(", ", itemNames);
+            String action = isDebt ? "Debt recorded" : "Sale made";
+            dataManager.getDbHelper().addNotification(action + " for " + customer + ": " + itemsStr, "Desktop");
+
+            if (isDebt) {
+                double totalDebt = dataManager.getDbHelper().getCustomerDebt(customer);
+                com.meto.inventory.services.NotificationService.getInstance().sendDesktopActionNotification(
+                        "New Credit Sale",
+                        customer + " now owes UGX " + String.format("%,.0f", totalDebt) + ". Tap to view the invoice.");
+            } else {
+                com.meto.inventory.services.NotificationService.getInstance().sendDesktopActionNotification(
+                        "New Sale Recorded", customer + " just completed a order. Tap to view what was bought.");
+            }
         }
 
         items.clear();
@@ -738,7 +787,7 @@ public class SalesController implements DataManager.DataChangeListener {
         debtCheckBox.setSelected(false);
         updateTotal();
         dataManager.notifyDataChanged();
-        
+
         if (!shouldPrint) {
             showAlert("Sale saved successfully! Stock updated.");
         } else {

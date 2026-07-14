@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'screens/dashboard_screen.dart';
 import 'screens/new_stock_screen.dart';
@@ -14,6 +17,14 @@ import 'services/supabase_service.dart';
 import 'services/passcode_service.dart';
 import 'utils/colors.dart';
 
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  debugPrint("Handling a background message: ${message.messageId}");
+}
+
 // Credentials extracted from user's .env file
 const supabaseUrl = 'https://jhucvkqwenhyiveqsmtf.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpodWN2a3F3ZW5oeWl2ZXFzbXRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NzI5MjIsImV4cCI6MjA4NTU0ODkyMn0.yXju47Ly5ak8Gm4D0OI42O89qTsc0nYtkmAb7dGFCC8';
@@ -24,6 +35,72 @@ void main() async {
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
+  }
+  
+  if (Platform.isAndroid || Platform.isIOS) {
+    try {
+      await Firebase.initializeApp();
+      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+      await FirebaseMessaging.instance.requestPermission(
+        alert: true,
+        announcement: false,
+        badge: true,
+        carPlay: false,
+        criticalAlert: false,
+        provisional: false,
+        sound: true,
+      );
+
+      // Local notifications setup for foreground messages
+      const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+      await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+      const AndroidNotificationChannel channel = AndroidNotificationChannel(
+        'high_importance_channel', 
+        'High Importance Notifications', 
+        description: 'This channel is used for important notifications.', 
+        importance: Importance.max,
+      );
+
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+
+      await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        RemoteNotification? notification = message.notification;
+        AndroidNotification? android = message.notification?.android;
+
+        if (notification != null && android != null) {
+          flutterLocalNotificationsPlugin.show(
+            notification.hashCode,
+            notification.title,
+            notification.body,
+            NotificationDetails(
+              android: AndroidNotificationDetails(
+                channel.id,
+                channel.name,
+                channelDescription: channel.description,
+                icon: '@mipmap/ic_launcher',
+                importance: Importance.max,
+                priority: Priority.high,
+              ),
+            ),
+          );
+        }
+      });
+
+      await FirebaseMessaging.instance.subscribeToTopic('desktop_actions');
+      await FirebaseMessaging.instance.subscribeToTopic('app_updates');
+    } catch (e) {
+      debugPrint("Firebase init error: $e");
+    }
   }
   
   await Supabase.initialize(
@@ -39,6 +116,15 @@ void main() async {
   if (currentSession != null) {
     final userId = currentSession.user.id;
     debugPrint('Startup: Existing session found for $userId');
+
+    // Refresh the session FIRST to get a fresh JWT before any Realtime connections
+    try {
+      await Supabase.instance.client.auth.refreshSession();
+      debugPrint('Startup: Session refreshed successfully');
+    } catch (e) {
+      debugPrint('Startup: Session refresh failed: $e');
+    }
+
     await DatabaseHelper.instance.switchDatabase(userId);
     await PasscodeService.instance.init();
 
@@ -46,7 +132,16 @@ void main() async {
     unawaited(SupasService.instance.refreshUserMetadata());
   }
 
-  runApp(const MyApp());
+  // Catch any leaked async exceptions from third-party libraries
+  // (e.g. Supabase Realtime websocket errors with expired JWT)
+  FlutterError.onError = (FlutterErrorDetails details) {
+    debugPrint('FlutterError: ${details.exception}');
+  };
+  runZonedGuarded(() {
+    runApp(const MyApp());
+  }, (error, stackTrace) {
+    debugPrint('Uncaught async error (caught by zone): $error');
+  });
 }
 
 class MyApp extends StatelessWidget {
@@ -125,15 +220,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // --- REALTIME STREAM (fast path, may go stale) ---
 
   void _listenForLoginRequests() {
-    _loginRequestSubscription = SupasService.instance.getLoginRequestsStream().listen((requests) {
-      if (requests.isNotEmpty) {
-        final request = requests.first;
-        _showLoginApprovalDialog(request);
-      }
-    }, onError: (err) {
-      debugPrint('Realtime stream error: $err');
-      // Silently fail, polling will catch it.
-    });
+    try {
+      _loginRequestSubscription = SupasService.instance.getLoginRequestsStream().listen((requests) {
+        if (requests.isNotEmpty) {
+          final request = requests.first;
+          _showLoginApprovalDialog(request);
+        }
+      }, onError: (err) {
+        debugPrint('Realtime stream error: $err');
+        // Cancel the dead subscription — polling handles login requests as fallback.
+        _loginRequestSubscription?.cancel();
+        _loginRequestSubscription = null;
+      }, cancelOnError: true);
+    } catch (e) {
+      debugPrint('Login stream init error: $e');
+    }
   }
 
   // --- POLLING (reliable fallback) ---

@@ -23,104 +23,98 @@ class StockTileRedesigned extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-          color: Colors.transparent, // Background handled by list container usually
-          border: Border(bottom: BorderSide(color: Colors.grey.shade50)), // divider
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Left: Icon + Text
-          Expanded(
-            child: Row(
-              children: [
-                 // No icon in HTML list for stock, but we can add one if needed? 
-                 // HTML has just text.
-                 Expanded(
-                   child: Column(
-                     crossAxisAlignment: CrossAxisAlignment.start,
-                     children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                itemName,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                  color: AppColors.textPrimary,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                                maxLines: 1,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                              decoration: BoxDecoration(
-                                color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.2)),
-                              ),
-                              child: Text(
-                                source.toUpperCase(),
-                                style: TextStyle(
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.bold,
-                                  color: source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                       const SizedBox(height: 2),
-                       Text(
-                         "$itemSize • $price",
-                         style: const TextStyle(
-                           fontSize: 12,
-                           color: AppColors.textSecondary,
-                         ),
-                       ),
-                     ],
-                   ),
-                 ),
-              ],
+    return Stack(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+              color: Colors.transparent,
+              border: Border(bottom: BorderSide(color: Colors.grey.shade50)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Left: Item name + details
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      itemName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 14,
+                        color: AppColors.textPrimary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      "$itemSize • $price",
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Right: Quantity + Badge
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      quantity,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: AppColors.textPrimary,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isLowStock ? "LOW STOCK" : "IN STOCK",
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: isLowStock ? AppColors.accentAmber : AppColors.primaryGreen,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Source badge positioned at top-right corner
+        Positioned(
+          top: 4,
+          right: 4,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+            decoration: BoxDecoration(
+              color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: (source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey).withValues(alpha: 0.2)),
+            ),
+            child: Text(
+              source.toUpperCase(),
+              style: TextStyle(
+                fontSize: 8,
+                fontWeight: FontWeight.bold,
+                color: source.toLowerCase() == "mobile" ? Colors.blue : Colors.grey,
+              ),
             ),
           ),
-          
-          // Right: Quantity + Badge
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  quantity,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: AppColors.textPrimary,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  isLowStock ? "LOW STOCK" : "IN STOCK",
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: isLowStock ? AppColors.accentAmber : AppColors.primaryGreen,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

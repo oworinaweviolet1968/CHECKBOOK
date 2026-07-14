@@ -17,6 +17,7 @@
             <Label text="Monitor outstanding balances and settlement history" styleClass="text-muted"/>
         </VBox>
         <Region HBox.hgrow="ALWAYS"/>
+        <Button fx:id="notificationsBtn" text="Alerts" styleClass="btn-secondary" />
         <Button fx:id="refreshBtn" text="Refresh Data" styleClass="btn-secondary">
             <graphic>
                 <Region styleClass="icon, icon-clock" style="-fx-scale-x: 0.8; -fx-scale-y: 0.8;"/>
@@ -53,13 +54,13 @@
                     <Label text="Unsettled Transactions" styleClass="h2"/>
                     <TableView fx:id="unsettledTable" VBox.vgrow="ALWAYS">
                         <columns>
-                            <TableColumn fx:id="customerCol" text="Customer" prefWidth="150"/>
-                            <TableColumn fx:id="itemCol" text="Item" prefWidth="150"/>
-                            <TableColumn fx:id="totalCol" text="Total" prefWidth="120"/>
-                            <TableColumn fx:id="paidCol" text="Paid" prefWidth="120"/>
-                            <TableColumn fx:id="remainingCol" text="Balance" prefWidth="120"/>
-                            <TableColumn fx:id="dateCol" text="Sale Date" prefWidth="120"/>
-                            <TableColumn fx:id="actionsCol" text="Actions" prefWidth="120"/>
+                            <TableColumn fx:id="customerCol" text="Customer" prefWidth="120" minWidth="100"/>
+                            <TableColumn fx:id="itemCol" text="Item" prefWidth="350" maxWidth="5000"/>
+                            <TableColumn fx:id="totalCol" text="Total" prefWidth="100" minWidth="80"/>
+                            <TableColumn fx:id="paidCol" text="Paid" prefWidth="100" minWidth="80"/>
+                            <TableColumn fx:id="remainingCol" text="Balance" prefWidth="100" minWidth="80"/>
+                            <TableColumn fx:id="dateCol" text="Sale Date" prefWidth="100" minWidth="80"/>
+                            <TableColumn fx:id="actionsCol" text="Actions" prefWidth="100" minWidth="80"/>
                         </columns>
                     </TableView>
                 </VBox>
@@ -83,10 +84,10 @@
                     <Label text="Recently Fully Paid Debts" styleClass="h2"/>
                     <TableView fx:id="settledTable" VBox.vgrow="ALWAYS">
                         <columns>
-                            <TableColumn fx:id="settledCustomerCol" text="Customer" prefWidth="150"/>
-                            <TableColumn fx:id="settledItemCol" text="Item" prefWidth="150"/>
-                            <TableColumn fx:id="settledAmountCol" text="Total Amount" prefWidth="150"/>
-                            <TableColumn fx:id="settledDateCol" text="Completion Date" prefWidth="150"/>
+                            <TableColumn fx:id="settledCustomerCol" text="Customer" prefWidth="150" minWidth="100"/>
+                            <TableColumn fx:id="settledItemCol" text="Item" prefWidth="350" maxWidth="5000"/>
+                            <TableColumn fx:id="settledAmountCol" text="Total Amount" prefWidth="150" minWidth="100"/>
+                            <TableColumn fx:id="settledDateCol" text="Completion Date" prefWidth="150" minWidth="100"/>
                         </columns>
                     </TableView>
                 </VBox>

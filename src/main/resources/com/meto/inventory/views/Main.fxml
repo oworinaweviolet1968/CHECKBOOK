@@ -4,6 +4,7 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.image.*?>
 <?import javafx.scene.layout.*?>
+<?import com.meto.inventory.components.LoadingBar?>
 
 <BorderPane xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="com.meto.inventory.controllers.MainController"
@@ -47,11 +48,11 @@
                     </graphic>
                 </Button>
                 
-                <Label fx:id="backupStatusLabel" text="Cloud: Ready" style="-fx-text-fill: #999; -fx-padding: 10 10 0 10; -fx-font-size: 11px;">
-                    <graphic>
-                        <!-- Optional: small icon -->
-                    </graphic>
-                </Label>
+                <VBox spacing="5" alignment="CENTER_LEFT">
+                    <padding><Insets left="10" top="10"/></padding>
+                    <LoadingBar fx:id="syncLoadingBar" visible="false" managed="false" maxWidth="120" />
+                    <Label fx:id="backupStatusLabel" text="Cloud: Connected" style="-fx-text-fill: #999; -fx-font-size: 11px;" />
+                </VBox>
 
                 <Region VBox.vgrow="ALWAYS" />
 

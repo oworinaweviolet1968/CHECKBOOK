@@ -413,7 +413,24 @@ class DashboardScreenState extends State<DashboardScreen> {
                                      final amount = (sale['amount'] as num).toDouble();
                                      
                                      final orderId = sale['id'];
-                                     final time = sale['created_at'].toString().split(' ')[1].substring(0, 5); 
+                                     
+                                     String timeStr = "";
+                                     try {
+                                         String rawDate = sale['created_at'].toString();
+                                         if (rawDate.contains(' ')) {
+                                             timeStr = rawDate.split(' ')[1];
+                                         } else if (rawDate.contains('T')) {
+                                             timeStr = rawDate.split('T')[1];
+                                         } else {
+                                             timeStr = rawDate;
+                                         }
+                                         if (timeStr.length > 5 && (timeStr.contains(':'))) {
+                                             timeStr = timeStr.substring(0, 5);
+                                         }
+                                     } catch (e) {
+                                         timeStr = "";
+                                     }
+                                     final time = timeStr;
                                      
                                      final unitSold = sale['unit']; 
                                      final isDebt = (sale['is_debt'] as int? ?? 0) == 1;

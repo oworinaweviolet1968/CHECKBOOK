@@ -33,6 +33,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
       vsync: this,
       duration: const Duration(seconds: 3),
     )..repeat();
+    SupasService.instance.syncStatus.addListener(_onSyncStatusChanged);
     _loadDebtData();
   }
 
@@ -45,8 +46,15 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
     }
   }
 
+  void _onSyncStatusChanged() {
+    if (SupasService.instance.syncStatus.value == SyncStatus.synced) {
+      _loadDebtData();
+    }
+  }
+
   @override
   void dispose() {
+    SupasService.instance.syncStatus.removeListener(_onSyncStatusChanged);
     _spinController.dispose();
     super.dispose();
   }
@@ -173,6 +181,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
     final number = await DatabaseHelper.instance.getSetting("receipt_shop_number") ?? "";
     final location = await DatabaseHelper.instance.getSetting("receipt_location") ?? "";
     final phone = await DatabaseHelper.instance.getSetting("receipt_phone") ?? "";
+    final phone2 = await DatabaseHelper.instance.getSetting("receipt_phone2") ?? "";
 
     if (!mounted) return;
 
@@ -180,6 +189,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
     final numberController = TextEditingController(text: number);
     final locationController = TextEditingController(text: location);
     final phoneController = TextEditingController(text: phone);
+    final phone2Controller = TextEditingController(text: phone2);
 
     showModalBottomSheet(
       context: context,
@@ -195,10 +205,11 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
             borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               Center(
                 child: Container(
                   width: 40,
@@ -272,22 +283,52 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                   FilteringTextInputFormatter.allow(RegExp(r'[0-9 +\-\/(),]')),
                 ],
               ),
+              const SizedBox(height: 16),
+              _buildModalTextField(
+                controller: phone2Controller,
+                label: 'Phone Number / Contact 2nd (Optional)',
+                hint: 'e.g. +256 780 654321',
+                icon: Icons.phone_rounded,
+                keyboardType: TextInputType.phone,
+                maxLength: 25,
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9 +\-\/(),]')),
+                ],
+              ),
               const SizedBox(height: 28),
               ElevatedButton(
                 onPressed: () async {
-                  await DatabaseHelper.instance.saveSetting("receipt_shop_name", nameController.text.trim());
-                  await DatabaseHelper.instance.saveSetting("receipt_shop_number", numberController.text.trim());
-                  await DatabaseHelper.instance.saveSetting("receipt_location", locationController.text.trim());
-                  await DatabaseHelper.instance.saveSetting("receipt_phone", phoneController.text.trim());
+                  try {
+                    await DatabaseHelper.instance.saveSetting("receipt_shop_name", nameController.text.trim());
+                    await DatabaseHelper.instance.saveSetting("receipt_shop_number", numberController.text.trim());
+                    await DatabaseHelper.instance.saveSetting("receipt_location", locationController.text.trim());
+                    await DatabaseHelper.instance.saveSetting("receipt_phone", phoneController.text.trim());
+                    await DatabaseHelper.instance.saveSetting("receipt_phone2", phone2Controller.text.trim());
 
-                  if (context.mounted) {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Receipt settings saved successfully!'),
-                        backgroundColor: AppColors.primaryGreen,
-                      ),
-                    );
+                    // Verify the save was successful by reading back
+                    final savedName = await DatabaseHelper.instance.getSetting("receipt_shop_name");
+                    print("RECEIPT SETTINGS SAVED: shop_name='$savedName', phone='${phoneController.text.trim()}', phone2='${phone2Controller.text.trim()}'");
+
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Receipt settings saved successfully!'),
+                          backgroundColor: AppColors.primaryGreen,
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    print("ERROR saving receipt settings: $e");
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Failed to save: $e'),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                    }
+                    return;
                   }
 
                   _handleBackup();
@@ -310,6 +351,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                 ),
               ),
             ],
+          ),
           ),
         ),
       ),
