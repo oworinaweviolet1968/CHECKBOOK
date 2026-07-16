@@ -29,12 +29,12 @@ jobs:
       - name: Prepare dist directory
         run: |
           New-Item -ItemType Directory -Force -Path dist
-          Copy-Item target/ManagementSYS-2.1.jar dist/
+          Copy-Item target/ManagementSYS-2.2.jar dist/
 
       # 5. Extract logo.png from JAR and convert to .ico for jpackage using ImageMagick
       - name: Extract and convert logo to ICO
         run: |
-          jar xf dist/ManagementSYS-2.1.jar com/meto/inventory/views/images/logo.png
+          jar xf dist/ManagementSYS-2.2.jar com/meto/inventory/views/images/logo.png
           magick convert com/meto/inventory/views/images/logo.png -define icon:auto-resize=256,128,64,32,16 app_icon.ico
           Write-Host "app_icon.ico created perfectly from logo.png using ImageMagick"
 
@@ -44,11 +44,11 @@ jobs:
           jpackage `
             --type msi `
             --name "METO.IMS" `
-            --app-version 2.1.${{ github.run_number }} `
+            --app-version 2.2.${{ github.run_number }} `
             --win-upgrade-uuid 38e83dd9-5692-4035-90af-56b8c3d149b5 `
             --dest output `
             --input dist `
-            --main-jar ManagementSYS-2.1.jar `
+            --main-jar ManagementSYS-2.2.jar `
             --main-class com.meto.inventory.AppLauncher `
             --add-modules java.base,java.desktop,java.sql,java.net.http,java.xml,java.prefs,java.management,jdk.crypto.ec,jdk.unsupported,java.scripting,java.rmi `
             --icon app_icon.ico `
@@ -70,8 +70,8 @@ jobs:
         with:
           repository: beckhamz777/cb
           token: ${{ secrets.RELEASE_TOKEN }}
-          tag_name: v2.1
-          name: Release v2.1
+          tag_name: v2.2
+          name: Release v2.2
           draft: false
           prerelease: false
           files: |
