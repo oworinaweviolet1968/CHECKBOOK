@@ -1535,8 +1535,17 @@ class DatabaseHelper {
     final db = await instance.database;
     
     for (var obj in cloudStock) {
-      final existing = await db.rawQuery('SELECT is_edited, price, item, quantity, unit FROM stock WHERE sync_id = ?', [obj['sync_id']]);
+      final String cloudItem = obj['item'] ?? 'Unknown';
+      final String cloudQuantity = obj['quantity'] ?? '0';
+
+      // Try to find by sync_id first, if not found, fall back to item & quantity to avoid UNIQUE constraint violation
+      var existing = await db.rawQuery('SELECT id, is_edited, price, item, quantity, unit FROM stock WHERE sync_id = ?', [obj['sync_id']]);
+      if (existing.isEmpty) {
+        existing = await db.rawQuery('SELECT id, is_edited, price, item, quantity, unit FROM stock WHERE item = ? AND quantity = ?', [cloudItem, cloudQuantity]);
+      }
+
       if (existing.isNotEmpty) {
+        int localId = existing.first['id'] as int;
         bool localIsDirty = (existing.first['is_edited'] as int? ?? 0) == 1;
 
         double parsePrice(dynamic v) {
@@ -1551,8 +1560,8 @@ class DatabaseHelper {
         final String deviceSource = obj['device_source'] ?? 'Cloud';
 
         if (oldPrice != newPrice && deviceSource != 'Mobile') {
-          final String itemName = existing.first['item'] as String? ?? obj['item'] ?? 'Unknown';
-          final String size = existing.first['quantity'] as String? ?? obj['quantity'] ?? '';
+          final String itemName = existing.first['item'] as String? ?? cloudItem;
+          final String size = existing.first['quantity'] as String? ?? cloudQuantity;
           final String unit = existing.first['unit'] as String? ?? obj['unit'] ?? 'pcs';
           final double multiplier = getUnitMultiplier(unit, size, unit);
 
@@ -1568,31 +1577,33 @@ class DatabaseHelper {
         if (!localIsDirty && forceAcceptPieces) {
           // Manual/full sync: accept cloud available_pieces to correct any drift
           await db.rawUpdate('''
-            UPDATE stock SET supplier=?, item=?, quantity=?, unit=?, price=?, available_pieces=?, device_source=?, date=?, is_edited=0 WHERE sync_id=?
+            UPDATE stock SET sync_id=?, supplier=?, item=?, quantity=?, unit=?, price=?, available_pieces=?, device_source=?, date=?, is_edited=0 WHERE id=?
           ''', [
+            obj['sync_id'],
             obj['supplier'] ?? 'Unknown',
-            obj['item'] ?? 'Unknown',
-            obj['quantity'] ?? '0',
+            cloudItem,
+            cloudQuantity,
             obj['unit'] ?? '',
             obj['price'] ?? 0,
             obj['available_pieces'] ?? 0,
-            obj['device_source'] ?? 'Cloud',
+            deviceSource,
             obj['date'] ?? DateTime.now().toIso8601String().split('T')[0],
-            obj['sync_id']
+            localId
           ]);
         } else {
           // Incremental sync OR local is dirty: preserve local available_pieces, delta merge handles adjustments
           await db.rawUpdate('''
-            UPDATE stock SET supplier=?, item=?, quantity=?, unit=?, price=?, device_source=?, date=? WHERE sync_id=?
+            UPDATE stock SET sync_id=?, supplier=?, item=?, quantity=?, unit=?, price=?, device_source=?, date=? WHERE id=?
           ''', [
+            obj['sync_id'],
             obj['supplier'] ?? 'Unknown',
-            obj['item'] ?? 'Unknown',
-            obj['quantity'] ?? '0',
+            cloudItem,
+            cloudQuantity,
             obj['unit'] ?? '',
             obj['price'] ?? 0,
-            obj['device_source'] ?? 'Cloud',
+            deviceSource,
             obj['date'] ?? DateTime.now().toIso8601String().split('T')[0],
-            obj['sync_id']
+            localId
           ]);
         }
       } else {
@@ -1603,8 +1614,8 @@ class DatabaseHelper {
         ''', [
           obj['sync_id'],
           obj['supplier'] ?? 'Unknown',
-          obj['item'] ?? 'Unknown',
-          obj['quantity'] ?? '0',
+          cloudItem,
+          cloudQuantity,
           obj['unit'] ?? '',
           obj['price'] ?? 0,
           obj['available_pieces'] ?? 0,

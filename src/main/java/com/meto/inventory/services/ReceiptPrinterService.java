@@ -19,13 +19,12 @@ public class ReceiptPrinterService {
     private static final byte[] ESC_LEFT = {0x1B, 0x61, 0x00};
     private static final byte[] ESC_BOLD_ON = {0x1B, 0x45, 0x01};
     private static final byte[] ESC_BOLD_OFF = {0x1B, 0x45, 0x00};
-    // GS ! n — bit 0-2: char width (0-7), bit 4-6: char height (0-7)
-    // 0x77 = 0111 0111 = width x8, height x8 (max size for CHECKBOOK header)
-    private static final byte[] GS_MAX_SIZE = {0x1D, 0x21, 0x77};
     // 0x11 = double width + double height (for TOTAL line)
     private static final byte[] GS_DOUBLE_SIZE = {0x1D, 0x21, 0x11};
     private static final byte[] GS_NORMAL_SIZE = {0x1D, 0x21, 0x00};
     private static final byte[] LF = {0x0A};
+    // GS V m — partial cut (0x42 = feed and partial cut)
+    private static final byte[] GS_CUT = {0x1D, 0x56, 0x42, 0x00};
 
     /**
      * Prints a long-format receipt matching the mobile app layout.
@@ -67,6 +66,8 @@ public class ReceiptPrinterService {
 
         try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             java.text.DecimalFormat df = new java.text.DecimalFormat("#,###");
+            // 32 chars per line on 58mm thermal paper
+            final int LINE_WIDTH = 32;
             
             // ═══════════════════════════════════════════
             // 1. INITIALIZE PRINTER
@@ -74,13 +75,12 @@ public class ReceiptPrinterService {
             baos.write(ESC_INIT);
             
             // ═══════════════════════════════════════════
-            // 2. HEADER — "CHECKBOOK APP" in maximum size
+            // 2. HEADER — "CHECKBOOK APP" in double size (matching mobile PosTextSize.size2)
             // ═══════════════════════════════════════════
             baos.write(ESC_CENTER);
             baos.write(ESC_BOLD_ON);
-            baos.write(GS_MAX_SIZE);
-            baos.write("CHECKBOOK\n".getBytes());
-            baos.write("APP\n".getBytes());
+            baos.write(GS_DOUBLE_SIZE);  // double width + double height (same as mobile size2)
+            baos.write("CHECKBOOK APP\n".getBytes());
             baos.write(GS_NORMAL_SIZE);
             baos.write(ESC_BOLD_OFF);
             
@@ -141,8 +141,23 @@ public class ReceiptPrinterService {
             baos.write("--------------------------------\n".getBytes());
             
             // ═══════════════════════════════════════════
-            // 6. ITEMS — Long format (matching mobile)
-            //    Each item: bold title line, then detail + amount line
+            // 6. COLUMN HEADERS (matching mobile: Item / Qty / Total)
+            // ═══════════════════════════════════════════
+            // Mobile layout: PosColumn(Item, w=6), PosColumn(Qty, w=2), PosColumn(Total, w=4)
+            // 6/12 = 16 chars, 2/12 = ~5 chars, 4/12 = ~11 chars
+            baos.write(ESC_BOLD_ON);
+            String headerItem = "Item";
+            String headerQty = "Qty";
+            String headerTotal = "Total";
+            // Build: "Item            Qty       Total"
+            String headerLine = padRight(headerItem, 16) + padRight(headerQty, 5) + padLeft(headerTotal, LINE_WIDTH - 16 - 5);
+            baos.write((headerLine + "\n").getBytes());
+            baos.write(ESC_BOLD_OFF);
+            
+            // ═══════════════════════════════════════════
+            // 7. ITEMS — matching mobile format exactly:
+            //    Line 1: "ItemName (Size)" bold
+            //    Line 2: " unit              amount"
             // ═══════════════════════════════════════════
             for (SaleItem item : items) {
                 String name = item.getItems();
@@ -160,22 +175,23 @@ public class ReceiptPrinterService {
                 baos.write(ESC_BOLD_OFF);
                 
                 // Print the unit details and amount on the next line
-                String unit = item.getUnit(); // e.g. "3 pc"
+                // Mobile: PosColumn(' unit', w=8) + PosColumn(amount, w=4, right)
+                // 8/12 = ~21 chars, 4/12 = ~11 chars
+                String unit = item.getUnit(); // e.g. "1 dozen"
                 long amt = parseAmount(item.getAmount());
                 String formattedAmt = df.format(amt);
                 
-                // 32 chars for 58mm paper
                 String detailLine = " " + unit;
-                int remainingPadding = 32 - detailLine.length() - formattedAmt.length();
-                if (remainingPadding > 0) {
-                    detailLine += " ".repeat(remainingPadding);
+                int padding = LINE_WIDTH - detailLine.length() - formattedAmt.length();
+                if (padding > 0) {
+                    detailLine += " ".repeat(padding);
                 }
                 detailLine += formattedAmt + "\n";
                 baos.write(detailLine.getBytes());
             }
             
             // ═══════════════════════════════════════════
-            // 7. TOTAL SECTION
+            // 8. TOTAL SECTION — matching mobile: label and value on SAME row
             // ═══════════════════════════════════════════
             baos.write("--------------------------------\n".getBytes());
             baos.write(ESC_BOLD_ON);
@@ -183,27 +199,34 @@ public class ReceiptPrinterService {
             long total = parseAmount(totalAmount);
             String totalLabel = "TOTAL AMOUNT";
             String totalValStr = df.format(total);
-            // In double-size mode, effective chars per line halves to ~16
-            // So we print label on one line, amount on the next for clarity
-            baos.write(ESC_CENTER);
-            baos.write((totalLabel + "\n").getBytes());
-            baos.write((totalValStr + "\n").getBytes());
+            // In double-size mode, effective line width is ~16 chars
+            // Mobile: PosColumn('TOTAL AMOUNT', w=6) + PosColumn(value, w=6, right)
+            int dblLineWidth = LINE_WIDTH / 2; // ~16 effective chars
+            int totalPad = dblLineWidth - totalLabel.length() - totalValStr.length();
+            String totalLine = totalLabel;
+            if (totalPad > 0) {
+                totalLine += " ".repeat(totalPad);
+            }
+            totalLine += totalValStr;
+            baos.write(ESC_LEFT);
+            baos.write((totalLine + "\n").getBytes());
             baos.write(GS_NORMAL_SIZE);
             baos.write(ESC_BOLD_OFF);
             baos.write(ESC_LEFT);
             baos.write("--------------------------------\n".getBytes());
             
             // ═══════════════════════════════════════════
-            // 8. FOOTER
+            // 9. FOOTER — matching mobile: feed(2) + text + feed(3) + cut
             // ═══════════════════════════════════════════
             baos.write(ESC_CENTER);
-            baos.write("\n\n".getBytes());
+            baos.write("\n\n\n".getBytes());  // feed(2) equivalent + extra spacing
             baos.write("Thank you for your business!\n".getBytes());
             baos.write("Powered by METO IMS\n".getBytes());
-            baos.write("\n\n\n".getBytes()); // spacing before cut
+            baos.write("\n\n\n\n\n".getBytes()); // feed(3) equivalent + extra for long receipt
+            baos.write(GS_CUT); // Paper cut command (same as mobile generator.cut())
             
             // ═══════════════════════════════════════════
-            // 9. SEND TO PRINTER
+            // 10. SEND TO PRINTER
             // ═══════════════════════════════════════════
             byte[] bytes = baos.toByteArray();
             DocFlavor flavor = DocFlavor.BYTE_ARRAY.AUTOSENSE;
@@ -215,6 +238,18 @@ public class ReceiptPrinterService {
         } catch (IOException | PrintException e) {
             e.printStackTrace();
         }
+    }
+
+    /** Pads a string with spaces on the right to reach the target width. */
+    private static String padRight(String text, int width) {
+        if (text.length() >= width) return text;
+        return text + " ".repeat(width - text.length());
+    }
+
+    /** Pads a string with spaces on the left to reach the target width. */
+    private static String padLeft(String text, int width) {
+        if (text.length() >= width) return text;
+        return " ".repeat(width - text.length()) + text;
     }
 
     private static long parseAmount(String input) {

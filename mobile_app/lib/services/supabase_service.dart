@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
@@ -127,8 +128,18 @@ class SupasService {
       await DatabaseHelper.instance.saveSetting('last_backup_timestamp', ts.toString());
       await client.from('users').update({'last_backup_timestamp': ts}).eq('id', userId!);
 
+      // Push local receipt settings to cloud (ensures settings saved before this update get synced)
+      final shopName = await DatabaseHelper.instance.getSetting('receipt_shop_name');
+      if (shopName != null && shopName.isNotEmpty) {
+        await uploadReceiptSettings();
+      }
+
       _lastKnownCloudTimestamp = ts;
       syncStatus.value = SyncStatus.synced;
+
+      // Pull receipt settings from cloud (in case saved from desktop/other device)
+      await downloadReceiptSettings();
+
       print('SYNC: Finished successfully!');
     } catch (e) {
       print('SYNC ERROR: $e');
@@ -141,6 +152,64 @@ class SupasService {
   // Deprecated wrapper for backward compatibility
   Future<void> uploadDatabase() async {
       await syncDatabase();
+  }
+
+  /// Uploads local receipt settings to Supabase Storage as settings.json
+  Future<void> uploadReceiptSettings() async {
+    if (userId == null) return;
+    try {
+      final db = DatabaseHelper.instance;
+      final settings = {
+        'receipt_shop_name': await db.getSetting('receipt_shop_name') ?? '',
+        'receipt_shop_number': await db.getSetting('receipt_shop_number') ?? '',
+        'receipt_location': await db.getSetting('receipt_location') ?? '',
+        'receipt_phone': await db.getSetting('receipt_phone') ?? '',
+        'receipt_phone2': await db.getSetting('receipt_phone2') ?? '',
+      };
+
+      final jsonBytes = utf8.encode(jsonEncode(settings));
+      final storagePath = '$userId/settings.json';
+
+      await client.storage.from('backups').uploadBinary(
+        storagePath,
+        Uint8List.fromList(jsonBytes),
+        fileOptions: const FileOptions(upsert: true, contentType: 'application/json'),
+      );
+      print('SETTINGS UPLOAD: Success');
+    } catch (e) {
+      print('SETTINGS UPLOAD ERROR: $e');
+    }
+  }
+
+  /// Downloads receipt settings from Supabase Storage and saves locally
+  Future<void> downloadReceiptSettings() async {
+    if (userId == null) return;
+    try {
+      final storagePath = '$userId/settings.json';
+      final bytes = await client.storage.from('backups').download(storagePath);
+      final jsonStr = utf8.decode(bytes);
+      final settings = jsonDecode(jsonStr) as Map<String, dynamic>;
+
+      final db = DatabaseHelper.instance;
+      final keys = ['receipt_shop_name', 'receipt_shop_number', 'receipt_location', 'receipt_phone', 'receipt_phone2'];
+      for (final key in keys) {
+        if (settings.containsKey(key)) {
+          final cloudVal = settings[key]?.toString() ?? '';
+          final localVal = await db.getSetting(key);
+          // Accept cloud value if local is empty/null
+          if (cloudVal.isNotEmpty && (localVal == null || localVal.isEmpty)) {
+            await db.saveSetting(key, cloudVal);
+          }
+          // If local has never been set, always accept cloud
+          if (localVal == null) {
+            await db.saveSetting(key, cloudVal);
+          }
+        }
+      }
+      print('SETTINGS DOWNLOAD: Applied receipt settings from cloud');
+    } catch (e) {
+      print('SETTINGS DOWNLOAD: No settings found or error: $e');
+    }
   }
 
   Future<void> ensureUserMetadataExists(String email) async {

@@ -340,16 +340,73 @@ public class SalesController implements DataManager.DataChangeListener {
         priceField.setItems(dataManager.getDbHelper().getPriceHistory(item, size));
     }
 
+    /**
+     * Refreshes dropdowns while preserving the user's current input.
+     * The background auto-sync calls onDataChanged() periodically which triggers this.
+     * Without preserving state, every refresh would clear the form mid-typing.
+     */
     private void refreshDropdowns() {
+        // --- Save current user state BEFORE touching any items ---
+        String currentCustomerText = customerNameComboBox.getEditor().getText();
+        String currentCustomerValue = customerNameComboBox.getValue();
+        String currentItem = itemsComboBox.getValue();
+        String currentSize = qtyComboBox.getValue();
+        String currentUnit = unitField.getText();
+        String currentPrice = priceField.getEditor().getText();
+
+        // Check if the user is actively composing a sale
+        boolean userIsWorking = !items.isEmpty()
+                || (currentCustomerText != null && !currentCustomerText.trim().isEmpty())
+                || currentItem != null
+                || (currentUnit != null && !currentUnit.trim().isEmpty())
+                || (currentPrice != null && !currentPrice.trim().isEmpty());
+
+        // --- Update item list ---
         ObservableList<String> availableItems = dataManager.getDbHelper().getAvailableItems();
         itemsComboBox.setItems(availableItems);
-        qtyComboBox.setItems(FXCollections.observableArrayList());
 
-        // Populate customer dropdown: Walk-in Customer first, then past customers
+        // --- Update customer list ---
         ObservableList<String> customers = FXCollections.observableArrayList();
         customers.add("Walk-in Customer");
         customers.addAll(dataManager.getDbHelper().getDistinctCustomers());
         customerNameComboBox.setItems(customers);
+
+        // --- Restore selections if user was working ---
+        if (userIsWorking) {
+            // Restore customer name
+            if (currentCustomerText != null && !currentCustomerText.trim().isEmpty()) {
+                customerNameComboBox.getEditor().setText(currentCustomerText);
+            } else if (currentCustomerValue != null) {
+                customerNameComboBox.setValue(currentCustomerValue);
+            }
+
+            // Restore item selection
+            if (currentItem != null && availableItems.contains(currentItem)) {
+                itemsComboBox.setValue(currentItem);
+                // Restore sizes for the selected item
+                refreshSizesDropdown(currentItem);
+
+                // Restore size selection
+                if (currentSize != null) {
+                    ObservableList<String> sizes = qtyComboBox.getItems();
+                    if (sizes != null && sizes.contains(currentSize)) {
+                        qtyComboBox.setValue(currentSize);
+                    }
+                }
+            }
+
+            // Restore unit field
+            if (currentUnit != null && !currentUnit.trim().isEmpty()) {
+                unitField.setText(currentUnit);
+            }
+
+            // Restore price field
+            if (currentPrice != null && !currentPrice.trim().isEmpty()) {
+                priceField.getEditor().setText(currentPrice);
+            }
+        } else {
+            qtyComboBox.setItems(FXCollections.observableArrayList());
+        }
     }
 
     private void refreshSizesDropdown(String itemName) {

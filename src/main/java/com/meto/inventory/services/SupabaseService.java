@@ -666,6 +666,94 @@ public class SupabaseService {
         }
     }
 
+    // --- RECEIPT SETTINGS SYNC VIA STORAGE ---
+
+    /**
+     * Uploads the local receipt settings to Supabase Storage as a JSON file.
+     * Called after saving receipt settings on the desktop.
+     */
+    public void uploadReceiptSettings() {
+        try {
+            if (currentUserId == null || currentAccessToken == null) return;
+
+            var db = com.meto.inventory.DataManager.getInstance().getDbHelper();
+            JsonObject settings = new JsonObject();
+            String[] keys = {"receipt_shop_name", "receipt_shop_number", "receipt_location", "receipt_phone", "receipt_phone2"};
+            for (String key : keys) {
+                String val = db.getSetting(key);
+                settings.addProperty(key, val != null ? val : "");
+            }
+
+            byte[] jsonBytes = settings.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            String storagePath = currentUserId + "/settings.json";
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(STORAGE_URL + "/backups/" + storagePath))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Content-Type", "application/json")
+                    .header("x-upsert", "true")
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(jsonBytes))
+                    .build();
+
+            HttpResponse<String> res = client.send(request, HttpResponse.BodyHandlers.ofString());
+            System.out.println("SETTINGS UPLOAD: " + res.statusCode());
+        } catch (Exception e) {
+            System.err.println("Failed to upload receipt settings: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Downloads receipt settings from Supabase Storage and saves them locally.
+     * Called during syncOnLogin to ensure desktop has the latest receipt info.
+     */
+    public void downloadReceiptSettings() {
+        try {
+            if (currentUserId == null || currentAccessToken == null) return;
+
+            String storagePath = currentUserId + "/settings.json";
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(STORAGE_URL + "/backups/" + storagePath))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .GET()
+                    .build();
+
+            HttpResponse<String> res = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (res.statusCode() == 200) {
+                try {
+                    JsonObject settings = JsonParser.parseString(res.body()).getAsJsonObject();
+                    var db = com.meto.inventory.DataManager.getInstance().getDbHelper();
+                    String[] keys = {"receipt_shop_name", "receipt_shop_number", "receipt_location", "receipt_phone", "receipt_phone2"};
+                    for (String key : keys) {
+                        if (settings.has(key) && !settings.get(key).isJsonNull()) {
+                            String cloudVal = settings.get(key).getAsString();
+                            String localVal = db.getSetting(key);
+                            // Only overwrite if cloud has data and local is empty
+                            // (to avoid overwriting intentional local edits)
+                            if (!cloudVal.isEmpty() && (localVal == null || localVal.isEmpty())) {
+                                db.saveSetting(key, cloudVal);
+                            }
+                            // If local has no value at all, always accept cloud
+                            if (localVal == null) {
+                                db.saveSetting(key, cloudVal);
+                            }
+                        }
+                    }
+                    System.out.println("SETTINGS DOWNLOAD: Applied receipt settings from cloud");
+                } catch (Exception parseEx) {
+                    System.err.println("SETTINGS DOWNLOAD: Failed to parse settings JSON: " + parseEx.getMessage());
+                }
+            } else {
+                System.out.println("SETTINGS DOWNLOAD: No settings file found (" + res.statusCode() + ")");
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to download receipt settings: " + e.getMessage());
+        }
+    }
+
     // --- PROGRESS TRACKING ---
     private final java.util.List<java.util.function.Consumer<Double>> progressListeners = new java.util.ArrayList<>();
 
@@ -740,6 +828,9 @@ public class SupabaseService {
             if (meta.has("last_backup_timestamp") && !meta.get("last_backup_timestamp").isJsonNull()) {
                 cloudTs = meta.get("last_backup_timestamp").getAsLong();
             }
+
+            // Pull receipt settings from cloud
+            downloadReceiptSettings();
 
             boolean anyPulled = stockPulled || salesPulled;
             if (cloudTs > localVersionTs) {

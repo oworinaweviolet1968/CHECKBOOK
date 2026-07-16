@@ -331,6 +331,8 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                     return;
                   }
 
+                  // Upload receipt settings to cloud for desktop sync
+                  await SupasService.instance.uploadReceiptSettings();
                   _handleBackup();
                 },
                 style: ElevatedButton.styleFrom(
