@@ -30,6 +30,12 @@ public class MainController {
     private com.meto.inventory.components.LoadingBar syncLoadingBar;
 
     @FXML
+    private javafx.scene.layout.Region statusDot;
+
+    // Tracks if we were offline before — used to send "back online" notification
+    private boolean wasOffline = false;
+
+    @FXML
     public void initialize() throws IOException {
         instance = this;
         // Load views
@@ -58,19 +64,40 @@ public class MainController {
                         syncLoadingBar.start();
                         backupStatusLabel.setText("Syncing...");
                         backupStatusLabel.setStyle("-fx-text-fill: #2196F3; -fx-font-size: 11px; -fx-font-weight: normal;");
+                        setStatusDot("checking");
                     } else if (status.contains("Error") || status.contains("Offline")) {
                         syncLoadingBar.stop();
-                        backupStatusLabel.setText("Cloud: Offline");
+                        backupStatusLabel.setText("Offline");
                         backupStatusLabel.setStyle("-fx-text-fill: #F44336; -fx-font-size: 11px; -fx-font-weight: bold;");
+                        setStatusDot("offline");
+                        wasOffline = true;
                     } else {
                         // Success state (Synced, Integrated, or timestamp)
                         syncLoadingBar.stop();
-                        backupStatusLabel.setText("Cloud: Connected");
-                        backupStatusLabel.setStyle("-fx-text-fill: #4CAF50; -fx-font-size: 11px; -fx-font-weight: normal;");
+                        backupStatusLabel.setText("Online");
+                        backupStatusLabel.setStyle("-fx-text-fill: #4CAF50; -fx-font-size: 11px; -fx-font-weight: bold;");
+                        setStatusDot("online");
+
+                        // Fire "back online" notification if we were previously offline
+                        if (wasOffline) {
+                            wasOffline = false;
+                            org.controlsfx.control.Notifications.create()
+                                .title("✅ Back Online")
+                                .text("Desktop app is now connected to the cloud.")
+                                .position(javafx.geometry.Pos.BOTTOM_RIGHT)
+                                .showInformation();
+                        }
                     }
                 }
             });
         });
+    }
+
+    /** Switches the status dot CSS state class. State: "online", "offline", "checking" */
+    private void setStatusDot(String state) {
+        if (statusDot == null) return;
+        statusDot.getStyleClass().removeAll("status-dot-online", "status-dot-offline", "status-dot-checking");
+        statusDot.getStyleClass().add("status-dot-" + state);
     }
 
     public void setView(Node node, Button activeBtn) {

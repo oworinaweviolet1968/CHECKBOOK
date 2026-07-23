@@ -4,7 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import java.io.File;
+
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -46,8 +46,7 @@ public class SupabaseService {
     private String currentAccessToken;
     private String currentRefreshToken;
     private String currentUserId;
-    private long lastKnownCloudTimestamp = 0;
-    private long lastFetchCloudTs = 0; 
+
     private boolean lastSyncFailed = false;
     private java.util.List<java.util.function.Consumer<String>> statusListeners = new java.util.ArrayList<>();
 
@@ -251,6 +250,32 @@ public class SupabaseService {
             saveSession();
             return true;
         } else {
+            System.err.println("signInWithRefreshToken failed: Status " + response.statusCode() + " - " + response.body());
+            clearSession();
+            return false;
+        }
+    }
+
+    public boolean signInWithAccessToken(String accessToken, String refreshToken) throws IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(AUTH_URL + "/user"))
+                .header("apikey", SUPABASE_KEY)
+                .header("Authorization", "Bearer " + accessToken)
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() == 200) {
+            JsonObject userObj = JsonParser.parseString(response.body()).getAsJsonObject();
+            this.currentAccessToken = accessToken;
+            this.currentRefreshToken = refreshToken != null ? refreshToken : "";
+            this.currentUserId = userObj.get("id").getAsString();
+            saveSession();
+            ensureUserMetadataExists(userObj.has("email") ? userObj.get("email").getAsString() : null);
+            return true;
+        } else {
+            System.err.println("signInWithAccessToken failed: Status " + response.statusCode() + " - " + response.body());
             clearSession();
             return false;
         }
@@ -526,6 +551,32 @@ public class SupabaseService {
         }
     }
 
+    /**
+     * Lightweight heartbeat — PATCHes desktop_last_seen (epoch ms) to the users table.
+     * Called every 10s by the AutoSync thread. Does NOT hold the sync lock.
+     */
+    public void updateHeartbeat() {
+        if (currentUserId == null || currentAccessToken == null) return;
+        try {
+            long now = System.currentTimeMillis();
+            JsonObject json = new JsonObject();
+            json.addProperty("desktop_last_seen", now);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/users?id=eq." + currentUserId))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Content-Type", "application/json")
+                    .timeout(java.time.Duration.ofSeconds(5))
+                    .method("PATCH", HttpRequest.BodyPublishers.ofString(json.toString()))
+                    .build();
+
+            client.send(request, HttpResponse.BodyHandlers.ofString());
+        } catch (Exception e) {
+            // Silent — heartbeat is best-effort
+        }
+    }
+
     // --- STORAGE (BACKUPS) ---
 
     public boolean uploadDatabase(String filePath) {
@@ -640,7 +691,6 @@ public class SupabaseService {
             updates.put("last_backup_timestamp", ts);
             updateUserFields(updates);
             db.saveSetting("last_backup_timestamp", String.valueOf(ts));
-            lastKnownCloudTimestamp = ts;
             notifyStatus("Cloud: " + new java.util.Date(ts).toString());
 
             return true;
@@ -683,6 +733,10 @@ public class SupabaseService {
                 String val = db.getSetting(key);
                 settings.addProperty(key, val != null ? val : "");
             }
+            String passcode = db.getSetting("passcode");
+            if (passcode != null && !passcode.isEmpty()) {
+                settings.addProperty("passcode", passcode);
+            }
 
             byte[] jsonBytes = settings.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
             String storagePath = currentUserId + "/settings.json";
@@ -698,9 +752,16 @@ public class SupabaseService {
 
             HttpResponse<String> res = client.send(request, HttpResponse.BodyHandlers.ofString());
             System.out.println("SETTINGS UPLOAD: " + res.statusCode());
+            invalidateSettingsCache();
         } catch (Exception e) {
             System.err.println("Failed to upload receipt settings: " + e.getMessage());
         }
+    }
+
+    private long lastSettingsCheckTime = 0;
+
+    public void invalidateSettingsCache() {
+        this.lastSettingsCheckTime = 0;
     }
 
     /**
@@ -708,6 +769,10 @@ public class SupabaseService {
      * Called during syncOnLogin to ensure desktop has the latest receipt info.
      */
     public void downloadReceiptSettings() {
+        if (System.currentTimeMillis() - lastSettingsCheckTime < 600000) {
+            return;
+        }
+        lastSettingsCheckTime = System.currentTimeMillis();
         try {
             if (currentUserId == null || currentAccessToken == null) return;
 
@@ -726,7 +791,7 @@ public class SupabaseService {
                 try {
                     JsonObject settings = JsonParser.parseString(res.body()).getAsJsonObject();
                     var db = com.meto.inventory.DataManager.getInstance().getDbHelper();
-                    String[] keys = {"receipt_shop_name", "receipt_shop_number", "receipt_location", "receipt_phone", "receipt_phone2"};
+                    String[] keys = {"receipt_shop_name", "receipt_shop_number", "receipt_location", "receipt_phone", "receipt_phone2", "passcode"};
                     for (String key : keys) {
                         if (settings.has(key) && !settings.get(key).isJsonNull()) {
                             String cloudVal = settings.get(key).getAsString();
@@ -761,6 +826,7 @@ public class SupabaseService {
         progressListeners.add(listener);
     }
 
+    @SuppressWarnings("unused")
     private void notifyProgress(double progress) {
         javafx.application.Platform.runLater(() -> {
             for (var listener : progressListeners) {
@@ -835,7 +901,6 @@ public class SupabaseService {
             boolean anyPulled = stockPulled || salesPulled;
             if (cloudTs > localVersionTs) {
                 db.saveSetting("last_backup_timestamp", String.valueOf(cloudTs));
-                this.lastKnownCloudTimestamp = cloudTs;
                 notifyStatus("Cloud: Integrated");
                 return true;
             } else if (anyPulled) {

@@ -126,6 +126,7 @@ void main() async {
     }
 
     await DatabaseHelper.instance.switchDatabase(userId);
+    await SupasService.instance.downloadReceiptSettings();
     await PasscodeService.instance.init();
 
     // Pre-refresh metadata
@@ -188,6 +189,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // Polling timers
   Timer? _loginPollTimer;
   Timer? _dataSyncTimer;
+  Timer? _desktopPresenceTimer;
+
+  // Track previous desktop status to detect transitions
+  DesktopStatus _prevDesktopStatus = DesktopStatus.checking;
 
   late List<Widget> _screens;
 
@@ -211,6 +216,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     if (userId != null) {
       await SupasService.instance.migrateLegacyDatabase();
       await DatabaseHelper.instance.switchDatabase(userId);
+      await SupasService.instance.downloadReceiptSettings();
       await PasscodeService.instance.init();
       // Trigger a sync in background too
       SupasService.instance.syncDatabase();
@@ -245,6 +251,11 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
     // Poll for remote data changes every 30 seconds
     _dataSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) => _pollDataSync());
+
+    // Poll desktop app presence every 15 seconds
+    _desktopPresenceTimer = Timer.periodic(const Duration(seconds: 15), (_) => _pollDesktopPresence());
+    // Run immediately once on startup
+    _pollDesktopPresence();
   }
 
   Future<void> _pollLoginRequests() async {
@@ -264,6 +275,68 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       if (hasChanges && mounted) {
         // Refresh UI data since the database was updated
         _dashboardKey.currentState?.refreshData();
+      }
+    } catch (e) {
+      // Silent fail
+    }
+  }
+
+  Future<void> _pollDesktopPresence() async {
+    try {
+      final newStatus = await SupasService.instance.checkDesktopPresence();
+      if (!mounted) return;
+
+      // Only notify on meaningful transitions (skip 'checking' and 'unknown')
+      final prev = _prevDesktopStatus;
+      _prevDesktopStatus = newStatus;
+
+      // We only care about online ↔ offline transitions
+      if (newStatus == prev) return;
+      if (newStatus == DesktopStatus.checking || newStatus == DesktopStatus.unknown) return;
+      if (prev == DesktopStatus.checking) return; // First check — don't notify yet
+
+      String title;
+      String body;
+
+      if (newStatus == DesktopStatus.online) {
+        title = '🟢 Desktop App Online';
+        body = 'The desktop app is now connected to the internet.';
+      } else {
+        title = '🔴 Desktop App Offline';
+        body = 'The desktop app has gone offline or was closed.';
+      }
+
+      // Android / iOS: local push notification
+      if (Platform.isAndroid || Platform.isIOS) {
+        const androidDetails = AndroidNotificationDetails(
+          'desktop_presence_channel',
+          'Desktop App Status',
+          channelDescription: 'Alerts when the desktop application goes online or offline.',
+          importance: Importance.high,
+          priority: Priority.high,
+          icon: '@mipmap/ic_launcher',
+        );
+        const notifDetails = NotificationDetails(android: androidDetails);
+        await flutterLocalNotificationsPlugin.show(
+          newStatus.index,
+          title,
+          body,
+          notifDetails,
+        );
+      } else {
+        // Linux / desktop fallback: SnackBar
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('$title — $body'),
+              backgroundColor: newStatus == DesktopStatus.online
+                  ? const Color(0xFF10B981)
+                  : Colors.redAccent,
+              duration: const Duration(seconds: 5),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
       }
     } catch (e) {
       // Silent fail
@@ -319,6 +392,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _loginRequestSubscription?.cancel();
     _loginPollTimer?.cancel();
     _dataSyncTimer?.cancel();
+    _desktopPresenceTimer?.cancel();
     super.dispose();
   }
 

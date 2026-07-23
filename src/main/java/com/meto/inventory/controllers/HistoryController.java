@@ -230,20 +230,7 @@ public class HistoryController implements DataManager.DataChangeListener {
         });
     }
 
-    private <T> void centerColumn(TableColumn<HistoryItem, T> column) {
-        column.setCellFactory(col -> new TableCell<>() {
-            @Override
-            protected void updateItem(T item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                } else {
-                    setText(item.toString());
-                    setAlignment(javafx.geometry.Pos.CENTER);
-                }
-            }
-        });
-    }
+
 
     private <T> void rightAlignColumn(TableColumn<HistoryItem, T> column) {
         column.setCellFactory(col -> new TableCell<>() {

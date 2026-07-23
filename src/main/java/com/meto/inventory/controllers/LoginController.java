@@ -232,24 +232,7 @@ public class LoginController {
                     if (currentUid == null || currentUid.isEmpty())
                         currentUid = "unknown_user";
 
-                    String newDbName = "inventory_" + currentUid.replaceAll("[^a-zA-Z0-9]", "_") + ".db";
-
-                    String appDir = com.meto.inventory.DatabaseHelper.getAppDir();
-                    java.nio.file.Path newDbPath = java.nio.file.Path.of(appDir, newDbName);
-                    java.nio.file.Path oldDbPath = java.nio.file.Path.of(appDir, "inventory.db");
-
-                    // MIGRATION LOGIC (Legacy -> New)
-                    if (!java.nio.file.Files.exists(newDbPath) && java.nio.file.Files.exists(oldDbPath)) {
-                        try {
-                            System.out.println("Migrating legacy database to user-specific file...");
-                            java.nio.file.Files.copy(oldDbPath, newDbPath);
-                        } catch (Exception e) {
-                            e.printStackTrace();
-                        }
-                    }
-
                     // PERFORM THE SWITCH
-                    System.out.println("Switching database to: " + newDbName);
                     com.meto.inventory.DataManager.getInstance().switchDatabaseOnly(currentUid); // This sets the name
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -453,8 +436,17 @@ public class LoginController {
                     Thread.sleep(3000);
                 }
 
-                if (approved && refreshToken != null) {
-                    boolean success = service.signInWithRefreshToken(refreshToken);
+                if (approved && refreshToken != null && !refreshToken.trim().isEmpty()) {
+                    boolean success = false;
+                    if (refreshToken.contains(":::")) {
+                        String[] parts = refreshToken.split(":::", 2);
+                        String accToken = parts[0];
+                        String refToken = parts.length > 1 ? parts[1] : "";
+                        success = service.signInWithAccessToken(accToken, refToken);
+                    } else {
+                        success = service.signInWithRefreshToken(refreshToken);
+                    }
+
                     if (success) {
                         Platform.runLater(() -> {
                             statusLabel.setText("Login approved! Syncing...");
@@ -463,13 +455,13 @@ public class LoginController {
                         });
                     } else {
                         Platform.runLater(() -> {
-                            statusLabel.setText("Login failed after approval.");
+                            statusLabel.setText("Login failed after approval (invalid session token).");
                             setLoading(false);
                         });
                     }
                 } else {
                     Platform.runLater(() -> {
-                        statusLabel.setText("Login request timed out or was rejected.");
+                        statusLabel.setText("Login request timed out, rejected, or missing token.");
                         setLoading(false);
                     });
                 }

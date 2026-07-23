@@ -51,7 +51,10 @@
                 <VBox spacing="5" alignment="CENTER_LEFT">
                     <padding><Insets left="10" top="10"/></padding>
                     <LoadingBar fx:id="syncLoadingBar" visible="false" managed="false" maxWidth="120" />
-                    <Label fx:id="backupStatusLabel" text="Cloud: Connected" style="-fx-text-fill: #999; -fx-font-size: 11px;" />
+                    <HBox spacing="6" alignment="CENTER_LEFT">
+                        <Region fx:id="statusDot" styleClass="status-dot, status-dot-checking" minWidth="8" minHeight="8" maxWidth="8" maxHeight="8"/>
+                        <Label fx:id="backupStatusLabel" text="Checking..." style="-fx-text-fill: #999; -fx-font-size: 11px;" />
+                    </HBox>
                 </VBox>
 
                 <Region VBox.vgrow="ALWAYS" />

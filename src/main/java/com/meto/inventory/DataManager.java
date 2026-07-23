@@ -112,6 +112,8 @@ public class DataManager {
     }
 
     private ScheduledExecutorService syncExecutor;
+    // Track previous online state to detect transitions
+    private Boolean wasOnline = null;
 
     private void startAutoSyncTask() {
         if (syncExecutor != null) return;
@@ -127,9 +129,40 @@ public class DataManager {
             try {
                 com.meto.inventory.services.SupabaseService service = com.meto.inventory.services.SupabaseService.getInstance();
                 
-                if (service.isLoggedIn() && isBackupEnabled) {
+                if (service.isLoggedIn()) {
                     boolean online = service.isOnline();
+
+                    // --- CONNECTIVITY TRANSITION NOTIFICATIONS ---
+                    if (wasOnline == null || wasOnline != online) {
+                        if (online) {
+                            dbHelper.addNotification("Desktop app accessed the internet and is now online.", "Desktop");
+                            com.meto.inventory.services.NotificationService.getInstance()
+                                .sendDesktopActionNotification("Desktop App Online", "Desktop app accessed the internet and is now online.");
+                            
+                            javafx.application.Platform.runLater(() -> {
+                                org.controlsfx.control.Notifications.create()
+                                    .title("🟢 Connection Restored")
+                                    .text("Desktop app is back online. Cloud sync will resume.")
+                                    .position(javafx.geometry.Pos.TOP_RIGHT)
+                                    .showInformation();
+                            });
+                        } else if (wasOnline != null) {
+                            javafx.application.Platform.runLater(() -> {
+                                org.controlsfx.control.Notifications.create()
+                                    .title("🔴 Connection Lost")
+                                    .text("Desktop app is offline. Changes will sync when reconnected.")
+                                    .position(javafx.geometry.Pos.TOP_RIGHT)
+                                    .showWarning();
+                            });
+                        }
+                    }
+                    wasOnline = online;
+
                     if (online) {
+                        // Always send heartbeat first (best-effort, lightweight)
+                        service.updateHeartbeat();
+
+                        if (isBackupEnabled) {
                             if (service.isSyncFailed()) {
                                 System.out.println("AutoSync: Connection restored. Retrying upload...");
                                 String savedToken = service.loadSession();
@@ -149,7 +182,8 @@ public class DataManager {
                             
                             // Check for unread notifications
                             checkAndDisplayNotifications();
-                        } else {
+                        }
+                    } else {
                         // Offline
                         service.notifyStatus("Cloud: Offline");
                     }
@@ -158,6 +192,7 @@ public class DataManager {
                 // Silently ignore background sync errors to avoid UI popups
             }
         }, 10, 10, TimeUnit.SECONDS);
+
     }
 
     private void checkAndDisplayNotifications() {

@@ -1,3 +1,4 @@
+/*noinspection CssCaniuseFeatureRequiresPrefix, CssMissingStandardProperty*/
 /* =========================================
    1. GLOBAL VARIABLES & RESET
    ========================================= */
@@ -771,3 +772,35 @@ Label.header-title {
 .text-muted {
     -fx-text-fill: #6B7280;
 }
+
+/* =========================================
+   9. ONLINE / OFFLINE STATUS DOT
+   ========================================= */
+
+/* Base dot shape — small circle */
+.status-dot {
+    -fx-background-radius: 50%;
+    -fx-min-width: 8px;
+    -fx-min-height: 8px;
+    -fx-max-width: 8px;
+    -fx-max-height: 8px;
+}
+
+/* Online: solid green with a soft glow */
+.status-dot-online {
+    -fx-background-color: #10B981;
+    -fx-effect: dropshadow(gaussian, rgba(16, 185, 129, 0.7), 6, 0.5, 0, 0);
+}
+
+/* Offline: solid red */
+.status-dot-offline {
+    -fx-background-color: #EF4444;
+    -fx-effect: dropshadow(gaussian, rgba(239, 68, 68, 0.5), 4, 0.3, 0, 0);
+}
+
+/* Checking / Syncing: amber/grey — no connection state yet */
+.status-dot-checking {
+    -fx-background-color: #F59E0B;
+    -fx-effect: none;
+}
+

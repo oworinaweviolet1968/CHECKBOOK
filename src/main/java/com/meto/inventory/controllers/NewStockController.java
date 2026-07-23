@@ -49,6 +49,7 @@ public class NewStockController implements DataManager.DataChangeListener {
     private final DataManager dataManager = DataManager.getInstance();
     private final java.util.Map<String, Button> unitButtonsMap = new java.util.HashMap<>();
     private final java.util.Map<String, Button> qtyButtonsMap = new java.util.HashMap<>();
+    private boolean isRefreshing = false; // Guard to prevent sync-triggered field clearing
 
     @FXML
     public void initialize() {
@@ -101,6 +102,7 @@ public class NewStockController implements DataManager.DataChangeListener {
 
         // --- STEP 1: ITEM SELECTION ---
         itemsComboBox.getEditor().textProperty().addListener((obs, old, newVal) -> {
+            if (isRefreshing) return; // Don't wipe fields during background sync refresh
             qtyComboBox.getEditor().clear();
             unitField.clear();
             priceField.clear();
@@ -410,13 +412,29 @@ public class NewStockController implements DataManager.DataChangeListener {
     }
 
     private void refreshDropdowns() {
-        ObservableList<String> availableItems = dataManager.getDbHelper().getAvailableItems();
-        itemsComboBox.setItems(availableItems);
-        itemsComboBox.getEditor().clear();
+        // Preserve current editor text so background sync doesn't wipe user input
+        String currentItem = itemsComboBox.getEditor().getText();
+        String currentSupplier = supplierNameComboBox.getEditor().getText();
 
-        // Populate supplier dropdown from past stock entries
-        ObservableList<String> suppliers = dataManager.getDbHelper().getDistinctSuppliers();
-        supplierNameComboBox.setItems(suppliers);
+        isRefreshing = true; // Prevent item-change listener from clearing fields
+        try {
+            ObservableList<String> availableItems = dataManager.getDbHelper().getAvailableItems();
+            itemsComboBox.setItems(availableItems);
+
+            // Populate supplier dropdown from past stock entries
+            ObservableList<String> suppliers = dataManager.getDbHelper().getDistinctSuppliers();
+            supplierNameComboBox.setItems(suppliers);
+
+            // Restore what the user was typing
+            if (currentItem != null && !currentItem.isEmpty()) {
+                itemsComboBox.getEditor().setText(currentItem);
+            }
+            if (currentSupplier != null && !currentSupplier.isEmpty()) {
+                supplierNameComboBox.getEditor().setText(currentSupplier);
+            }
+        } finally {
+            isRefreshing = false;
+        }
     }
 
     private void createQtyQuickButtons() {
@@ -731,9 +749,8 @@ public class NewStockController implements DataManager.DataChangeListener {
         StockItem si = new StockItem(itemName, qtyRaw, unitText, priceStr, amountStr);
         items.add(si);
 
-        // clear fields — reset values to null FIRST so re-selecting the same item works
-        itemsComboBox.setValue(null);
-        itemsComboBox.getEditor().clear();
+        // Only clear size/unit/price — keep supplier and item name
+        // so the user can quickly add more sizes of the same item.
         qtyComboBox.setValue(null);
         qtyComboBox.getEditor().clear();
         unitField.clear();
@@ -741,6 +758,15 @@ public class NewStockController implements DataManager.DataChangeListener {
         priceField.setEditable(true);
         priceField.setMouseTransparent(false);
         priceField.setStyle("");
+
+        // Reload sizes for the current item so the dropdown is ready
+        if (itemName != null && !itemName.isEmpty()) {
+            ObservableList<String> sizes = dataManager.getDbHelper().getItemSizes(itemName);
+            qtyComboBox.setItems(sizes);
+            setFlowLevel(1); // Stay at item-selected level
+        } else {
+            setFlowLevel(0);
+        }
     }
 
     @FXML

@@ -927,17 +927,21 @@ class _NewStockScreenState extends State<NewStockScreen> {
               amount: total.toStringAsFixed(0)
           ));
           
+          // Only clear size/unit/price — keep supplier and item name
+          // so the user can quickly add more sizes of the same item.
           _qtyController.clear();
           _unitController.clear();
           _priceController.clear();
-          // Keep item logic?
-          _itemController.clear(); 
-          _selectedItem = null;
           _selectedSize = null;
-          _availableSizes = [];
           _isNewSize = false;
+          _isPriceLocked = false;
           _selectedUnitLabel = "pcs";
           _totalPiecesSuffix = "pcs";
+          
+          // Reload sizes for the same item so the dropdown is ready
+          if (_selectedItem != null) {
+              _loadSizes(_selectedItem!);
+          }
       });
   }
 

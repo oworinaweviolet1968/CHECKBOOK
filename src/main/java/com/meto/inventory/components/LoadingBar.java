@@ -17,14 +17,13 @@ public class LoadingBar extends StackPane {
 
     private final Rectangle fill;
     private final Timeline  timeline;
-    private final double    barWidth;
+
 
     public LoadingBar() {
         this(200, 4);
     }
 
     public LoadingBar(double width, double height) {
-        this.barWidth = width;
 
         double radius = height / 2;
 

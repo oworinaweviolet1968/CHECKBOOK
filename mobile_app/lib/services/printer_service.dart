@@ -11,6 +11,7 @@ class PrinterService {
 
   final BlueThermalPrinter _bluetooth = BlueThermalPrinter.instance;
   BluetoothDevice? _connectedDevice;
+  int _lastPrintTime = 0;
 
   /// Automatically discovers and connects to an MPT-II or POS printer.
   Future<bool> connectToPrinter() async {
@@ -44,6 +45,12 @@ class PrinterService {
 
   /// Prints a formatted invoice to the connected thermal printer.
   Future<void> printInvoice(String customer, List<SaleItem> cart, {String? date}) async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastPrintTime < 3000) {
+      throw Exception("Print request already sent! Please wait a moment.");
+    }
+    _lastPrintTime = now;
+
     bool connected = await connectToPrinter();
     if (!connected) throw Exception("Could not connect to thermal printer. Ensure it is paired and turned on.");
 
@@ -120,8 +127,8 @@ class PrinterService {
 
     // Footer
     bytes += generator.feed(2);
-    bytes += generator.text("Thank you for your business!", styles: const PosStyles(align: PosAlign.center));
-    bytes += generator.text("Powered by METO IMS", styles: const PosStyles(align: PosAlign.center));
+    bytes += generator.text("Great having you! See you soon!", styles: const PosStyles(align: PosAlign.center));
+    bytes += generator.text("Powered by CHECKBOOK mobile", styles: const PosStyles(align: PosAlign.center));
     bytes += generator.feed(3);
     bytes += generator.cut();
 

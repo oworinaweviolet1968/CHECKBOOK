@@ -1771,11 +1771,12 @@ public class DatabaseHelper {
         if (cloudStock == null || cloudStock.size() == 0)
             return;
             
-        String updateMetaOnly = "UPDATE stock SET supplier=?, item=?, quantity=?, unit=?, price=?, device_source=?, date=? WHERE sync_id=?";
-        String updateWithPieces = "UPDATE stock SET supplier=?, item=?, quantity=?, unit=?, price=?, available_pieces=?, device_source=?, date=?, is_edited=0 WHERE sync_id=?";
+        String updateMetaOnly = "UPDATE stock SET sync_id=?, supplier=?, item=?, quantity=?, unit=?, price=?, device_source=?, date=? WHERE id=?";
+        String updateWithPieces = "UPDATE stock SET sync_id=?, supplier=?, item=?, quantity=?, unit=?, price=?, available_pieces=?, device_source=?, date=?, is_edited=0 WHERE id=?";
         String insertSql = "INSERT INTO stock (sync_id, supplier, item, quantity, unit, price, available_pieces, device_source, date, is_edited) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
         
-        try (PreparedStatement checkStmt = connection.prepareStatement("SELECT is_edited, price, item, quantity, unit FROM stock WHERE sync_id = ?");
+        try (PreparedStatement checkStmt = connection.prepareStatement("SELECT id, is_edited, price, item, quantity, unit FROM stock WHERE sync_id = ?");
+             PreparedStatement checkByItemQtyStmt = connection.prepareStatement("SELECT id, is_edited, price, item, quantity, unit FROM stock WHERE item = ? AND quantity = ?");
              PreparedStatement updateMetaStmt = connection.prepareStatement(updateMetaOnly);
              PreparedStatement updateFullStmt = connection.prepareStatement(updateWithPieces);
              PreparedStatement insertStmt = connection.prepareStatement(insertSql)) {
@@ -1795,52 +1796,80 @@ public class DatabaseHelper {
                 checkStmt.setString(1, syncId);
                 ResultSet rs = checkStmt.executeQuery();
                 boolean exists = rs.next();
-                boolean localIsDirty = exists && rs.getInt("is_edited") == 1;
+                
+                int localId = -1;
+                boolean localIsDirty = false;
+                double oldPrice = 0.0;
+                String localItem = item;
+                String localQuantity = quantity;
+                String localUnit = unit;
+
+                if (exists) {
+                    localId = rs.getInt("id");
+                    localIsDirty = rs.getInt("is_edited") == 1;
+                    oldPrice = rs.getDouble("price");
+                    localItem = rs.getString("item");
+                    localQuantity = rs.getString("quantity");
+                    localUnit = rs.getString("unit");
+                } else {
+                    // Fallback to name + size to prevent UNIQUE constraint violation
+                    checkByItemQtyStmt.setString(1, item);
+                    checkByItemQtyStmt.setString(2, quantity);
+                    try (ResultSet rs2 = checkByItemQtyStmt.executeQuery()) {
+                        if (rs2.next()) {
+                            exists = true;
+                            localId = rs2.getInt("id");
+                            localIsDirty = rs2.getInt("is_edited") == 1;
+                            oldPrice = rs2.getDouble("price");
+                            localItem = rs2.getString("item");
+                            localQuantity = rs2.getString("quantity");
+                            localUnit = rs2.getString("unit");
+                        }
+                    }
+                }
                 
                 if (exists) {
-                    double oldPrice = rs.getDouble("price");
                     double newPriceVal = 0.0;
                     try {
                         newPriceVal = Double.parseDouble(price);
                     } catch (NumberFormatException ignored) {}
                     
                     if (Math.abs(oldPrice - newPriceVal) > 0.0001 && !"Desktop".equals(deviceSource)) {
-                        String itemName = rs.getString("item");
-                        String size = rs.getString("quantity");
-                        String unitVal = rs.getString("unit");
-                        double multiplier = getUnitMultiplier(unitVal, size, unitVal);
+                        double multiplier = getUnitMultiplier(localUnit, localQuantity, localUnit);
                         double oldUnitPrice = oldPrice * multiplier;
                         double newUnitPrice = newPriceVal * multiplier;
                         
                         addNotification(
                             String.format("Price updated for %s (%s): UGX %,.0f ➔ UGX %,.0f per %s", 
-                                itemName, size, oldUnitPrice, newUnitPrice, unitVal),
+                                localItem, localQuantity, oldUnitPrice, newUnitPrice, localUnit),
                             deviceSource
                         );
                     }
 
                     if (!localIsDirty && forceAcceptPieces) {
                         // Manual/full sync: accept cloud available_pieces to correct drift
-                        updateFullStmt.setString(1, supplier);
-                        updateFullStmt.setString(2, item);
-                        updateFullStmt.setString(3, quantity);
-                        updateFullStmt.setString(4, unit);
-                        updateFullStmt.setString(5, price);
-                        updateFullStmt.setDouble(6, availablePieces);
-                        updateFullStmt.setString(7, deviceSource);
-                        updateFullStmt.setString(8, date);
-                        updateFullStmt.setString(9, syncId);
+                        updateFullStmt.setString(1, syncId);
+                        updateFullStmt.setString(2, supplier);
+                        updateFullStmt.setString(3, item);
+                        updateFullStmt.setString(4, quantity);
+                        updateFullStmt.setString(5, unit);
+                        updateFullStmt.setString(6, price);
+                        updateFullStmt.setDouble(7, availablePieces);
+                        updateFullStmt.setString(8, deviceSource);
+                        updateFullStmt.setString(9, date);
+                        updateFullStmt.setInt(10, localId);
                         updateFullStmt.executeUpdate();
                     } else {
                         // Incremental sync OR local is dirty: preserve local available_pieces
-                        updateMetaStmt.setString(1, supplier);
-                        updateMetaStmt.setString(2, item);
-                        updateMetaStmt.setString(3, quantity);
-                        updateMetaStmt.setString(4, unit);
-                        updateMetaStmt.setString(5, price);
-                        updateMetaStmt.setString(6, deviceSource);
-                        updateMetaStmt.setString(7, date);
-                        updateMetaStmt.setString(8, syncId);
+                        updateMetaStmt.setString(1, syncId);
+                        updateMetaStmt.setString(2, supplier);
+                        updateMetaStmt.setString(3, item);
+                        updateMetaStmt.setString(4, quantity);
+                        updateMetaStmt.setString(5, unit);
+                        updateMetaStmt.setString(6, price);
+                        updateMetaStmt.setString(7, deviceSource);
+                        updateMetaStmt.setString(8, date);
+                        updateMetaStmt.setInt(9, localId);
                         updateMetaStmt.executeUpdate();
                     }
                 } else {
@@ -2241,13 +2270,11 @@ public class DatabaseHelper {
     private static class LegacySale {
         int id;
         String customer;
-        String date;
         String createdAt;
 
         LegacySale(int id, String customer, String date, String createdAt) {
             this.id = id;
             this.customer = customer;
-            this.date = date;
             this.createdAt = createdAt;
         }
     }

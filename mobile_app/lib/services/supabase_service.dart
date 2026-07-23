@@ -8,8 +8,17 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:archive/archive_io.dart';
 import 'database_helper.dart';
+import 'passcode_service.dart';
 
 enum SyncStatus { idle, syncing, synced, error, offline }
+
+/// Represents the live connection status of the desktop application.
+/// - [online]  : desktop heartbeat seen within the last 30 seconds
+/// - [offline] : heartbeat is stale (>30s ago)
+/// - [checking]: status not yet determined (initial state)
+/// - [unknown] : user has never run the desktop app (no heartbeat field)
+enum DesktopStatus { online, offline, checking, unknown }
+
 
 class SupasService {
   static final SupasService _instance = SupasService._privateConstructor();
@@ -32,6 +41,9 @@ class SupasService {
   final SupabaseClient client = Supabase.instance.client;
   final ValueNotifier<SyncStatus> syncStatus = ValueNotifier(SyncStatus.idle);
   final ValueNotifier<Map<String, dynamic>?> userMetadata = ValueNotifier(null);
+
+  /// Live status of the desktop application, polled every 15 seconds.
+  final ValueNotifier<DesktopStatus> desktopStatus = ValueNotifier(DesktopStatus.checking);
 
   // Sign In
   Future<AuthResponse> signIn(String email, String password) async {
@@ -165,6 +177,7 @@ class SupasService {
         'receipt_location': await db.getSetting('receipt_location') ?? '',
         'receipt_phone': await db.getSetting('receipt_phone') ?? '',
         'receipt_phone2': await db.getSetting('receipt_phone2') ?? '',
+        'passcode': await db.getSetting('passcode') ?? '',
       };
 
       final jsonBytes = utf8.encode(jsonEncode(settings));
@@ -176,13 +189,25 @@ class SupasService {
         fileOptions: const FileOptions(upsert: true, contentType: 'application/json'),
       );
       print('SETTINGS UPLOAD: Success');
+      invalidateSettingsCache();
     } catch (e) {
       print('SETTINGS UPLOAD ERROR: $e');
     }
   }
 
+  int _lastSettingsCheckTime = 0;
+
+  void invalidateSettingsCache() {
+    _lastSettingsCheckTime = 0;
+  }
+
   /// Downloads receipt settings from Supabase Storage and saves locally
   Future<void> downloadReceiptSettings() async {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastSettingsCheckTime < 600000) {
+      return;
+    }
+    _lastSettingsCheckTime = now;
     if (userId == null) return;
     try {
       final storagePath = '$userId/settings.json';
@@ -191,20 +216,32 @@ class SupasService {
       final settings = jsonDecode(jsonStr) as Map<String, dynamic>;
 
       final db = DatabaseHelper.instance;
-      final keys = ['receipt_shop_name', 'receipt_shop_number', 'receipt_location', 'receipt_phone', 'receipt_phone2'];
+      final keys = ['receipt_shop_name', 'receipt_shop_number', 'receipt_location', 'receipt_phone', 'receipt_phone2', 'passcode'];
+      bool passcodeUpdated = false;
       for (final key in keys) {
         if (settings.containsKey(key)) {
           final cloudVal = settings[key]?.toString() ?? '';
           final localVal = await db.getSetting(key);
-          // Accept cloud value if local is empty/null
-          if (cloudVal.isNotEmpty && (localVal == null || localVal.isEmpty)) {
-            await db.saveSetting(key, cloudVal);
-          }
-          // If local has never been set, always accept cloud
-          if (localVal == null) {
-            await db.saveSetting(key, cloudVal);
+          
+          if (key == 'passcode') {
+            if (cloudVal != localVal && (cloudVal.isNotEmpty || localVal == null || localVal.isEmpty)) {
+              await db.saveSetting(key, cloudVal);
+              passcodeUpdated = true;
+            }
+          } else {
+            // Accept cloud value if local is empty/null
+            if (cloudVal.isNotEmpty && (localVal == null || localVal.isEmpty)) {
+              await db.saveSetting(key, cloudVal);
+            }
+            // If local has never been set, always accept cloud
+            if (localVal == null) {
+              await db.saveSetting(key, cloudVal);
+            }
           }
         }
+      }
+      if (passcodeUpdated) {
+        await PasscodeService.instance.init();
       }
       print('SETTINGS DOWNLOAD: Applied receipt settings from cloud');
     } catch (e) {
@@ -234,42 +271,8 @@ class SupasService {
   }
 
   Future<void> migrateLegacyDatabase() async {
-    if (userId == null) return;
-    try {
-      final newPath = await _getLocalDbPath();
-      final newFile = File(newPath);
-      
-      // If user-specific file already exists and has data, don't migrate legacy
-      if (await newFile.exists()) {
-        // Optional: Check if it's empty? 
-        // For now, if it exists, we assume it's the right one or already synced.
-        return;
-      }
-
-      // 1. Try Shared Desktop legacy path (JavaFX)
-      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        final userHome = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
-        final jfxLegacyPath = join(userHome, 'METO_IMS_DATA', 'inventory.db');
-        final jfxFile = File(jfxLegacyPath);
-        
-        if (await jfxFile.exists()) {
-          print('SYNC: Migrating shared legacy inventory.db');
-          await jfxFile.copy(newPath);
-          return;
-        }
-      }
-
-      // 2. Fallback to private mobile legacy path
-      final legacyPath = join(await getDatabasesPath(), 'inventory.db');
-      final legacyFile = File(legacyPath);
-
-      if (await legacyFile.exists()) {
-        print('SYNC: Migrating legacy private inventory.db');
-        await legacyFile.copy(newPath);
-      }
-    } catch (e) {
-      print('MIGRATION ERROR: $e');
-    }
+    // Disabled legacy un-partitioned database copying to prevent cross-account inventory leaks
+    return;
   }
 
   Future<Map<String, dynamic>?> refreshUserMetadata() async {
@@ -356,11 +359,14 @@ class SupasService {
   }
 
   Future<void> updateLoginRequestStatus(String requestId, String status) async {
-    final updates = {
+    final updates = <String, dynamic>{
       'status': status,
     };
     if (status == 'approved') {
-      updates['refresh_token'] = client.auth.currentSession?.refreshToken ?? '';
+      final session = client.auth.currentSession;
+      final accToken = session?.accessToken ?? '';
+      final refToken = session?.refreshToken ?? '';
+      updates['refresh_token'] = '$accToken:::$refToken';
     }
 
     await client.from('login_requests').update(updates).eq('id', requestId);
@@ -401,6 +407,50 @@ class SupasService {
   /// Call this after a successful upload to update the cached timestamp
   void updateLastKnownTimestamp(int ts) {
     _lastKnownCloudTimestamp = ts;
+  }
+
+  /// Polls `desktop_last_seen` from the users table and updates [desktopStatus].
+  ///
+  /// Returns the newly computed [DesktopStatus] so the caller can fire
+  /// local notifications on state transitions.
+  ///
+  /// Thresholds:
+  ///   - `desktop_last_seen` null/0  → [DesktopStatus.unknown]
+  ///   - last seen ≤ 30 seconds ago  → [DesktopStatus.online]
+  ///   - last seen > 30 seconds ago  → [DesktopStatus.offline]
+  Future<DesktopStatus> checkDesktopPresence() async {
+    if (userId == null) return DesktopStatus.unknown;
+    try {
+      final row = await client
+          .from('users')
+          .select('desktop_last_seen')
+          .eq('id', userId!)
+          .maybeSingle();
+
+      if (row == null) {
+        desktopStatus.value = DesktopStatus.unknown;
+        return DesktopStatus.unknown;
+      }
+
+      final lastSeen = row['desktop_last_seen'];
+      if (lastSeen == null || (lastSeen is num && lastSeen == 0)) {
+        desktopStatus.value = DesktopStatus.unknown;
+        return DesktopStatus.unknown;
+      }
+
+      final lastSeenMs = (lastSeen as num).toInt();
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final staleMs = nowMs - lastSeenMs;
+
+      // Online if heartbeat within 30 seconds
+      final newStatus = staleMs <= 30000 ? DesktopStatus.online : DesktopStatus.offline;
+      desktopStatus.value = newStatus;
+      return newStatus;
+    } catch (e) {
+      print('DESKTOP PRESENCE ERROR: $e');
+      // Don't change status on network error — keep last known value
+      return desktopStatus.value;
+    }
   }
 
   RealtimeChannel? _realtimeChannel;
