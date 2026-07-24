@@ -219,7 +219,7 @@ class DatabaseHelper {
     final db = await instance.database;
     final today = DateTime.now().toIso8601String().split('T')[0];
     
-    final String sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales WHERE date = ? AND type != 'NEW STOCK' AND NOT EXISTS (SELECT 1 FROM deleted_history WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') OR (deleted_history.customer = sales.customer AND deleted_history.item = sales.item AND deleted_history.amount = sales.amount AND deleted_history.date = sales.date)) GROUP BY COALESCE(NULLIF(receipt_id, ''), CASE WHEN (created_at IS NOT NULL AND created_at != '') THEN (created_at || customer) ELSE id END) ORDER BY REPLACE(created_at, 'T', ' ') DESC";
+    final String sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales WHERE date = ? AND type != 'NEW STOCK' AND NOT EXISTS (SELECT 1 FROM deleted_history WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') OR (deleted_history.customer = sales.customer AND deleted_history.item = sales.item AND deleted_history.date = sales.date) OR (deleted_history.customer = sales.customer AND deleted_history.date = sales.date AND CAST(deleted_history.amount AS TEXT) = CAST(sales.amount AS TEXT))) GROUP BY COALESCE(NULLIF(receipt_id, ''), CASE WHEN (created_at IS NOT NULL AND created_at != '') THEN (created_at || customer) ELSE id END) ORDER BY REPLACE(created_at, 'T', ' ') DESC";
 
     final List<Map<String, dynamic>> result = await db.rawQuery(sql, [today]);
 
@@ -829,7 +829,7 @@ class DatabaseHelper {
     final db = await instance.database;
     final today = DateTime.now().toIso8601String().split('T')[0];
     return await db.rawQuery(
-      "SELECT * FROM sales WHERE date = ? AND type != 'NEW STOCK' AND NOT EXISTS (SELECT 1 FROM deleted_history WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') OR (deleted_history.customer = sales.customer AND deleted_history.item = sales.item AND deleted_history.amount = sales.amount AND deleted_history.date = sales.date)) ORDER BY REPLACE(created_at, 'T', ' ') DESC", 
+      "SELECT * FROM sales WHERE date = ? AND type != 'NEW STOCK' AND NOT EXISTS (SELECT 1 FROM deleted_history WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') OR (deleted_history.customer = sales.customer AND deleted_history.item = sales.item AND deleted_history.date = sales.date) OR (deleted_history.customer = sales.customer AND deleted_history.date = sales.date AND CAST(deleted_history.amount AS TEXT) = CAST(sales.amount AS TEXT))) ORDER BY REPLACE(created_at, 'T', ' ') DESC", 
       [today]
     );
   }
@@ -1188,110 +1188,121 @@ class DatabaseHelper {
   Future<void> deleteHistoryItem(int id) async {
     final db = await instance.database;
 
-    // 1. Fetch the item to be deleted
-    final List<Map<String, dynamic>> result = await db.query(
+    // 1. Fetch the target item to identify its transaction group
+    final List<Map<String, dynamic>> targetResult = await db.query(
       'sales',
       where: 'id = ?',
       whereArgs: [id],
     );
 
-    if (result.isEmpty) return;
-    final item = result.first;
+    if (targetResult.isEmpty) return;
+    final target = targetResult.first;
 
-    // 2. Insert into deleted_history
-    final String syncId = (item['sync_id'] != null && item['sync_id'].toString().isNotEmpty)
-        ? item['sync_id'].toString()
-        : generateUUID();
+    final String? receiptId = target['receipt_id']?.toString();
+    final String? createdAt = target['created_at']?.toString();
+    final String customer = target['customer']?.toString() ?? '';
 
-    await db.insert('deleted_history', {
-      'sync_id': syncId,
-      'customer': item['customer'],
-      'item': item['item'],
-      'quantity': item['quantity'],
-      'unit': item['unit'],
-      'price': item['price'],
-      'cost_price': item['cost_price'],
-      'base_quantity': item['base_quantity'],
-      'amount': item['amount'],
-      'type': item['type'],
-      'date': item['date'],
-      'is_debt': item['is_debt'],
-      'is_paid': item['is_paid'],
-      'paid_amount': item['paid_amount'],
-      'is_edited': 1,
-    });
+    // Fetch all sales belonging to this receipt/transaction group
+    List<Map<String, dynamic>> itemsToDelete;
+    if (receiptId != null && receiptId.isNotEmpty && receiptId != 'null') {
+      itemsToDelete = await db.query('sales', where: 'receipt_id = ?', whereArgs: [receiptId]);
+    } else if (createdAt != null && createdAt.isNotEmpty && createdAt != 'null') {
+      itemsToDelete = await db.query('sales', where: 'created_at = ? AND customer = ?', whereArgs: [createdAt, customer]);
+    } else {
+      itemsToDelete = [target];
+    }
 
-    // 3. Revert stock
-    String itemName = item['item'] as String;
-    String size = item['quantity'] as String;
-    String unit = item['unit'] as String;
-    String type = item['type'] as String;
+    for (var item in itemsToDelete) {
+      int itemId = item['id'] as int;
+      final String syncId = (item['sync_id'] != null && item['sync_id'].toString().isNotEmpty)
+          ? item['sync_id'].toString()
+          : generateUUID();
 
-    double piecesToRevert = extractNumericValue(unit) * getUnitMultiplier(unit, size, unit);
+      // 2. Insert into deleted_history
+      await db.insert('deleted_history', {
+        'sync_id': syncId,
+        'customer': item['customer'],
+        'item': item['item'],
+        'quantity': item['quantity'],
+        'unit': item['unit'],
+        'price': item['price'],
+        'cost_price': item['cost_price'],
+        'base_quantity': item['base_quantity'],
+        'amount': item['amount'],
+        'type': item['type'],
+        'date': item['date'],
+        'is_debt': item['is_debt'],
+        'is_paid': item['is_paid'],
+        'paid_amount': item['paid_amount'],
+        'is_edited': 1,
+      });
 
-    final stockResult = await db.query(
-      'stock',
-      where: 'item = ? AND quantity = ?',
-      whereArgs: [itemName, size],
-    );
+      // 3. Revert stock
+      String itemName = item['item'] as String;
+      String size = item['quantity'] as String;
+      String unit = item['unit'] as String;
+      String type = item['type'] as String;
 
-    if (stockResult.isNotEmpty) {
-      int stockId = stockResult.first['id'] as int;
-      double currentPieces = stockResult.first['available_pieces'] as double;
-      double newPieces;
+      double piecesToRevert = extractNumericValue(unit) * getUnitMultiplier(unit, size, unit);
 
-      if (type == 'NEW STOCK') {
-        // Deleting added stock -> Subtract from available
-        newPieces = currentPieces - piecesToRevert;
-        if (newPieces < 0) {
-            throw Exception('Cannot delete this entry. It would result in negative stock since some of these pieces have already been sold.');
-        }
-      } else {
-        // Deleting a sale -> Add back to available
-        newPieces = currentPieces + piecesToRevert;
-      }
-
-      await db.update(
+      final stockResult = await db.query(
         'stock',
-        {'available_pieces': newPieces, 'is_edited': 1},
-        where: 'id = ?',
-        whereArgs: [stockId],
+        where: 'item = ? AND quantity = ?',
+        whereArgs: [itemName, size],
       );
 
-      // If we just deleted the NEW STOCK transaction, check if any active NEW STOCK history entries remain for this item & size
-      bool hasRemainingNewStock = true;
-      if (type == 'NEW STOCK') {
-        final check = await db.rawQuery('''
-          SELECT 1 FROM sales 
-          WHERE item = ? AND quantity = ? AND type = 'NEW STOCK' AND id != ?
-        ''', [itemName, size, id]);
-        hasRemainingNewStock = check.isNotEmpty;
-      }
+      if (stockResult.isNotEmpty) {
+        int stockId = stockResult.first['id'] as int;
+        double currentPieces = stockResult.first['available_pieces'] as double;
+        double newPieces;
 
-      if (type == 'NEW STOCK' && (newPieces <= 0 || !hasRemainingNewStock)) {
+        if (type == 'NEW STOCK') {
+          newPieces = currentPieces - piecesToRevert;
+          if (newPieces < 0) newPieces = 0;
+        } else {
+          newPieces = currentPieces + piecesToRevert;
+        }
+
+        await db.update(
+          'stock',
+          {'available_pieces': newPieces, 'is_edited': 1},
+          where: 'id = ?',
+          whereArgs: [stockId],
+        );
+
+        bool hasRemainingNewStock = true;
+        if (type == 'NEW STOCK') {
+          final check = await db.rawQuery('''
+            SELECT 1 FROM sales 
+            WHERE item = ? AND quantity = ? AND type = 'NEW STOCK' AND id != ?
+          ''', [itemName, size, itemId]);
+          hasRemainingNewStock = check.isNotEmpty;
+        }
+
+        if (type == 'NEW STOCK' && (newPieces <= 0 || !hasRemainingNewStock)) {
           final String stockSyncId = (stockResult.first['sync_id'] != null && stockResult.first['sync_id'].toString().isNotEmpty)
               ? stockResult.first['sync_id'].toString()
               : generateUUID();
 
           await db.insert('deleted_stock', {
-              'sync_id': stockSyncId,
-              'item': itemName, 
-              'quantity': size
+            'sync_id': stockSyncId,
+            'item': itemName, 
+            'quantity': size
           });
           await db.delete('stock', where: 'id = ?', whereArgs: [stockId]);
+        }
       }
+
+      // 4. Delete from sales
+      await db.delete('sales', where: 'id = ?', whereArgs: [itemId]);
+
+      // 5. Audit trail notification
+      double amount = double.tryParse(item['amount']?.toString() ?? '0') ?? 0.0;
+      String actionLabel = type == 'NEW STOCK'
+          ? 'Deleted stock entry: $itemName'
+          : 'Deleted sale for $customer: $itemName (UGX ${amount.toStringAsFixed(0)})';
+      await addNotification(actionLabel, 'Mobile');
     }
-
-    // 4. Delete from sales
-    await db.delete('sales', where: 'id = ?', whereArgs: [id]);
-
-    // 5. Record a notification for audit trail
-    String customer = item['customer'] as String;
-    double amount = (item['amount'] as num).toDouble();
-    String actionLabel = type == 'NEW STOCK'
-        ? 'Deleted stock entry: $itemName'
-        : 'Deleted sale for $customer: $itemName (UGX ${amount.toStringAsFixed(0)})';
-    await addNotification(actionLabel, 'Mobile');
 
     // 6. Clean up any remaining orphan stock
     await cleanupZombieStock();

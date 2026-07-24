@@ -840,7 +840,8 @@ public class DatabaseHelper {
                 + "AND NOT EXISTS ("
                 + "  SELECT 1 FROM deleted_history "
                 + "  WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') "
-                + "  OR (deleted_history.customer = sales.customer AND deleted_history.item = sales.item AND deleted_history.amount = sales.amount AND deleted_history.date = sales.date)"
+                + "  OR (deleted_history.customer = sales.customer AND deleted_history.item = sales.item AND deleted_history.date = sales.date) "
+                + "  OR (deleted_history.customer = sales.customer AND deleted_history.date = sales.date AND CAST(deleted_history.amount AS TEXT) = CAST(sales.amount AS TEXT))"
                 + ") ORDER BY created_at DESC";
 
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
