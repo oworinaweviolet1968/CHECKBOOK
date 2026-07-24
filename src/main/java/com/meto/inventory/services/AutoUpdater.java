@@ -17,6 +17,8 @@ import java.net.URL;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.meto.inventory.DatabaseHelper;
+import com.meto.inventory.DataManager;
 
 /**
  * Free & Open-Source Auto-Updater for CheckBook IMS JavaFX Desktop App.
@@ -50,17 +52,13 @@ public class AutoUpdater {
                 boolean mandatory = release.has("mandatory") && release.get("mandatory").getAsBoolean();
                 String releaseNotes = release.has("release_notes") ? release.get("release_notes").getAsString() : "";
 
-                DatabaseHelper db = com.meto.inventory.DataManager.getInstance().getDbHelper();
-                String skippedVer = (db != null) ? db.getSetting("skipped_version") : null;
+                DatabaseHelper db = DataManager.getInstance().getDbHelper();
                 String installedVer = (db != null) ? db.getSetting("installed_version") : null;
 
                 String effectiveCurrent = (installedVer != null && isVersionNewer(CURRENT_VERSION, installedVer))
                         ? installedVer : CURRENT_VERSION;
 
-                if (latestVersion.equals(skippedVer)) {
-                    return;
-                }
-
+                // Behaviour 2: Prompts on launch whenever a newer version is available
                 if (isVersionNewer(effectiveCurrent, latestVersion)) {
                     Platform.runLater(() -> promptUserToUpdate(latestVersion, downloadUrl, mandatory, releaseNotes));
                 }
@@ -116,17 +114,14 @@ public class AutoUpdater {
         }
 
         alert.showAndWait().ifPresent(response -> {
-            com.meto.inventory.DatabaseHelper db = com.meto.inventory.DataManager.getInstance().getDbHelper();
             if (response == updateBtn) {
+                DatabaseHelper db = DataManager.getInstance().getDbHelper();
                 if (db != null) {
                     try { db.saveSetting("installed_version", newVersion); } catch (Exception ignored) {}
                 }
                 downloadAndInstallUpdate(downloadUrl);
-            } else {
-                if (db != null) {
-                    try { db.saveSetting("skipped_version", newVersion); } catch (Exception ignored) {}
-                }
             }
+            // "Later": closes the prompt for this launch, but will prompt again on next app launch
         });
     }
 
