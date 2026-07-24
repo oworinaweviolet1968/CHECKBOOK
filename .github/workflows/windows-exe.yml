@@ -76,3 +76,25 @@ jobs:
           prerelease: false
           files: |
             output/*.msi
+
+      # 8. Register Release in Supabase app_releases table
+      - name: Register Release in Supabase
+        shell: powershell
+        run: |
+          $body = @{
+              platform = "desktop"
+              version = "2.2.${{ github.run_number }}"
+              download_url = "https://github.com/beckhamz777/cb/releases/download/v2.2/METO.IMS.msi"
+              mandatory = $false
+              release_notes = "Automated Windows Desktop Build 2.2.${{ github.run_number }}"
+          } | ConvertTo-Json
+
+          Invoke-RestMethod -Uri "https://jhucvkqwenhyiveqsmtf.supabase.co/rest/v1/app_releases" `
+            -Method Post `
+            -Headers @{
+                "apikey" = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpodWN2a3F3ZW5oeWl2ZXFzbXRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NzI5MjIsImV4cCI6MjA4NTU0ODkyMn0.yXju47Ly5ak8Gm4D0OI42O89qTsc0nYtkmAb7dGFCC8"
+                "Content-Type" = "application/json"
+                "Prefer" = "return=minimal"
+            } `
+            -Body $body
+

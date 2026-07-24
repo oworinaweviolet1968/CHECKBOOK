@@ -48,6 +48,10 @@ public class DatabaseHelper {
         try {
             System.out.println("DEBUG: Connecting to DB URL: " + dbUrl);
             connection = DriverManager.getConnection(dbUrl);
+            try (Statement pragmaStmt = connection.createStatement()) {
+                pragmaStmt.execute("PRAGMA busy_timeout = 10000;");
+                pragmaStmt.execute("PRAGMA journal_mode = WAL;");
+            }
             createTables();
         } catch (SQLException e) {
             System.err.println("CRITICAL: Failed to connect to DB at " + dbUrl);
@@ -839,9 +843,7 @@ public class DatabaseHelper {
                 + "WHERE date = ? AND type != 'NEW STOCK' "
                 + "AND NOT EXISTS ("
                 + "  SELECT 1 FROM deleted_history "
-                + "  WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') "
-                + "  OR (deleted_history.customer = sales.customer AND deleted_history.item = sales.item AND deleted_history.date = sales.date) "
-                + "  OR (deleted_history.customer = sales.customer AND deleted_history.date = sales.date AND CAST(deleted_history.amount AS TEXT) = CAST(sales.amount AS TEXT))"
+                + "  WHERE deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != ''"
                 + ") ORDER BY created_at DESC";
 
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
@@ -1631,19 +1633,23 @@ public class DatabaseHelper {
                     if (rs.next()) return true;
                 }
             } catch (SQLException ignored) {}
-        }
-        String sql = "SELECT 1 FROM deleted_history WHERE customer = ? AND item = ? AND amount = ? AND date = ?";
-        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
-            pstmt.setString(1, customer);
-            pstmt.setString(2, item);
-            pstmt.setObject(3, amount);
-            pstmt.setString(4, date);
-            try (ResultSet rs = pstmt.executeQuery()) {
-                return rs.next();
-            }
-        } catch (SQLException e) {
             return false;
         }
+        if (customer != null && !customer.isEmpty() && !"Walk-in Customer".equalsIgnoreCase(customer)) {
+            String sql = "SELECT 1 FROM deleted_history WHERE customer = ? AND item = ? AND amount = ? AND date = ?";
+            try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+                pstmt.setString(1, customer);
+                pstmt.setString(2, item);
+                pstmt.setObject(3, amount);
+                pstmt.setString(4, date);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    return rs.next();
+                }
+            } catch (SQLException e) {
+                return false;
+            }
+        }
+        return false;
     }
 
     public void applyDirtyRecord(String table, DirtyRecord record) {
@@ -1774,6 +1780,21 @@ public class DatabaseHelper {
         } catch (SQLException e) {
             e.printStackTrace();
         }
+    }
+
+    public int getPendingSyncCount() {
+        int count = 0;
+        try (Statement stmt = connection.createStatement()) {
+            try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM stock WHERE is_edited = 1")) {
+                if (rs.next()) count += rs.getInt(1);
+            }
+            try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM sales WHERE is_edited = 1")) {
+                if (rs.next()) count += rs.getInt(1);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return count;
     }
 
     public com.google.gson.JsonArray getDirtyStock() {
@@ -2159,13 +2180,13 @@ public class DatabaseHelper {
                         }
                     }
 
-                    // Apply Event-Sourced Delta Merge if this is an incremental sync
-                    if (isIncremental && !item.isEmpty() && !quantity.isEmpty() && !unit.isEmpty()) {
+                    // Apply Event-Sourced Delta Merge whenever new sales arrive from ANY device
+                    if (isNew && !item.isEmpty() && !quantity.isEmpty() && !unit.isEmpty()) {
                         double multiplier = getUnitMultiplier(unit, quantity, unit);
                         double count = extractNumericValue(unit) * multiplier;
 
                         if ("NEW STOCK".equals(type)) {
-                            // Update supplier only (stock balance is synced via stock table snapshot)
+                            // Update supplier only
                             String updateStock = "UPDATE stock SET supplier = ? WHERE item = ? AND quantity = ?";
                             try (PreparedStatement uStmt = connection.prepareStatement(updateStock)) {
                                 uStmt.setString(1, customer);
@@ -2174,14 +2195,30 @@ public class DatabaseHelper {
                                 uStmt.executeUpdate();
                             }
                         } else if (!type.isEmpty() && !"Debt Payment".equals(type) && !"Payment".equals(type)) { 
-                            // Regular sales and Debts subtract from stock
-                            String updateStock = "UPDATE stock SET available_pieces = available_pieces - ?, is_edited = 1 WHERE item = ? AND quantity = ?";
+                            // Regular sales and Debts subtract from local stock balance (CRDT Delta)
+                            String updateStock = "UPDATE stock SET available_pieces = available_pieces - ? WHERE item = ? AND quantity = ?";
                             try (PreparedStatement uStmt = connection.prepareStatement(updateStock)) {
                                 uStmt.setDouble(1, count);
                                 uStmt.setString(2, item);
                                 uStmt.setString(3, quantity);
                                 uStmt.executeUpdate();
                             }
+
+                            // Check for Negative Stock Discrepancy & notify manager
+                            String checkDiscrepancy = "SELECT available_pieces FROM stock WHERE item = ? AND quantity = ?";
+                            try (PreparedStatement cStmt = connection.prepareStatement(checkDiscrepancy)) {
+                                cStmt.setString(1, item);
+                                cStmt.setString(2, quantity);
+                                try (ResultSet rs = cStmt.executeQuery()) {
+                                    if (rs.next() && rs.getDouble("available_pieces") < 0) {
+                                        addNotification(
+                                            String.format("⚠️ Negative Stock Discrepancy: %s (%s) balance is %s pieces.", 
+                                                item, quantity, String.format("%.0f", rs.getDouble("available_pieces"))),
+                                            "System"
+                                        );
+                                    }
+                                }
+                            } catch (SQLException ignored) {}
                         }
                     }
                 } else {

@@ -114,6 +114,7 @@ public class DataManager {
     private ScheduledExecutorService syncExecutor;
     // Track previous online state to detect transitions
     private Boolean wasOnline = null;
+    private long lastCloudSyncTime = 0;
 
     private void startAutoSyncTask() {
         if (syncExecutor != null) return;
@@ -124,45 +125,52 @@ public class DataManager {
             return t;
         });
 
-        // Run every 10 seconds as requested
+        // Run immediately with 0 initial delay and check every 3 seconds for quick network detection
         syncExecutor.scheduleAtFixedRate(() -> {
             try {
                 com.meto.inventory.services.SupabaseService service = com.meto.inventory.services.SupabaseService.getInstance();
-                
-                if (service.isLoggedIn()) {
-                    boolean online = service.isOnline();
+                boolean online = service.isOnline();
 
-                    // --- CONNECTIVITY TRANSITION NOTIFICATIONS ---
-                    if (wasOnline == null || wasOnline != online) {
-                        if (online) {
-                            dbHelper.addNotification("Desktop app accessed the internet and is now online.", "Desktop");
-                            com.meto.inventory.services.NotificationService.getInstance()
-                                .sendDesktopActionNotification("Desktop App Online", "Desktop app accessed the internet and is now online.");
-                            
-                            javafx.application.Platform.runLater(() -> {
-                                org.controlsfx.control.Notifications.create()
-                                    .title("🟢 Connection Restored")
-                                    .text("Desktop app is back online. Cloud sync will resume.")
-                                    .position(javafx.geometry.Pos.TOP_RIGHT)
-                                    .showInformation();
-                            });
-                        } else if (wasOnline != null) {
-                            javafx.application.Platform.runLater(() -> {
-                                org.controlsfx.control.Notifications.create()
-                                    .title("🔴 Connection Lost")
-                                    .text("Desktop app is offline. Changes will sync when reconnected.")
-                                    .position(javafx.geometry.Pos.TOP_RIGHT)
-                                    .showWarning();
-                            });
-                        }
-                    }
-                    wasOnline = online;
-
+                // --- CONNECTIVITY TRANSITION NOTIFICATIONS ---
+                if (wasOnline == null || wasOnline != online) {
                     if (online) {
-                        // Always send heartbeat first (best-effort, lightweight)
-                        service.updateHeartbeat();
+                        dbHelper.addNotification("Desktop app accessed the internet and is now online.", "Desktop");
+                        com.meto.inventory.services.NotificationService.getInstance()
+                            .sendDesktopActionNotification("Desktop App Online", "Desktop app accessed the internet and is now online.");
+                        
+                        javafx.application.Platform.runLater(() -> {
+                            org.controlsfx.control.Notifications.create()
+                                .title("🟢 Connection Restored")
+                                .text("Desktop app is back online. Cloud sync will resume.")
+                                .position(javafx.geometry.Pos.TOP_RIGHT)
+                                .showInformation();
+                        });
+                    } else if (wasOnline != null) {
+                        javafx.application.Platform.runLater(() -> {
+                            org.controlsfx.control.Notifications.create()
+                                .title("🔴 Connection Lost")
+                                .text("Desktop app is offline. Changes will sync when reconnected.")
+                                .position(javafx.geometry.Pos.TOP_RIGHT)
+                                .showWarning();
+                        });
+                    }
+                }
+                wasOnline = online;
 
-                        if (isBackupEnabled) {
+                int pendingCount = dbHelper.getPendingSyncCount();
+                if (!online) {
+                    // Offline state
+                    service.notifyStatus(pendingCount > 0 ? "Cloud: Offline (" + pendingCount + " pending)" : "Cloud: Offline");
+                } else {
+                    // Online state
+                    service.notifyStatus(pendingCount > 0 ? "Cloud: " + pendingCount + " pending" : "Cloud: Synced");
+
+                    if (service.isLoggedIn() && isBackupEnabled) {
+                        long now = System.currentTimeMillis();
+                        if (now - lastCloudSyncTime >= 15000 || service.isSyncFailed()) {
+                            lastCloudSyncTime = now;
+                            service.updateHeartbeat();
+
                             if (service.isSyncFailed()) {
                                 System.out.println("AutoSync: Connection restored. Retrying upload...");
                                 String savedToken = service.loadSession();
@@ -177,21 +185,17 @@ public class DataManager {
                                 if (downloaded) {
                                     notifyDataChanged();
                                 }
-                                service.notifyStatus("Cloud: Synced");
                             }
-                            
-                            // Check for unread notifications
-                            checkAndDisplayNotifications();
                         }
-                    } else {
-                        // Offline
-                        service.notifyStatus("Cloud: Offline");
+                        
+                        // Check for unread notifications
+                        checkAndDisplayNotifications();
                     }
                 }
             } catch (Exception e) {
                 // Silently ignore background sync errors to avoid UI popups
             }
-        }, 10, 10, TimeUnit.SECONDS);
+        }, 0, 3, TimeUnit.SECONDS);
 
     }
 

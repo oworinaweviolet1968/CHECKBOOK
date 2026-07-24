@@ -611,7 +611,8 @@ public class SupabaseService {
 
             boolean hasChanges = dirtyStock.size() > 0 || dirtySales.size() > 0 || delStock.size() > 0 || delSales.size() > 0;
             if (!hasChanges) {
-                return true; // Silent success, no need to trigger UI or push empty updates
+                notifyStatus("Cloud: Synced");
+                return true; // Silent success, update UI status dot to Online
             }
 
             if (!isSilent) {
