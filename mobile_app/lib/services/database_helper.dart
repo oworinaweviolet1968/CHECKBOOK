@@ -1956,7 +1956,7 @@ class DatabaseHelper {
       final cloudSyncIds = cloudSales.map((e) => e['sync_id']?.toString()).whereType<String>().toSet();
       final cloudSaleKeys = cloudSales.map((e) => "${e['customer']}____${e['item']}____${e['date']}____${e['amount']}").toSet();
 
-      final localSales = await db.query('sales', columns: ['id', 'sync_id', 'customer', 'item', 'date', 'amount', 'is_edited']);
+      final localSales = await db.query('sales', columns: ['id', 'sync_id', 'customer', 'item', 'date', 'amount', 'is_edited', 'created_at']);
       for (var row in localSales) {
         final int id = row['id'] as int;
         final String? syncId = row['sync_id']?.toString();
@@ -1965,8 +1965,19 @@ class DatabaseHelper {
 
         bool inCloud = (syncId != null && cloudSyncIds.contains(syncId)) || cloudSaleKeys.contains(key);
         if (!inCloud) {
-          bool isUnsyncedOfflineDraft = isEdited && (syncId == null || syncId.isEmpty);
-          if (!isUnsyncedOfflineDraft) {
+          bool isRecentLocalDraft = false;
+          if (isEdited && (syncId == null || syncId.isEmpty)) {
+            final createdAt = row['created_at']?.toString();
+            if (createdAt != null) {
+              try {
+                final dt = DateTime.parse(createdAt);
+                if (DateTime.now().toUtc().difference(dt.toUtc()).inSeconds.abs() < 120) {
+                  isRecentLocalDraft = true;
+                }
+              } catch (_) {}
+            }
+          }
+          if (!isRecentLocalDraft) {
             await db.delete('sales', where: 'id = ?', whereArgs: [id]);
             print("FULL SYNC PURGE: Deleted local sale '${row['item']} (${row['customer']})' missing from cloud");
           }

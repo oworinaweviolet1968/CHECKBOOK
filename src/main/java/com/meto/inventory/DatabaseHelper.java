@@ -2220,7 +2220,7 @@ public class DatabaseHelper {
                 }
 
                 try (Statement stmt = connection.createStatement();
-                     ResultSet rs = stmt.executeQuery("SELECT id, sync_id, customer, item, date, amount, is_edited FROM sales")) {
+                     ResultSet rs = stmt.executeQuery("SELECT id, sync_id, customer, item, date, amount, is_edited, created_at FROM sales")) {
                     List<Integer> idsToDelete = new ArrayList<>();
                     while (rs.next()) {
                         int id = rs.getInt("id");
@@ -2230,8 +2230,20 @@ public class DatabaseHelper {
 
                         boolean inCloud = (syncId != null && cloudSyncIds.contains(syncId)) || cloudSaleKeys.contains(key);
                         if (!inCloud) {
-                            boolean isUnsyncedOfflineDraft = isEdited && (syncId == null || syncId.isEmpty());
-                            if (!isUnsyncedOfflineDraft) {
+                            boolean isRecentLocalDraft = false;
+                            if (isEdited && (syncId == null || syncId.isEmpty())) {
+                                String createdAt = rs.getString("created_at");
+                                if (createdAt != null && !createdAt.isEmpty()) {
+                                    try {
+                                        java.time.Instant rowTime = java.time.Instant.parse(createdAt);
+                                        long ageSec = java.time.Duration.between(rowTime, java.time.Instant.now()).getSeconds();
+                                        if (Math.abs(ageSec) < 120) {
+                                            isRecentLocalDraft = true;
+                                        }
+                                    } catch (Exception ignored) {}
+                                }
+                            }
+                            if (!isRecentLocalDraft) {
                                 idsToDelete.add(id);
                             }
                         }

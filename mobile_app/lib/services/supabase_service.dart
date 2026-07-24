@@ -148,15 +148,10 @@ class SupasService {
       bool acceptPieces = isManual || localVersionTs == 0;
       await DatabaseHelper.instance.upsertCloudStock(cloudStock, forceAcceptPieces: acceptPieces);
 
-      // Pull sales
-      var salesQuery = client.from('sales').select();
-      if (localVersionTs > 0 && !isManual) {
-          salesQuery = salesQuery.gt('updated_at', isoTs);
-      }
-      final cloudSales = await salesQuery;
+      // Pull sales (Full Sync for sales to reconcile deletions across all devices)
+      final cloudSales = await client.from('sales').select();
       print('SYNC: PULLED remote sales: ${cloudSales.length} items');
-      bool isIncremental = localVersionTs > 0;
-      await DatabaseHelper.instance.upsertCloudSales(cloudSales, isIncremental);
+      await DatabaseHelper.instance.upsertCloudSales(cloudSales, false); // false = Full Sync
 
       // We do not have a deleted_stock/deleted_sales table on cloud so physical deletions are hard to pull incrementally.
       // However, Realtime will push deletions instantly while online.

@@ -905,11 +905,8 @@ public class SupabaseService {
                 }
             }
 
-            // PULL SALES (Incremental, or Full if manual refresh)
+            // PULL SALES (Full Sync for sales to handle physical deletions easily across devices)
             String salesUrl = REST_URL + "/sales";
-            if (!isManual) {
-                salesUrl += "?updated_at=gt." + isoTimestamp;
-            }
             req = HttpRequest.newBuilder()
                     .uri(URI.create(salesUrl))
                     .header("apikey", SUPABASE_KEY)
@@ -919,11 +916,8 @@ public class SupabaseService {
             res = client.send(req, HttpResponse.BodyHandlers.ofString());
             if (res.statusCode() == 200) {
                 JsonArray arr = JsonParser.parseString(res.body()).getAsJsonArray();
-                if (arr.size() > 0) {
-                    boolean isIncremental = localVersionTs > 0;
-                    db.upsertCloudSales(arr, isIncremental);
-                    salesPulled = true;
-                }
+                db.upsertCloudSales(arr, false); // false = Full Sync
+                salesPulled = true;
             }
 
             // Check if cloud timestamp increased
