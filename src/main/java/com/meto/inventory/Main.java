@@ -14,6 +14,9 @@ public class Main extends Application {
     public void start(Stage primaryStage) throws Exception {
         Application.setUserAgentStylesheet(new PrimerLight().getUserAgentStylesheet());
 
+        // Check for free OTA updates via Supabase
+        com.meto.inventory.services.AutoUpdater.checkForUpdatesAsync();
+
         com.meto.inventory.services.SupabaseService service = com.meto.inventory.services.SupabaseService.getInstance();
         
         // Restore last active userId from saved JSON session first if present

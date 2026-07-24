@@ -1090,4 +1090,28 @@ public class SupabaseService {
             e.printStackTrace();
         }
     }
+
+    public String fetchLatestReleaseInfo(String platform) {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/app_releases?platform=eq." + platform + "&order=created_at.desc&limit=1"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + SUPABASE_KEY)
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            if (response.statusCode() == 200) {
+                JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
+                if (arr.size() > 0) {
+                    return arr.get(0).getAsJsonObject().toString();
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("SupabaseService: Error fetching release info: " + e.getMessage());
+        }
+        return null;
+    }
 }
+
