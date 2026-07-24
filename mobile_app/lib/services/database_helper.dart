@@ -1752,8 +1752,8 @@ class DatabaseHelper {
           );
         }
 
-        if (!localIsDirty && forceAcceptPieces) {
-          // Manual/full sync: accept cloud available_pieces to correct any drift
+        if (!localIsDirty || forceAcceptPieces) {
+          // Accept cloud available_pieces to sync stock changes across devices
           await db.rawUpdate('''
             UPDATE stock SET sync_id=?, supplier=?, item=?, quantity=?, unit=?, price=?, available_pieces=?, device_source=?, date=?, is_edited=0 WHERE id=?
           ''', [
@@ -1769,7 +1769,7 @@ class DatabaseHelper {
             localId
           ]);
         } else {
-          // Incremental sync OR local is dirty: preserve local available_pieces, delta merge handles adjustments
+          // Local has unsynced offline edits: preserve local metadata until upload
           await db.rawUpdate('''
             UPDATE stock SET sync_id=?, supplier=?, item=?, quantity=?, unit=?, price=?, device_source=?, date=? WHERE id=?
           ''', [

@@ -1958,8 +1958,8 @@ public class DatabaseHelper {
                         );
                     }
 
-                    if (!localIsDirty && forceAcceptPieces) {
-                        // Manual/full sync: accept cloud available_pieces to correct drift
+                    if (!localIsDirty || forceAcceptPieces) {
+                        // Accept cloud available_pieces to sync stock changes across devices
                         updateFullStmt.setString(1, syncId);
                         updateFullStmt.setString(2, supplier);
                         updateFullStmt.setString(3, item);
@@ -1972,7 +1972,7 @@ public class DatabaseHelper {
                         updateFullStmt.setInt(10, localId);
                         updateFullStmt.executeUpdate();
                     } else {
-                        // Incremental sync OR local is dirty: preserve local available_pieces
+                        // Local has unsynced offline edits: preserve local metadata until upload
                         updateMetaStmt.setString(1, syncId);
                         updateMetaStmt.setString(2, supplier);
                         updateMetaStmt.setString(3, item);
