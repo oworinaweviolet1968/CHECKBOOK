@@ -243,10 +243,6 @@ public class DatabaseHelper {
                 stmt.execute("ALTER TABLE stock ADD COLUMN cost_price REAL DEFAULT 0.0");
             if (!hasBaseQuantity)
                 stmt.execute("ALTER TABLE stock ADD COLUMN base_quantity REAL DEFAULT 1.0");
-
-            // TEMPORARY FIX: Force all stock to be synced since previous attempts cleared
-            // the flags
-            stmt.execute("UPDATE stock SET is_edited = 1");
         } catch (SQLException e) {
             System.err.println("Schema check failed for stock: " + e.getMessage());
         }

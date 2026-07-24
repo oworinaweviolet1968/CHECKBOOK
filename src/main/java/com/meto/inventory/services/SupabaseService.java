@@ -900,7 +900,7 @@ public class SupabaseService {
             if (res.statusCode() == 200) {
                 JsonArray arr = JsonParser.parseString(res.body()).getAsJsonArray();
                 if (arr.size() > 0) {
-                    boolean acceptPieces = isManual || localVersionTs == 0;
+                    boolean acceptPieces = true; // Always accept mobile & cloud stock updates in background sync
                     db.upsertCloudStock(arr, acceptPieces);
                     stockPulled = true;
                 }
