@@ -21,9 +21,14 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      # 3. Build the Maven project
-      - name: Build Maven project
-        run: mvn clean package -q
+      # 3. Inject Version & Build Maven project
+      - name: Inject Version & Build Maven project
+        shell: powershell
+        run: |
+          $ver = "2.2.${{ github.run_number }}"
+          (Get-Content src/main/java/com/meto/inventory/services/AutoUpdater.java) -replace 'public static final String CURRENT_VERSION = ".*";', "public static final String CURRENT_VERSION = `"$ver`";" | Set-Content src/main/java/com/meto/inventory/services/AutoUpdater.java
+          mvn clean package -q
+
 
       # 4. Prepare dist directory with only the shaded JAR
       - name: Prepare dist directory
