@@ -1469,12 +1469,15 @@ public class DatabaseHelper {
 
     public void checkAutoResyncMigration() {
         try {
-            String done = getSetting("auto_resync_zombie_v1");
+            String done = getSetting("auto_resync_zombie_v5");
             if (done == null || !"1".equals(done)) {
-                System.out.println("MIGRATION (Desktop): Performing one-time auto-resync and cache cleanup for zombie stock");
+                System.out.println("MIGRATION (Desktop): Performing one-time auto-resync and cache cleanup for zombie stock & sales");
+                try (Statement stmt = connection.createStatement()) {
+                    stmt.execute("UPDATE sales SET is_edited = 0 WHERE sync_id IS NOT NULL AND sync_id != ''");
+                } catch (Exception e) {}
                 saveSetting("last_backup_timestamp", "0");
                 cleanupZombieStock();
-                saveSetting("auto_resync_zombie_v1", "1");
+                saveSetting("auto_resync_zombie_v5", "1");
             }
         } catch (Exception e) {
             System.err.println("Auto resync migration check failed: " + e.getMessage());
@@ -2034,7 +2037,7 @@ public class DatabaseHelper {
     }
 
     public void upsertCloudSales(com.google.gson.JsonArray cloudSales, boolean isIncremental) {
-        if (cloudSales == null || cloudSales.size() == 0)
+        if (cloudSales == null || (cloudSales.size() == 0 && isIncremental))
             return;
         String updateSql = "UPDATE sales SET customer=?, item=?, quantity=?, unit=?, price=?, cost_price=?, base_quantity=?, amount=?, type=?, date=?, is_debt=?, is_paid=?, paid_amount=?, receipt_id=?, device_source=?, is_edited=0 WHERE sync_id=?";
         String insertSql = "INSERT INTO sales (sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, receipt_id, device_source, created_at, is_edited) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
@@ -2226,8 +2229,11 @@ public class DatabaseHelper {
                         boolean isEdited = rs.getInt("is_edited") == 1;
 
                         boolean inCloud = (syncId != null && cloudSyncIds.contains(syncId)) || cloudSaleKeys.contains(key);
-                        if (!inCloud && !isEdited) {
-                            idsToDelete.add(id);
+                        if (!inCloud) {
+                            boolean isUnsyncedOfflineDraft = isEdited && (syncId == null || syncId.isEmpty());
+                            if (!isUnsyncedOfflineDraft) {
+                                idsToDelete.add(id);
+                            }
                         }
                     }
                     try (PreparedStatement delStmt = connection.prepareStatement("DELETE FROM sales WHERE id = ?")) {

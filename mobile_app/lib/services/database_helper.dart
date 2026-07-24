@@ -1310,12 +1310,16 @@ class DatabaseHelper {
 
 
   Future<void> checkAutoResyncMigration() async {
-    final resyncSetting = await getSetting('auto_resync_zombie_v1');
+    final resyncSetting = await getSetting('auto_resync_zombie_v5');
     if (resyncSetting == null || resyncSetting != '1') {
-      print('MIGRATION: Performing one-time auto-resync and cache cleanup for zombie stock');
+      print('MIGRATION (Mobile): Performing one-time auto-resync and cache cleanup for zombie stock & sales');
+      try {
+        final db = await instance.database;
+        await db.execute("UPDATE sales SET is_edited = 0 WHERE sync_id IS NOT NULL AND sync_id != ''");
+      } catch (_) {}
       await saveSetting('last_backup_timestamp', '0');
       await cleanupZombieStock();
-      await saveSetting('auto_resync_zombie_v1', '1');
+      await saveSetting('auto_resync_zombie_v5', '1');
     }
   }
 
@@ -1819,7 +1823,7 @@ class DatabaseHelper {
   }
 
   Future<void> upsertCloudSales(List<dynamic> cloudSales, bool isIncremental) async {
-    if (cloudSales.isEmpty) return;
+    if (cloudSales.isEmpty && isIncremental) return;
     final db = await instance.database;
     
     for (var obj in cloudSales) {
@@ -1960,9 +1964,12 @@ class DatabaseHelper {
         final bool isEdited = (row['is_edited'] as int? ?? 0) == 1;
 
         bool inCloud = (syncId != null && cloudSyncIds.contains(syncId)) || cloudSaleKeys.contains(key);
-        if (!inCloud && !isEdited) {
-          await db.delete('sales', where: 'id = ?', whereArgs: [id]);
-          print("FULL SYNC PURGE: Deleted local sale '${row['item']} (${row['customer']})' missing from cloud");
+        if (!inCloud) {
+          bool isUnsyncedOfflineDraft = isEdited && (syncId == null || syncId.isEmpty);
+          if (!isUnsyncedOfflineDraft) {
+            await db.delete('sales', where: 'id = ?', whereArgs: [id]);
+            print("FULL SYNC PURGE: Deleted local sale '${row['item']} (${row['customer']})' missing from cloud");
+          }
         }
       }
     }
