@@ -1461,6 +1461,52 @@ public class DatabaseHelper {
         return null;
     }
 
+    public void checkAutoResyncMigration() {
+        try {
+            String done = getSetting("auto_resync_zombie_v1");
+            if (done == null || !"1".equals(done)) {
+                System.out.println("MIGRATION (Desktop): Performing one-time auto-resync and cache cleanup for zombie stock");
+                saveSetting("last_backup_timestamp", "0");
+                cleanupZombieStock();
+                saveSetting("auto_resync_zombie_v1", "1");
+            }
+        } catch (Exception e) {
+            System.err.println("Auto resync migration check failed: " + e.getMessage());
+        }
+    }
+
+    public void cleanupZombieStock() {
+        String sql = "SELECT id, item, quantity, sync_id FROM stock WHERE available_pieces <= 0 OR NOT EXISTS (SELECT 1 FROM sales WHERE sales.item = stock.item AND sales.quantity = stock.quantity AND sales.type = 'NEW STOCK')";
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            List<Map<String, String>> zombies = new ArrayList<>();
+            while (rs.next()) {
+                Map<String, String> z = new HashMap<>();
+                z.put("id", String.valueOf(rs.getInt("id")));
+                z.put("item", rs.getString("item"));
+                z.put("quantity", rs.getString("quantity"));
+                String syncId = rs.getString("sync_id");
+                z.put("sync_id", (syncId != null && !syncId.isEmpty()) ? syncId : java.util.UUID.randomUUID().toString());
+                zombies.add(z);
+            }
+            try (PreparedStatement ins = connection.prepareStatement("INSERT INTO deleted_stock (sync_id, item, quantity) VALUES (?, ?, ?)");
+                 PreparedStatement del = connection.prepareStatement("DELETE FROM stock WHERE id = ?")) {
+                for (Map<String, String> z : zombies) {
+                    ins.setString(1, z.get("sync_id"));
+                    ins.setString(2, z.get("item"));
+                    ins.setString(3, z.get("quantity"));
+                    ins.executeUpdate();
+
+                    del.setInt(1, Integer.parseInt(z.get("id")));
+                    del.executeUpdate();
+                    System.out.println("CLEANUP ZOMBIE STOCK (Desktop): Deleted orphan stock '" + z.get("item") + " (" + z.get("quantity") + ")'");
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Error cleaning up zombie stock: " + e.getMessage());
+        }
+    }
+
     public Connection getConnection() {
         return connection;
     }

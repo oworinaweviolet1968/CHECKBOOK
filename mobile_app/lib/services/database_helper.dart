@@ -1299,6 +1299,16 @@ class DatabaseHelper {
   }
 
 
+  Future<void> checkAutoResyncMigration() async {
+    final resyncSetting = await getSetting('auto_resync_zombie_v1');
+    if (resyncSetting == null || resyncSetting != '1') {
+      print('MIGRATION: Performing one-time auto-resync and cache cleanup for zombie stock');
+      await saveSetting('last_backup_timestamp', '0');
+      await cleanupZombieStock();
+      await saveSetting('auto_resync_zombie_v1', '1');
+    }
+  }
+
   Future<void> cleanupZombieStock() async {
     final db = await instance.database;
     // Find all stock entries that either:

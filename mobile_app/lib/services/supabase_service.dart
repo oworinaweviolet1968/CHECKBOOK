@@ -64,6 +64,8 @@ class SupasService {
       syncStatus.value = SyncStatus.syncing;
       print('SYNC: Starting Delta Sync for user $userId');
       
+      await DatabaseHelper.instance.checkAutoResyncMigration();
+
       initializeRealtime();
 
       // 1. PUSH local changes to Postgres

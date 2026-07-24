@@ -876,7 +876,10 @@ public class SupabaseService {
         try {
             if (currentUserId == null) return false;
 
-            String localVersionStr = com.meto.inventory.DataManager.getInstance().getDbHelper().getSetting("last_backup_timestamp");
+            com.meto.inventory.DatabaseHelper db = com.meto.inventory.DataManager.getInstance().getDbHelper();
+            db.checkAutoResyncMigration();
+
+            String localVersionStr = db.getSetting("last_backup_timestamp");
             long localVersionTs = (localVersionStr != null) ? Long.parseLong(localVersionStr) : 0;
             long queryTs = localVersionTs > 300000 ? localVersionTs - 300000 : 0;
             String isoTimestamp = java.time.Instant.ofEpochMilli(queryTs).toString();
@@ -884,7 +887,6 @@ public class SupabaseService {
             if (isManual) {
                 notifyStatus("Downloading Updates...");
             }
-            com.meto.inventory.DatabaseHelper db = com.meto.inventory.DataManager.getInstance().getDbHelper();
 
             // PULL STOCK (Full Sync for stock to handle physical deletions easily since stock is small)
             HttpRequest req = HttpRequest.newBuilder()
