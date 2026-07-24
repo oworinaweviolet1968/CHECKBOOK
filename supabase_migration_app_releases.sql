@@ -15,3 +15,8 @@ ALTER TABLE app_releases ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow public read access to app_releases" 
 ON app_releases FOR SELECT 
 USING (true);
+
+CREATE POLICY "Allow public insert access to app_releases" 
+ON app_releases FOR INSERT 
+WITH CHECK (true);
+
