@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/history_item.dart';
 import '../services/database_helper.dart';
+import '../services/supabase_service.dart';
 import '../utils/colors.dart';
 
 class DeletedHistoryScreen extends StatefulWidget {
@@ -35,13 +36,20 @@ class _DeletedHistoryScreenState extends State<DeletedHistoryScreen> {
 
   Future<void> _loadDeletedHistory() async {
     setState(() => _isLoading = true);
-    final items = await DatabaseHelper.instance.getDeletedHistory();
-    if (mounted) {
-      setState(() {
-        _allDeletedItems = items;
-        _applyFilters();
-        _isLoading = false;
-      });
+    try {
+      final items = await DatabaseHelper.instance.getDeletedHistory();
+      if (mounted) {
+        setState(() {
+          _allDeletedItems = items;
+          _applyFilters();
+        });
+      }
+    } catch (e) {
+      print("Error loading deleted history: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -321,10 +329,68 @@ class _DeletedHistoryScreenState extends State<DeletedHistoryScreen> {
                   ],
                 )
               ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => _confirmRestore(item),
+                  icon: const Icon(Icons.restore, size: 16, color: AppColors.primaryGreen),
+                  label: const Text("Restore to History", style: TextStyle(fontSize: 12, color: AppColors.primaryGreen)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppColors.primaryGreen),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  ),
+                ),
+              ],
             )
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _confirmRestore(HistoryItem item) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Restore Transaction"),
+        content: Text("Do you want to restore '${item.item}' back to active history and stock?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryGreen),
+            child: const Text("Restore", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true && item.id != null) {
+      try {
+        await DatabaseHelper.instance.restoreDeletedHistoryItem(item.id!);
+        await SupasService.instance.uploadDatabase();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Transaction restored to active history and stock."),
+              backgroundColor: AppColors.primaryGreen,
+            ),
+          );
+          _loadDeletedHistory();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Error restoring item: $e"), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
   }
 }

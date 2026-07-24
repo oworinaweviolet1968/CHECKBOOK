@@ -661,25 +661,61 @@ public class SupabaseService {
 
             // DELETIONS
             if (delStock.size() > 0) {
-                List<String> ids = new ArrayList<>();
-                for (JsonElement el : delStock) ids.add(el.getAsJsonObject().get("sync_id").getAsString());
-                HttpRequest req = HttpRequest.newBuilder()
-                        .uri(URI.create(REST_URL + "/stock?sync_id=in.(" + String.join(",", ids) + ")"))
-                        .header("apikey", SUPABASE_KEY)
-                        .header("Authorization", "Bearer " + currentAccessToken)
-                        .DELETE().build();
-                client.send(req, HttpResponse.BodyHandlers.ofString());
+                for (com.google.gson.JsonElement el : delStock) {
+                    com.google.gson.JsonObject o = el.getAsJsonObject();
+                    String syncId = o.has("sync_id") && !o.get("sync_id").isJsonNull() ? o.get("sync_id").getAsString() : null;
+                    String item = o.has("item") && !o.get("item").isJsonNull() ? o.get("item").getAsString() : null;
+                    String quantity = o.has("quantity") && !o.get("quantity").isJsonNull() ? o.get("quantity").getAsString() : null;
+
+                    if (syncId != null && !syncId.isEmpty()) {
+                        HttpRequest req = HttpRequest.newBuilder()
+                                .uri(URI.create(REST_URL + "/stock?sync_id=eq." + java.net.URLEncoder.encode(syncId, java.nio.charset.StandardCharsets.UTF_8)))
+                                .header("apikey", SUPABASE_KEY)
+                                .header("Authorization", "Bearer " + currentAccessToken)
+                                .DELETE().build();
+                        client.send(req, HttpResponse.BodyHandlers.ofString());
+                    }
+                    if (item != null && quantity != null) {
+                        HttpRequest req = HttpRequest.newBuilder()
+                                .uri(URI.create(REST_URL + "/stock?item=eq." + java.net.URLEncoder.encode(item, java.nio.charset.StandardCharsets.UTF_8) + "&quantity=eq." + java.net.URLEncoder.encode(quantity, java.nio.charset.StandardCharsets.UTF_8)))
+                                .header("apikey", SUPABASE_KEY)
+                                .header("Authorization", "Bearer " + currentAccessToken)
+                                .DELETE().build();
+                        client.send(req, HttpResponse.BodyHandlers.ofString());
+                    }
+                }
             }
 
             if (delSales.size() > 0) {
-                List<String> ids = new ArrayList<>();
-                for (JsonElement el : delSales) ids.add(el.getAsJsonObject().get("sync_id").getAsString());
-                HttpRequest req = HttpRequest.newBuilder()
-                        .uri(URI.create(REST_URL + "/sales?sync_id=in.(" + String.join(",", ids) + ")"))
-                        .header("apikey", SUPABASE_KEY)
-                        .header("Authorization", "Bearer " + currentAccessToken)
-                        .DELETE().build();
-                client.send(req, HttpResponse.BodyHandlers.ofString());
+                for (com.google.gson.JsonElement el : delSales) {
+                    com.google.gson.JsonObject o = el.getAsJsonObject();
+                    String syncId = o.has("sync_id") && !o.get("sync_id").isJsonNull() ? o.get("sync_id").getAsString() : null;
+                    String customer = o.has("customer") && !o.get("customer").isJsonNull() ? o.get("customer").getAsString() : "";
+                    String item = o.has("item") && !o.get("item").isJsonNull() ? o.get("item").getAsString() : "";
+                    String amount = o.has("amount") && !o.get("amount").isJsonNull() ? o.get("amount").getAsString() : "";
+                    String date = o.has("date") && !o.get("date").isJsonNull() ? o.get("date").getAsString() : "";
+
+                    if (syncId != null && !syncId.isEmpty()) {
+                        HttpRequest req = HttpRequest.newBuilder()
+                                .uri(URI.create(REST_URL + "/sales?sync_id=eq." + java.net.URLEncoder.encode(syncId, java.nio.charset.StandardCharsets.UTF_8)))
+                                .header("apikey", SUPABASE_KEY)
+                                .header("Authorization", "Bearer " + currentAccessToken)
+                                .DELETE().build();
+                        client.send(req, HttpResponse.BodyHandlers.ofString());
+                    }
+                    if (!item.isEmpty() && !date.isEmpty()) {
+                        String url = REST_URL + "/sales?customer=eq." + java.net.URLEncoder.encode(customer, java.nio.charset.StandardCharsets.UTF_8) + "&item=eq." + java.net.URLEncoder.encode(item, java.nio.charset.StandardCharsets.UTF_8) + "&date=eq." + java.net.URLEncoder.encode(date, java.nio.charset.StandardCharsets.UTF_8);
+                        if (!amount.isEmpty()) {
+                            url += "&amount=eq." + java.net.URLEncoder.encode(amount, java.nio.charset.StandardCharsets.UTF_8);
+                        }
+                        HttpRequest req = HttpRequest.newBuilder()
+                                .uri(URI.create(url))
+                                .header("apikey", SUPABASE_KEY)
+                                .header("Authorization", "Bearer " + currentAccessToken)
+                                .DELETE().build();
+                        client.send(req, HttpResponse.BodyHandlers.ofString());
+                    }
+                }
             }
 
             db.clearDirtyFlags();

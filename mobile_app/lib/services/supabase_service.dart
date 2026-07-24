@@ -83,18 +83,46 @@ class SupasService {
           await client.from('sales').upsert(mapped, onConflict: 'sync_id');
       }
 
+      await DatabaseHelper.instance.cleanupZombieStock();
+
       final deletedStock = await DatabaseHelper.instance.getDirtyDeletedStock();
       print('SYNC: PUSHING dirty deleted stock: ${deletedStock.length} items');
       if (deletedStock.isNotEmpty) {
-          final ids = deletedStock.map((e) => e['sync_id']).toList();
-          await client.from('stock').delete().inFilter('sync_id', ids);
+          for (var item in deletedStock) {
+            final String? syncId = item['sync_id']?.toString();
+            final String? itemName = item['item']?.toString();
+            final String? quantity = item['quantity']?.toString();
+
+            if (syncId != null && syncId.isNotEmpty) {
+              await client.from('stock').delete().eq('sync_id', syncId);
+            }
+            if (itemName != null && itemName.isNotEmpty && quantity != null && quantity.isNotEmpty) {
+              await client.from('stock').delete().eq('item', itemName).eq('quantity', quantity);
+            }
+          }
       }
 
       final deletedHistory = await DatabaseHelper.instance.getDirtyDeletedHistory();
       print('SYNC: PUSHING dirty deleted sales: ${deletedHistory.length} items');
       if (deletedHistory.isNotEmpty) {
-          final ids = deletedHistory.map((e) => e['sync_id']).toList();
-          await client.from('sales').delete().inFilter('sync_id', ids);
+          for (var item in deletedHistory) {
+            final String? syncId = item['sync_id']?.toString();
+            final String? customer = item['customer']?.toString();
+            final String? itemName = item['item']?.toString();
+            final dynamic amount = item['amount'];
+            final String? date = item['date']?.toString();
+
+            if (syncId != null && syncId.isNotEmpty) {
+              await client.from('sales').delete().eq('sync_id', syncId);
+            }
+            if (itemName != null && itemName.isNotEmpty && customer != null && date != null) {
+              var query = client.from('sales').delete().eq('customer', customer).eq('item', itemName).eq('date', date);
+              if (amount != null) {
+                query = query.eq('amount', amount);
+              }
+              await query;
+            }
+          }
       }
 
       await DatabaseHelper.instance.clearDirtyFlags();

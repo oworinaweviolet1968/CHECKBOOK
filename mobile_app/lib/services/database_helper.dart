@@ -367,6 +367,15 @@ class DatabaseHelper {
           await addCol("stock", "is_edited", "INTEGER DEFAULT 0");
           await addCol("sales", "device_source", "TEXT DEFAULT 'Desktop'");
           await addCol("stock", "device_source", "TEXT DEFAULT 'Desktop'");
+
+          // Full schema migration for deleted_history table
+          await addCol("deleted_history", "quantity", "TEXT");
+          await addCol("deleted_history", "unit", "TEXT");
+          await addCol("deleted_history", "price", "REAL");
+          await addCol("deleted_history", "cost_price", "REAL");
+          await addCol("deleted_history", "base_quantity", "REAL");
+          await addCol("deleted_history", "type", "TEXT");
+          await addCol("deleted_history", "date", "TEXT");
           await addCol("deleted_history", "is_debt", "INTEGER DEFAULT 0");
           await addCol("deleted_history", "is_paid", "INTEGER DEFAULT 0");
           await addCol("deleted_history", "paid_amount", "REAL DEFAULT 0");
@@ -1191,8 +1200,12 @@ class DatabaseHelper {
     final item = result.first;
 
     // 2. Insert into deleted_history
+    final String syncId = (item['sync_id'] != null && item['sync_id'].toString().isNotEmpty)
+        ? item['sync_id'].toString()
+        : generateUUID();
+
     await db.insert('deleted_history', {
-      'sync_id': item['sync_id'],
+      'sync_id': syncId,
       'customer': item['customer'],
       'item': item['item'],
       'quantity': item['quantity'],
@@ -1246,12 +1259,23 @@ class DatabaseHelper {
         whereArgs: [stockId],
       );
 
-      // If we just deleted the ONLY stock entry that existed (e.g. initial stock) 
-      // and it results in 0 pieces, we might want to remove it entirely.
-      // The user requested: "unless if its new stock is deleted entirely."
-      if (type == 'NEW STOCK' && newPieces <= 0) {
+      // If we just deleted the NEW STOCK transaction, check if any active NEW STOCK history entries remain for this item & size
+      bool hasRemainingNewStock = true;
+      if (type == 'NEW STOCK') {
+        final check = await db.rawQuery('''
+          SELECT 1 FROM sales 
+          WHERE item = ? AND quantity = ? AND type = 'NEW STOCK' AND id != ?
+        ''', [itemName, size, id]);
+        hasRemainingNewStock = check.isNotEmpty;
+      }
+
+      if (type == 'NEW STOCK' && (newPieces <= 0 || !hasRemainingNewStock)) {
+          final String stockSyncId = (stockResult.first['sync_id'] != null && stockResult.first['sync_id'].toString().isNotEmpty)
+              ? stockResult.first['sync_id'].toString()
+              : generateUUID();
+
           await db.insert('deleted_stock', {
-              'sync_id': stockResult.first['sync_id'],
+              'sync_id': stockSyncId,
               'item': itemName, 
               'quantity': size
           });
@@ -1269,23 +1293,46 @@ class DatabaseHelper {
         ? 'Deleted stock entry: $itemName'
         : 'Deleted sale for $customer: $itemName (UGX ${amount.toStringAsFixed(0)})';
     await addNotification(actionLabel, 'Mobile');
+
+    // 6. Clean up any remaining orphan stock
+    await cleanupZombieStock();
   }
 
 
   Future<void> cleanupZombieStock() async {
     final db = await instance.database;
-    // Delete from stock where available_pieces <= 0 AND no active NEW STOCK history persists
-    // This cleans up items whose stock history was deleted entirely before the previous fix.
-    await db.rawDelete('''
-      DELETE FROM stock 
+    // Find all stock entries that either:
+    // 1) Have available_pieces <= 0
+    // 2) OR have NO active 'NEW STOCK' history entry in sales table
+    final zombies = await db.rawQuery('''
+      SELECT id, sync_id, item, quantity 
+      FROM stock 
       WHERE available_pieces <= 0 
-      AND NOT EXISTS (
+      OR NOT EXISTS (
         SELECT 1 FROM sales 
         WHERE sales.item = stock.item 
         AND sales.quantity = stock.quantity 
         AND sales.type = 'NEW STOCK'
       )
     ''');
+
+    for (var z in zombies) {
+      final int stockId = z['id'] as int;
+      final String itemName = z['item'] as String;
+      final String quantity = z['quantity'] as String;
+      final String syncId = (z['sync_id'] != null && z['sync_id'].toString().isNotEmpty)
+          ? z['sync_id'].toString()
+          : generateUUID();
+
+      await db.insert('deleted_stock', {
+        'sync_id': syncId,
+        'item': itemName,
+        'quantity': quantity,
+      });
+
+      await db.delete('stock', where: 'id = ?', whereArgs: [stockId]);
+      print("CLEANUP ZOMBIE STOCK: Deleted orphan stock '$itemName ($quantity)' (sync_id: $syncId)");
+    }
   }
 
 
@@ -1293,25 +1340,125 @@ class DatabaseHelper {
     final db = await instance.database;
     final result = await db.rawQuery("SELECT * FROM deleted_history ORDER BY deleted_at DESC");
 
+    double parseNum(dynamic val) {
+      if (val == null) return 0.0;
+      if (val is num) return val.toDouble();
+      if (val is String) {
+        String cleaned = val.replaceAll(',', '').trim();
+        return double.tryParse(cleaned) ?? 0.0;
+      }
+      return 0.0;
+    }
+
+    String parseString(dynamic val, [String fallback = '']) {
+      if (val == null) return fallback;
+      return val.toString();
+    }
+
     return result.map((rs) {
       return HistoryItem(
-        id: rs['id'] as int,
-        customer: rs['customer'] as String,
-        item: rs['item'] as String,
-        type: rs['type'] as String,
-        quantity: rs['quantity'] as String,
-        unit: rs['unit'] as String,
-        price: (rs['price'] as num).toStringAsFixed(0),
-        amount: (rs['amount'] as num).toDouble().toStringAsFixed(0),
-        paidAmount: (rs['paid_amount'] as num? ?? 0).toDouble().toStringAsFixed(0),
+        id: (rs['id'] as num?)?.toInt() ?? 0,
+        customer: parseString(rs['customer'], 'Unknown'),
+        item: parseString(rs['item'], 'Unknown'),
+        type: parseString(rs['type'], 'SALES'),
+        quantity: parseString(rs['quantity'], '1'),
+        unit: parseString(rs['unit'], 'pcs'),
+        price: parseNum(rs['price']).toStringAsFixed(0),
+        amount: parseNum(rs['amount']).toStringAsFixed(0),
+        paidAmount: parseNum(rs['paid_amount']).toStringAsFixed(0),
         profit: "0", 
-        date: rs['date'] as String,
-        deletedAt: rs['deleted_at'] as String?,
+        date: parseString(rs['date'], DateTime.now().toIso8601String().split('T')[0]),
+        deletedAt: rs['deleted_at']?.toString(),
         isDebt: (rs['is_debt'] as int? ?? 0) == 1,
         isPaid: (rs['is_paid'] as int? ?? 0) == 1,
         isEdited: (rs['is_edited'] as int? ?? 0) == 1,
       );
     }).toList().cast<HistoryItem>();
+  }
+
+  Future<void> restoreDeletedHistoryItem(int deletedId) async {
+    final db = await instance.database;
+
+    final List<Map<String, dynamic>> result = await db.query(
+      'deleted_history',
+      where: 'id = ?',
+      whereArgs: [deletedId],
+    );
+
+    if (result.isEmpty) return;
+    final item = result.first;
+
+    final String syncId = (item['sync_id'] != null && item['sync_id'].toString().isNotEmpty)
+        ? item['sync_id'].toString()
+        : generateUUID();
+
+    await db.insert('sales', {
+      'sync_id': syncId,
+      'customer': item['customer'],
+      'item': item['item'],
+      'quantity': item['quantity'],
+      'unit': item['unit'],
+      'price': item['price'],
+      'cost_price': item['cost_price'],
+      'base_quantity': item['base_quantity'],
+      'amount': item['amount'],
+      'type': item['type'],
+      'date': item['date'],
+      'is_debt': item['is_debt'],
+      'is_paid': item['is_paid'],
+      'paid_amount': item['paid_amount'],
+      'device_source': 'Mobile',
+      'is_edited': 1,
+    });
+
+    String itemName = item['item'] as String;
+    String size = item['quantity'] as String;
+    String unit = item['unit'] as String;
+    String type = item['type'] as String;
+
+    double piecesToRevert = extractNumericValue(unit) * getUnitMultiplier(unit, size, unit);
+
+    final stockResult = await db.query(
+      'stock',
+      where: 'item = ? AND quantity = ?',
+      whereArgs: [itemName, size],
+    );
+
+    if (stockResult.isNotEmpty) {
+      int stockId = stockResult.first['id'] as int;
+      double currentPieces = (stockResult.first['available_pieces'] as num).toDouble();
+      double newPieces = (type == 'NEW STOCK') ? (currentPieces + piecesToRevert) : (currentPieces - piecesToRevert);
+
+      await db.update(
+        'stock',
+        {'available_pieces': newPieces, 'is_edited': 1},
+        where: 'id = ?',
+        whereArgs: [stockId],
+      );
+    } else {
+      double initialPieces = (type == 'NEW STOCK') ? piecesToRevert : 0;
+      await db.insert('stock', {
+        'sync_id': generateUUID(),
+        'supplier': item['customer'] ?? 'Unknown',
+        'item': itemName,
+        'quantity': size,
+        'unit': unit,
+        'price': item['price'] ?? 0,
+        'available_pieces': initialPieces,
+        'device_source': 'Mobile',
+        'date': item['date'] ?? DateTime.now().toIso8601String().split('T')[0],
+        'is_edited': 1,
+      });
+    }
+
+    await db.delete('deleted_history', where: 'id = ?', whereArgs: [deletedId]);
+    if (syncId.isNotEmpty) {
+      await db.delete('deleted_history', where: 'sync_id = ?', whereArgs: [syncId]);
+      await db.delete('deleted_stock', where: 'sync_id = ?', whereArgs: [syncId]);
+    }
+    await db.delete('deleted_stock', where: 'item = ? AND quantity = ?', whereArgs: [itemName, size]);
+
+    await addNotification('Restored transaction: $itemName ($size)', 'Mobile');
   }
 
   // --- DATA HELPERS ---
@@ -1537,6 +1684,13 @@ class DatabaseHelper {
     for (var obj in cloudStock) {
       final String cloudItem = obj['item'] ?? 'Unknown';
       final String cloudQuantity = obj['quantity'] ?? '0';
+      final String? syncId = obj['sync_id']?.toString();
+
+      // Check tombstone: if stock item was deleted locally, skip restoring it
+      if (await isStockDeleted(cloudItem, cloudQuantity, syncId: syncId)) {
+        print("SYNC: Skipping restore of stock $cloudItem ($cloudQuantity) - Deleted in tombstone.");
+        continue;
+      }
 
       // Try to find by sync_id first, if not found, fall back to item & quantity to avoid UNIQUE constraint violation
       var existing = await db.rawQuery('SELECT id, is_edited, price, item, quantity, unit FROM stock WHERE sync_id = ?', [obj['sync_id']]);
@@ -1607,7 +1761,6 @@ class DatabaseHelper {
           ]);
         }
       } else {
-        // New stock row: always accept cloud available_pieces
         await db.rawInsert('''
           INSERT INTO stock (sync_id, supplier, item, quantity, unit, price, available_pieces, device_source, date, is_edited) 
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
@@ -1624,6 +1777,25 @@ class DatabaseHelper {
         ]);
       }
     }
+
+    if (forceAcceptPieces) {
+      final cloudSyncIds = cloudStock.map((e) => e['sync_id']?.toString()).whereType<String>().toSet();
+      final cloudItemKeys = cloudStock.map((e) => "${e['item']}____${e['quantity']}").toSet();
+
+      final localStock = await db.query('stock', columns: ['id', 'sync_id', 'item', 'quantity', 'is_edited']);
+      for (var row in localStock) {
+        final int id = row['id'] as int;
+        final String? syncId = row['sync_id']?.toString();
+        final String itemKey = "${row['item']}____${row['quantity']}";
+        final bool isEdited = (row['is_edited'] as int? ?? 0) == 1;
+
+        bool inCloud = (syncId != null && cloudSyncIds.contains(syncId)) || cloudItemKeys.contains(itemKey);
+        if (!inCloud && !isEdited) {
+          await db.delete('stock', where: 'id = ?', whereArgs: [id]);
+          print("FULL SYNC PURGE: Deleted local stock '${row['item']} (${row['quantity']})' missing from cloud");
+        }
+      }
+    }
   }
 
   Future<void> upsertCloudSales(List<dynamic> cloudSales, bool isIncremental) async {
@@ -1631,8 +1803,21 @@ class DatabaseHelper {
     final db = await instance.database;
     
     for (var obj in cloudSales) {
-      final existing = await db.rawQuery('SELECT id, paid_amount FROM sales WHERE sync_id = ?', [obj['sync_id']]);
+      final String? syncId = obj['sync_id']?.toString();
+      final String customer = obj['customer'] ?? '';
+      final String item = obj['item'] ?? '';
+      final double amount = double.tryParse(obj['amount']?.toString() ?? '0') ?? 0.0;
+      final String date = obj['date'] ?? '';
+
+      final existing = await db.rawQuery('SELECT id, paid_amount FROM sales WHERE sync_id = ?', [syncId]);
       bool isNew = existing.isEmpty;
+
+      // Check tombstone: if sale was deleted locally, skip restoring it
+      if (isNew && await isSaleDeleted(customer, item, amount, date, syncId: syncId)) {
+        print("SYNC: Skipping restore of sale $item ($customer) - Deleted in tombstone.");
+        continue;
+      }
+
       int localId = isNew ? -1 : existing.first['id'] as int;
       double localPaidAmount = isNew ? 0.0 : double.tryParse(existing.first['paid_amount']?.toString() ?? '0') ?? 0.0;
       
@@ -1641,9 +1826,6 @@ class DatabaseHelper {
       double cloudPaidAmount = double.tryParse(obj['paid_amount']?.toString() ?? '0') ?? 0.0;
       String deviceSource = obj['device_source'] ?? 'Cloud';
       String type = obj['type'] ?? '';
-      String item = obj['item'] ?? '';
-      double amount = double.tryParse(obj['amount']?.toString() ?? '0') ?? 0.0;
-      String customer = obj['customer'] ?? '';
 
       String? receiptId = obj['receipt_id'];
       if (receiptId == '' || receiptId == 'null') {
@@ -1800,15 +1982,23 @@ class DatabaseHelper {
     return await db.query('deleted_history', columns: ['customer', 'item', 'amount', 'date']);
   }
 
-  Future<bool> isStockDeleted(String item, String quantity) async {
+  Future<bool> isStockDeleted(String item, String quantity, {String? syncId}) async {
     final db = await instance.database;
+    if (syncId != null && syncId.isNotEmpty) {
+      final resBySync = await db.query('deleted_stock', where: 'sync_id = ?', whereArgs: [syncId]);
+      if (resBySync.isNotEmpty) return true;
+    }
     final results = await db.query('deleted_stock',
         where: 'item = ? AND quantity = ?', whereArgs: [item, quantity]);
     return results.isNotEmpty;
   }
 
-  Future<bool> isSaleDeleted(String customer, String item, double amount, String date) async {
+  Future<bool> isSaleDeleted(String customer, String item, double amount, String date, {String? syncId}) async {
     final db = await instance.database;
+    if (syncId != null && syncId.isNotEmpty) {
+      final resBySync = await db.query('deleted_history', where: 'sync_id = ?', whereArgs: [syncId]);
+      if (resBySync.isNotEmpty) return true;
+    }
     final results = await db.query('deleted_history',
         where: 'customer = ? AND item = ? AND amount = ? AND date = ?',
         whereArgs: [customer, item, amount, date]);

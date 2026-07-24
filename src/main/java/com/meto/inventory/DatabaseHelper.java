@@ -10,6 +10,8 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
 import java.util.ArrayList;
+import java.util.Set;
+import java.util.HashSet;
 
 public class DatabaseHelper {
 
@@ -297,6 +299,30 @@ public class DatabaseHelper {
                 stmt.execute("ALTER TABLE sales ADD COLUMN receipt_id TEXT");
         } catch (SQLException e) {
             System.err.println("Schema check failed for sales: " + e.getMessage());
+        }
+
+        // 3. Check DELETED_HISTORY table
+        try {
+            ResultSet rs = stmt.executeQuery("PRAGMA table_info(deleted_history)");
+            Set<String> existingCols = new HashSet<>();
+            while (rs.next()) {
+                existingCols.add(rs.getString("name").toLowerCase());
+            }
+            if (!existingCols.contains("quantity")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN quantity TEXT");
+            if (!existingCols.contains("unit")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN unit TEXT");
+            if (!existingCols.contains("price")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN price REAL");
+            if (!existingCols.contains("cost_price")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN cost_price REAL");
+            if (!existingCols.contains("base_quantity")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN base_quantity REAL");
+            if (!existingCols.contains("type")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN type TEXT");
+            if (!existingCols.contains("date")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN date TEXT");
+            if (!existingCols.contains("is_debt")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN is_debt INTEGER DEFAULT 0");
+            if (!existingCols.contains("is_paid")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN is_paid INTEGER DEFAULT 0");
+            if (!existingCols.contains("paid_amount")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN paid_amount REAL DEFAULT 0");
+            if (!existingCols.contains("is_edited")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN is_edited INTEGER DEFAULT 0");
+            if (!existingCols.contains("device_source")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN device_source TEXT DEFAULT 'Desktop'");
+            if (!existingCols.contains("sync_id")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN sync_id TEXT");
+        } catch (SQLException e) {
+            System.err.println("Schema check failed for deleted_history: " + e.getMessage());
         }
 
         // --- ENFORCE UNIQUE INDEXES FOR DELTA SYNC ---
@@ -1512,6 +1538,19 @@ public class DatabaseHelper {
     }
 
     public boolean isStockDeleted(String item, String quantity) {
+        return isStockDeleted(item, quantity, null);
+    }
+
+    public boolean isStockDeleted(String item, String quantity, String syncId) {
+        if (syncId != null && !syncId.isEmpty()) {
+            String sqlSync = "SELECT 1 FROM deleted_stock WHERE sync_id = ?";
+            try (PreparedStatement pstmt = connection.prepareStatement(sqlSync)) {
+                pstmt.setString(1, syncId);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next()) return true;
+                }
+            } catch (SQLException ignored) {}
+        }
         String sql = "SELECT 1 FROM deleted_stock WHERE item = ? AND quantity = ?";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, item);
@@ -1525,6 +1564,19 @@ public class DatabaseHelper {
     }
 
     public boolean isSaleDeleted(String customer, String item, Object amount, String date) {
+        return isSaleDeleted(customer, item, amount, date, null);
+    }
+
+    public boolean isSaleDeleted(String customer, String item, Object amount, String date, String syncId) {
+        if (syncId != null && !syncId.isEmpty()) {
+            String sqlSync = "SELECT 1 FROM deleted_history WHERE sync_id = ?";
+            try (PreparedStatement pstmt = connection.prepareStatement(sqlSync)) {
+                pstmt.setString(1, syncId);
+                try (ResultSet rs = pstmt.executeQuery()) {
+                    if (rs.next()) return true;
+                }
+            } catch (SQLException ignored) {}
+        }
         String sql = "SELECT 1 FROM deleted_history WHERE customer = ? AND item = ? AND amount = ? AND date = ?";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, customer);
@@ -1783,10 +1835,15 @@ public class DatabaseHelper {
              
             for (com.google.gson.JsonElement el : cloudStock) {
                 com.google.gson.JsonObject obj = el.getAsJsonObject();
-                String syncId = obj.get("sync_id").getAsString();
+                String syncId = obj.has("sync_id") && !obj.get("sync_id").isJsonNull() ? obj.get("sync_id").getAsString() : null;
                 String supplier = obj.has("supplier") && !obj.get("supplier").isJsonNull() ? obj.get("supplier").getAsString() : "Unknown";
                 String item = obj.has("item") && !obj.get("item").isJsonNull() ? obj.get("item").getAsString() : "Unknown";
                 String quantity = obj.has("quantity") && !obj.get("quantity").isJsonNull() ? obj.get("quantity").getAsString() : "0";
+
+                if (isStockDeleted(item, quantity, syncId)) {
+                    System.out.println("SYNC: Skipping restore of stock " + item + " (" + quantity + ") - Deleted in tombstone.");
+                    continue;
+                }
                 String unit = obj.has("unit") && !obj.get("unit").isJsonNull() ? obj.get("unit").getAsString() : "";
                 String price = obj.has("price") && !obj.get("price").isJsonNull() ? obj.get("price").getAsString() : "0";
                 double availablePieces = obj.has("available_pieces") && !obj.get("available_pieces").isJsonNull() ? obj.get("available_pieces").getAsDouble() : 0;
@@ -1885,6 +1942,40 @@ public class DatabaseHelper {
                     insertStmt.executeUpdate();
                 }
             }
+
+            if (forceAcceptPieces) {
+                Set<String> cloudSyncIds = new HashSet<>();
+                Set<String> cloudItemKeys = new HashSet<>();
+                for (com.google.gson.JsonElement el : cloudStock) {
+                    com.google.gson.JsonObject o = el.getAsJsonObject();
+                    if (o.has("sync_id") && !o.get("sync_id").isJsonNull()) cloudSyncIds.add(o.get("sync_id").getAsString());
+                    String item = o.has("item") && !o.get("item").isJsonNull() ? o.get("item").getAsString() : "";
+                    String quantity = o.has("quantity") && !o.get("quantity").isJsonNull() ? o.get("quantity").getAsString() : "";
+                    cloudItemKeys.add(item + "____" + quantity);
+                }
+
+                try (Statement stmt = connection.createStatement();
+                     ResultSet rs = stmt.executeQuery("SELECT id, sync_id, item, quantity, is_edited FROM stock")) {
+                    List<Integer> idsToDelete = new ArrayList<>();
+                    while (rs.next()) {
+                        int id = rs.getInt("id");
+                        String syncId = rs.getString("sync_id");
+                        String itemKey = rs.getString("item") + "____" + rs.getString("quantity");
+                        boolean isEdited = rs.getInt("is_edited") == 1;
+
+                        boolean inCloud = (syncId != null && cloudSyncIds.contains(syncId)) || cloudItemKeys.contains(itemKey);
+                        if (!inCloud && !isEdited) {
+                            idsToDelete.add(id);
+                        }
+                    }
+                    try (PreparedStatement delStmt = connection.prepareStatement("DELETE FROM stock WHERE id = ?")) {
+                        for (int id : idsToDelete) {
+                            delStmt.setInt(1, id);
+                            delStmt.executeUpdate();
+                        }
+                    }
+                }
+            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -1928,6 +2019,11 @@ public class DatabaseHelper {
                 String amount = obj.has("amount") && !obj.get("amount").isJsonNull() ? obj.get("amount").getAsString() : "0";
                 String type = obj.has("type") && !obj.get("type").isJsonNull() ? obj.get("type").getAsString() : "";
                 String date = obj.has("date") && !obj.get("date").isJsonNull() ? obj.get("date").getAsString() : LocalDate.now().toString();
+
+                if (isNew && isSaleDeleted(customer, item, amount, date, syncId)) {
+                    System.out.println("SYNC: Skipping restore of sale " + item + " (" + customer + ") - Deleted in tombstone.");
+                    continue;
+                }
                 
                 int isDebt = 0;
                 if (obj.has("is_debt") && !obj.get("is_debt").isJsonNull()) {
