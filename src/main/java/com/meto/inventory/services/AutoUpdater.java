@@ -50,7 +50,18 @@ public class AutoUpdater {
                 boolean mandatory = release.has("mandatory") && release.get("mandatory").getAsBoolean();
                 String releaseNotes = release.has("release_notes") ? release.get("release_notes").getAsString() : "";
 
-                if (isVersionNewer(CURRENT_VERSION, latestVersion)) {
+                DatabaseHelper db = com.meto.inventory.DataManager.getInstance().getDbHelper();
+                String skippedVer = (db != null) ? db.getSetting("skipped_version") : null;
+                String installedVer = (db != null) ? db.getSetting("installed_version") : null;
+
+                String effectiveCurrent = (installedVer != null && isVersionNewer(CURRENT_VERSION, installedVer))
+                        ? installedVer : CURRENT_VERSION;
+
+                if (latestVersion.equals(skippedVer)) {
+                    return;
+                }
+
+                if (isVersionNewer(effectiveCurrent, latestVersion)) {
                     Platform.runLater(() -> promptUserToUpdate(latestVersion, downloadUrl, mandatory, releaseNotes));
                 }
             } catch (Exception e) {
@@ -105,8 +116,16 @@ public class AutoUpdater {
         }
 
         alert.showAndWait().ifPresent(response -> {
+            com.meto.inventory.DatabaseHelper db = com.meto.inventory.DataManager.getInstance().getDbHelper();
             if (response == updateBtn) {
+                if (db != null) {
+                    try { db.saveSetting("installed_version", newVersion); } catch (Exception ignored) {}
+                }
                 downloadAndInstallUpdate(downloadUrl);
+            } else {
+                if (db != null) {
+                    try { db.saveSetting("skipped_version", newVersion); } catch (Exception ignored) {}
+                }
             }
         });
     }
