@@ -836,7 +836,12 @@ public class DatabaseHelper {
         ObservableList<HistoryItem> history = FXCollections.observableArrayList();
         String today = LocalDate.now().toString();
         String sql = "SELECT id, customer, item, type, quantity, unit, price, amount, cost_price, base_quantity, date, is_debt, is_paid, paid_amount FROM sales "
-                + "WHERE date = ? AND type != 'NEW STOCK' ORDER BY created_at DESC";
+                + "WHERE date = ? AND type != 'NEW STOCK' "
+                + "AND NOT EXISTS ("
+                + "  SELECT 1 FROM deleted_history "
+                + "  WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') "
+                + "  OR (deleted_history.customer = sales.customer AND deleted_history.item = sales.item AND deleted_history.amount = sales.amount AND deleted_history.date = sales.date)"
+                + ") ORDER BY created_at DESC";
 
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, today);
@@ -2190,6 +2195,44 @@ public class DatabaseHelper {
                             } catch (SQLException e) {
                                 System.err.println("Failed to insert synced debt payment log: " + e.getMessage());
                             }
+                        }
+                    }
+                }
+            }
+
+            if (!isIncremental) {
+                Set<String> cloudSyncIds = new HashSet<>();
+                Set<String> cloudSaleKeys = new HashSet<>();
+                for (com.google.gson.JsonElement el : cloudSales) {
+                    com.google.gson.JsonObject o = el.getAsJsonObject();
+                    if (o.has("sync_id") && !o.get("sync_id").isJsonNull()) {
+                        cloudSyncIds.add(o.get("sync_id").getAsString());
+                    }
+                    String cust = o.has("customer") && !o.get("customer").isJsonNull() ? o.get("customer").getAsString() : "";
+                    String item = o.has("item") && !o.get("item").isJsonNull() ? o.get("item").getAsString() : "";
+                    String date = o.has("date") && !o.get("date").isJsonNull() ? o.get("date").getAsString() : "";
+                    String amt = o.has("amount") && !o.get("amount").isJsonNull() ? o.get("amount").getAsString() : "";
+                    cloudSaleKeys.add(cust + "____" + item + "____" + date + "____" + amt);
+                }
+
+                try (Statement stmt = connection.createStatement();
+                     ResultSet rs = stmt.executeQuery("SELECT id, sync_id, customer, item, date, amount, is_edited FROM sales")) {
+                    List<Integer> idsToDelete = new ArrayList<>();
+                    while (rs.next()) {
+                        int id = rs.getInt("id");
+                        String syncId = rs.getString("sync_id");
+                        String key = rs.getString("customer") + "____" + rs.getString("item") + "____" + rs.getString("date") + "____" + rs.getString("amount");
+                        boolean isEdited = rs.getInt("is_edited") == 1;
+
+                        boolean inCloud = (syncId != null && cloudSyncIds.contains(syncId)) || cloudSaleKeys.contains(key);
+                        if (!inCloud && !isEdited) {
+                            idsToDelete.add(id);
+                        }
+                    }
+                    try (PreparedStatement delStmt = connection.prepareStatement("DELETE FROM sales WHERE id = ?")) {
+                        for (int id : idsToDelete) {
+                            delStmt.setInt(1, id);
+                            delStmt.executeUpdate();
                         }
                     }
                 }

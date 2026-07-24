@@ -219,7 +219,7 @@ class DatabaseHelper {
     final db = await instance.database;
     final today = DateTime.now().toIso8601String().split('T')[0];
     
-    final String sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales WHERE date = ? AND type != 'NEW STOCK' GROUP BY COALESCE(NULLIF(receipt_id, ''), CASE WHEN (created_at IS NOT NULL AND created_at != '') THEN (created_at || customer) ELSE id END) ORDER BY REPLACE(created_at, 'T', ' ') DESC";
+    final String sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales WHERE date = ? AND type != 'NEW STOCK' AND NOT EXISTS (SELECT 1 FROM deleted_history WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') OR (deleted_history.customer = sales.customer AND deleted_history.item = sales.item AND deleted_history.amount = sales.amount AND deleted_history.date = sales.date)) GROUP BY COALESCE(NULLIF(receipt_id, ''), CASE WHEN (created_at IS NOT NULL AND created_at != '') THEN (created_at || customer) ELSE id END) ORDER BY REPLACE(created_at, 'T', ' ') DESC";
 
     final List<Map<String, dynamic>> result = await db.rawQuery(sql, [today]);
 
@@ -825,12 +825,11 @@ class DatabaseHelper {
     return await db.rawQuery('SELECT * FROM stock ORDER BY item');
   }
   
-  // Dashboard: Today's Sales List
   Future<List<Map<String, dynamic>>> getTodaysSalesList() async {
     final db = await instance.database;
     final today = DateTime.now().toIso8601String().split('T')[0];
     return await db.rawQuery(
-      "SELECT * FROM sales WHERE date = ? AND type != 'NEW STOCK' ORDER BY REPLACE(created_at, 'T', ' ') DESC", 
+      "SELECT * FROM sales WHERE date = ? AND type != 'NEW STOCK' AND NOT EXISTS (SELECT 1 FROM deleted_history WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') OR (deleted_history.customer = sales.customer AND deleted_history.item = sales.item AND deleted_history.amount = sales.amount AND deleted_history.date = sales.date)) ORDER BY REPLACE(created_at, 'T', ' ') DESC", 
       [today]
     );
   }
@@ -1934,6 +1933,25 @@ class DatabaseHelper {
               VALUES (?, ?, ?, ($uuidGenSql))
             ''', [localId, diff, DateTime.now().toIso8601String().split('T')[0]]);
           }
+        }
+      }
+    }
+
+    if (!isIncremental) {
+      final cloudSyncIds = cloudSales.map((e) => e['sync_id']?.toString()).whereType<String>().toSet();
+      final cloudSaleKeys = cloudSales.map((e) => "${e['customer']}____${e['item']}____${e['date']}____${e['amount']}").toSet();
+
+      final localSales = await db.query('sales', columns: ['id', 'sync_id', 'customer', 'item', 'date', 'amount', 'is_edited']);
+      for (var row in localSales) {
+        final int id = row['id'] as int;
+        final String? syncId = row['sync_id']?.toString();
+        final String key = "${row['customer']}____${row['item']}____${row['date']}____${row['amount']}";
+        final bool isEdited = (row['is_edited'] as int? ?? 0) == 1;
+
+        bool inCloud = (syncId != null && cloudSyncIds.contains(syncId)) || cloudSaleKeys.contains(key);
+        if (!inCloud && !isEdited) {
+          await db.delete('sales', where: 'id = ?', whereArgs: [id]);
+          print("FULL SYNC PURGE: Deleted local sale '${row['item']} (${row['customer']})' missing from cloud");
         }
       }
     }
