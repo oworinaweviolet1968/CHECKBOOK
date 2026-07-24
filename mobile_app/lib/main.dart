@@ -23,6 +23,39 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterL
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   debugPrint("Handling a background message: ${message.messageId}");
+
+  String? title = message.notification?.title ?? message.data['title'];
+  String? body = message.notification?.body ?? message.data['message'] ?? message.data['body'];
+
+  String fullMessage = '';
+  if (body != null && body.isNotEmpty) {
+    fullMessage = body;
+  } else if (title != null && title.isNotEmpty) {
+    fullMessage = title;
+  }
+
+  if (fullMessage.isNotEmpty) {
+    try {
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        sqfliteFfiInit();
+        databaseFactory = databaseFactoryFfi;
+      }
+      final db = await DatabaseHelper.instance.database;
+      final recent = await db.rawQuery(
+        "SELECT id FROM notifications WHERE message = ? AND created_at >= datetime('now', '-10 seconds')",
+        [fullMessage]
+      );
+      if (recent.isEmpty) {
+        String syncId = DatabaseHelper.generateUUID();
+        await db.rawInsert(
+          "INSERT INTO notifications (message, source, sync_id) VALUES (?, ?, ?)",
+          [fullMessage, 'Desktop', syncId]
+        );
+      }
+    } catch (e) {
+      debugPrint("Error saving background FCM notification: $e");
+    }
+  }
 }
 
 // Credentials extracted from user's .env file
@@ -73,26 +106,40 @@ void main() async {
         sound: true,
       );
 
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
         RemoteNotification? notification = message.notification;
-        AndroidNotification? android = message.notification?.android;
+        String? title = notification?.title ?? message.data['title'];
+        String? body = notification?.body ?? message.data['message'] ?? message.data['body'];
 
-        if (notification != null && android != null) {
-          flutterLocalNotificationsPlugin.show(
-            notification.hashCode,
-            notification.title,
-            notification.body,
-            NotificationDetails(
-              android: AndroidNotificationDetails(
-                channel.id,
-                channel.name,
-                channelDescription: channel.description,
-                icon: '@mipmap/ic_launcher',
-                importance: Importance.max,
-                priority: Priority.high,
-              ),
-            ),
-          );
+        String fullMessage = '';
+        if (body != null && body.isNotEmpty) {
+          fullMessage = body;
+        } else if (title != null && title.isNotEmpty) {
+          fullMessage = title;
+        }
+
+        if (fullMessage.isNotEmpty) {
+          await DatabaseHelper.instance.addNotification(fullMessage, 'Desktop', title: title);
+        }
+      });
+
+      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
+        String? title = message.notification?.title ?? message.data['title'];
+        String? body = message.notification?.body ?? message.data['message'] ?? message.data['body'];
+        String fullMessage = body ?? title ?? '';
+        if (fullMessage.isNotEmpty) {
+          await DatabaseHelper.instance.addNotification(fullMessage, 'Desktop', title: title);
+        }
+      });
+
+      FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) async {
+        if (message != null) {
+          String? title = message.notification?.title ?? message.data['title'];
+          String? body = message.notification?.body ?? message.data['message'] ?? message.data['body'];
+          String fullMessage = body ?? title ?? '';
+          if (fullMessage.isNotEmpty) {
+            await DatabaseHelper.instance.addNotification(fullMessage, 'Desktop', title: title);
+          }
         }
       });
 
@@ -306,24 +353,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
         body = 'The desktop app has gone offline or was closed.';
       }
 
-      // Android / iOS: local push notification
-      if (Platform.isAndroid || Platform.isIOS) {
-        const androidDetails = AndroidNotificationDetails(
-          'desktop_presence_channel',
-          'Desktop App Status',
-          channelDescription: 'Alerts when the desktop application goes online or offline.',
-          importance: Importance.high,
-          priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
-        );
-        const notifDetails = NotificationDetails(android: androidDetails);
-        await flutterLocalNotificationsPlugin.show(
-          newStatus.index,
-          title,
-          body,
-          notifDetails,
-        );
-      } else {
+      // Register in local notifications DB and trigger native local notification
+      await DatabaseHelper.instance.addNotification('$title: $body', 'Desktop', title: title);
+      
+      if (!Platform.isAndroid && !Platform.isIOS) {
         // Linux / desktop fallback: SnackBar
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

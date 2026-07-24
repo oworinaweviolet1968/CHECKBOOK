@@ -86,12 +86,14 @@ public class NewStockController implements DataManager.DataChangeListener {
         // --- STEP 0: QUANTITY INPUT (9-Digit Limit) ---
         unitField.setTextFormatter(new TextFormatter<>(change -> {
             String newText = change.getControlNewText().toLowerCase();
-            if (newText.isEmpty()) return change;
-            
+            if (newText.isEmpty())
+                return change;
+
             // Allow numbers, spaces, and stars (for Box * 10 etc)
             if (newText.matches("[0-9 /*]*")) {
                 String numericOnly = newText.replaceAll("[^0-9]", "");
-                if (numericOnly.length() > 9) return null;
+                if (numericOnly.length() > 9)
+                    return null;
                 return change;
             }
             return change; // Allow button-based text updates
@@ -102,7 +104,8 @@ public class NewStockController implements DataManager.DataChangeListener {
 
         // --- STEP 1: ITEM SELECTION ---
         itemsComboBox.getEditor().textProperty().addListener((obs, old, newVal) -> {
-            if (isRefreshing) return; // Don't wipe fields during background sync refresh
+            if (isRefreshing)
+                return; // Don't wipe fields during background sync refresh
             qtyComboBox.getEditor().clear();
             unitField.clear();
             priceField.clear();
@@ -179,7 +182,7 @@ public class NewStockController implements DataManager.DataChangeListener {
         priceField.setTextFormatter(new TextFormatter<>(change -> {
             if (change.isContentChange()) {
                 String newText = change.getControlNewText();
-                
+
                 // 1. Allow dot and digits ONLY
                 if (!newText.matches("[0-9., ]*")) {
                     return null;
@@ -187,7 +190,8 @@ public class NewStockController implements DataManager.DataChangeListener {
 
                 // 2. Prevent multiple dots OR more than 9 digits (excluding dot/commas)
                 String numericOnly = newText.replaceAll("[^0-9]", "");
-                if (numericOnly.length() > 9) return null;
+                if (numericOnly.length() > 9)
+                    return null;
 
                 if (newText.chars().filter(ch -> ch == '.').count() > 1) {
                     return null;
@@ -196,7 +200,8 @@ public class NewStockController implements DataManager.DataChangeListener {
                 // 3. Format with commas if it doesn't end with a dot
                 // We do this by sanitizing and then re-formatting
                 String clean = newText.replaceAll("[^0-9.]", "");
-                if (clean.isEmpty()) return change;
+                if (clean.isEmpty())
+                    return change;
 
                 try {
                     if (clean.contains(".") || clean.isEmpty()) {
@@ -204,14 +209,15 @@ public class NewStockController implements DataManager.DataChangeListener {
                     } else {
                         long val = Long.parseLong(clean);
                         String formatted = String.format("%,d", val);
-                        
+
                         // To avoid cursor jumping or infinite loop, only apply if change is different
                         if (!change.getControlNewText().equals(formatted)) {
                             change.setText(formatted);
                             change.setRange(0, change.getControlText().length());
                         }
                     }
-                } catch (Exception e) {}
+                } catch (Exception e) {
+                }
             }
             return change;
         }));
@@ -276,16 +282,17 @@ public class NewStockController implements DataManager.DataChangeListener {
     private String extractBaseQuantity(String text) {
         if (text == null || text.trim().isEmpty())
             return "1";
-        
+
         // Match numbers, dots, or fractions at the VERY START of the string
         java.util.regex.Pattern p = java.util.regex.Pattern.compile("^([0-9./]+)");
         java.util.regex.Matcher m = p.matcher(text.trim());
-        
+
         if (m.find()) {
             return m.group(1);
         }
         return "1";
     }
+
     private void handleQtySelection() {
         String item = itemsComboBox.getValue();
         String size = qtyComboBox.getEditor().getText();
@@ -663,7 +670,8 @@ public class NewStockController implements DataManager.DataChangeListener {
         // BLOCK DUPLICATE ITEMS IN PREVIEW LIST
         for (StockItem existing : items) {
             if (existing.getItems().equalsIgnoreCase(itemName) && existing.getQty().equalsIgnoreCase(qtyRaw)) {
-                showAlert("You already have '" + itemName + " " + qtyRaw + "' in the preview list! Please save or delete it first before adding a different unit to avoid average-cost calculation conflicts.");
+                showAlert("You already have '" + itemName + " " + qtyRaw
+                        + "' in the preview list! Please save or delete it first before adding a different unit to avoid average-cost calculation conflicts.");
                 return;
             }
         }
@@ -817,11 +825,15 @@ public class NewStockController implements DataManager.DataChangeListener {
             double totalAmount = 0.0;
             try {
                 totalAmount = Double.parseDouble(s.getAmount().replaceAll("[^0-9.]", ""));
-            } catch (Exception e) {}
-            
-            dataManager.getDbHelper().addSaleWithProfit(supplier, item, qty, unit, price, totalAmount, "NEW STOCK", false, null);
-            com.meto.inventory.services.NotificationService.getInstance().sendDesktopActionNotification("INventory Updated", unit + " have been added to " + item + " of " + qty + ". Tap to see whats new");
-            
+            } catch (Exception e) {
+            }
+
+            dataManager.getDbHelper().addSaleWithProfit(supplier, item, qty, unit, price, totalAmount, "NEW STOCK",
+                    false, null);
+            com.meto.inventory.services.NotificationService.getInstance().sendDesktopActionNotification(
+                    "INventory Updated",
+                    unit + " have been added to " + item + " of " + qty + ". Tap to see whats new");
+
             // Item successfully processed, remove it from the list
             iterator.remove();
         }
@@ -836,7 +848,7 @@ public class NewStockController implements DataManager.DataChangeListener {
             // Some items were left in the list (because of cancellation)
             showAlert("Save process aborted. Please fix the items remaining in the preview list.");
         }
-        
+
         dataManager.notifyDataChanged();
         refreshDropdowns();
     }

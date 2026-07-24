@@ -76,7 +76,7 @@ public class Main extends Application {
             scene.getStylesheets()
                     .add(getClass().getResource("/com/meto/inventory/views/styles/style.css").toExternalForm());
 
-            stage.setTitle("METO IMS");
+            stage.setTitle("CHECKBOOK IMS");
             stage.getIcons()
                     .add(new Image(getClass().getResourceAsStream("/com/meto/inventory/views/images/logo.png")));
             stage.setScene(scene);
@@ -93,7 +93,7 @@ public class Main extends Application {
         scene.getStylesheets()
                 .add(getClass().getResource("/com/meto/inventory/views/styles/style.css").toExternalForm());
 
-        stage.setTitle("METO IMS");
+        stage.setTitle("CHECKBOOK IMS");
         stage.getIcons()
                 .add(new Image(getClass().getResourceAsStream("/com/meto/inventory/views/images/logo.png")));
         stage.setScene(scene);

@@ -37,7 +37,14 @@ build/
 ### Mac OS ###
 .DS_Store
 
-##whats going on with commitinventory.db
 user_session.txt
 .env
+firebase-service-account.json
+*.db
+*.class
+test_persistence.db
+history_diff.txt
+after
+test_supabase.dart
 METO.IMS-1.7.msi
+

@@ -1,12 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
-import 'package:archive/archive_io.dart';
 import 'database_helper.dart';
 import 'passcode_service.dart';
 
@@ -408,6 +403,8 @@ class SupasService {
   void updateLastKnownTimestamp(int ts) {
     _lastKnownCloudTimestamp = ts;
   }
+
+  int get lastKnownCloudTimestamp => _lastKnownCloudTimestamp;
 
   /// Polls `desktop_last_seen` from the users table and updates [desktopStatus].
   ///

@@ -9,7 +9,6 @@ import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.FlowPane;
 
-
 import java.util.function.UnaryOperator;
 
 public class SalesController implements DataManager.DataChangeListener {
@@ -342,7 +341,8 @@ public class SalesController implements DataManager.DataChangeListener {
 
     /**
      * Refreshes dropdowns while preserving the user's current input.
-     * The background auto-sync calls onDataChanged() periodically which triggers this.
+     * The background auto-sync calls onDataChanged() periodically which triggers
+     * this.
      * Without preserving state, every refresh would clear the form mid-typing.
      */
     private void refreshDropdowns() {

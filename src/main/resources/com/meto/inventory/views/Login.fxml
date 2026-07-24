@@ -23,7 +23,7 @@
         </image>
     </ImageView>
 
-    <Label text="Welcome to METO IMS System" styleClass="header-title"/>
+    <Label text="Welcome to CHECKBOOK IMS System" styleClass="header-title"/>
     
     <VBox spacing="10" maxWidth="350" styleClass="card">
         

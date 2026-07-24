@@ -22,7 +22,7 @@
                     <padding>
                         <Insets bottom="30" left="10" top="10"/>
                     </padding>
-                    <Label text="METO IMS" style="-fx-font-size: 20px; -fx-font-weight: 900; -fx-text-fill: #111827;"/>
+                    <Label text="CHECKBOOK IMS" style="-fx-font-size: 20px; -fx-font-weight: 900; -fx-text-fill: #111827;"/>
                     <Label text="Inventory Management System" style="-fx-font-size: 11px; -fx-text-fill: #9CA3AF;"/>
                 </VBox>
 

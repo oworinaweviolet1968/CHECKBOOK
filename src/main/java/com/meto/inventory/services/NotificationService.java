@@ -30,11 +30,42 @@ public class NotificationService {
     private void initFirebase() {
         try {
             if (FirebaseApp.getApps().isEmpty()) {
-                InputStream serviceAccount = getClass().getResourceAsStream("/firebase-service-account.json");
+                InputStream serviceAccount = null;
+
+                // 1. Check environment variable GOOGLE_APPLICATION_CREDENTIALS or FIREBASE_CONFIG_PATH
+                String envPath = System.getenv("GOOGLE_APPLICATION_CREDENTIALS");
+                if (envPath == null || envPath.isBlank()) {
+                    envPath = System.getenv("FIREBASE_CONFIG_PATH");
+                }
+
+                if (envPath != null && !envPath.isBlank()) {
+                    java.io.File file = new java.io.File(envPath);
+                    if (file.exists()) {
+                        serviceAccount = new java.io.FileInputStream(file);
+                        LOGGER.info("Loading Firebase credentials from environment path: " + envPath);
+                    }
+                }
+
+                // 2. Check user data folder (~/METO_IMS_DATA/firebase-service-account.json)
                 if (serviceAccount == null) {
-                    LOGGER.severe("Firebase service account JSON not found in resources!");
+                    String userHome = System.getProperty("user.home");
+                    java.io.File localConfig = new java.io.File(userHome, "METO_IMS_DATA/firebase-service-account.json");
+                    if (localConfig.exists()) {
+                        serviceAccount = new java.io.FileInputStream(localConfig);
+                        LOGGER.info("Loading Firebase credentials from local data folder.");
+                    }
+                }
+
+                // 3. Fallback to classpath resource if present
+                if (serviceAccount == null) {
+                    serviceAccount = getClass().getResourceAsStream("/firebase-service-account.json");
+                }
+
+                if (serviceAccount == null) {
+                    LOGGER.warning("Firebase service account JSON not configured. Desktop notifications disabled.");
                     return;
                 }
+
                 FirebaseOptions options = FirebaseOptions.builder()
                         .setCredentials(GoogleCredentials.fromStream(serviceAccount))
                         .build();
@@ -46,7 +77,7 @@ public class NotificationService {
                 isInitialized = true;
             }
         } catch (Exception e) {
-            LOGGER.log(Level.SEVERE, "Failed to initialize Firebase Admin", e);
+            LOGGER.log(Level.WARNING, "Firebase Admin initialization skipped/failed", e);
         }
     }
 

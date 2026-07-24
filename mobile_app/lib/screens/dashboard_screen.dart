@@ -8,7 +8,6 @@ import '../widgets/common_app_bar_actions.dart';
 import '../screens/login_screen.dart';
 import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
-import '../screens/account_screen.dart';
 import '../services/passcode_service.dart';
 import 'package:intl/intl.dart';
 
@@ -54,15 +53,6 @@ class DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  void _logout() async {
-      await Supabase.instance.client.auth.signOut();
-      if (mounted) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-          );
-      }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -81,7 +71,7 @@ class DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(width: 12),
             const Expanded(
               child: Text(
-                'StockFlow',
+                'Checkbook',
                 style: TextStyle(
                   color: AppColors.textPrimary,
                   fontWeight: FontWeight.bold,

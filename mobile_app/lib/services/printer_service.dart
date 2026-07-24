@@ -13,6 +13,8 @@ class PrinterService {
   BluetoothDevice? _connectedDevice;
   int _lastPrintTime = 0;
 
+  BluetoothDevice? get connectedDevice => _connectedDevice;
+
   /// Automatically discovers and connects to an MPT-II or POS printer.
   Future<bool> connectToPrinter() async {
     bool? isConnected = await _bluetooth.isConnected;

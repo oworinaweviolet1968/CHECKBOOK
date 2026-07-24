@@ -8,11 +8,12 @@ import '../services/supabase_service.dart';
 import '../widgets/common_app_bar_actions.dart';
 import '../screens/passcode_setup_screen.dart';
 import '../services/printer_service.dart';
-import '../models/sale_item.dart';
 import '../utils/colors.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  final int initialTab;
+  final String? highlightQuery;
+  const HistoryScreen({super.key, this.initialTab = 0, this.highlightQuery});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -37,8 +38,21 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 4, vsync: this, initialIndex: widget.initialTab);
     _tabController.addListener(_handleTabSelection);
+
+    switch (widget.initialTab) {
+      case 1: _currentTabFilter = "NEW STOCK"; break;
+      case 2: _currentTabFilter = "SALES"; break;
+      case 3: _currentTabFilter = "DEBTS"; break;
+      default: _currentTabFilter = "ALL"; break;
+    }
+
+    if (widget.highlightQuery != null && widget.highlightQuery!.isNotEmpty) {
+      _searchQuery = widget.highlightQuery!;
+      _searchController.text = widget.highlightQuery!;
+    }
+
     _loadHistory();
     SupasService.instance.syncStatus.addListener(_onSyncStatusChanged);
   }
@@ -497,13 +511,24 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
           displayAmount = remainingVal;
       }
 
+      final bool isHighlighted = _searchQuery.isNotEmpty &&
+          (item.customer.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+           item.item.toLowerCase().contains(_searchQuery.toLowerCase()));
+
       return Container(
           decoration: BoxDecoration(
-              color: Colors.white,
+              color: isHighlighted ? AppColors.primaryGreen.withValues(alpha: 0.08) : Colors.white,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE5E7EB)), // light grey border (gray-200)
+              border: Border.all(
+                color: isHighlighted ? AppColors.primaryGreen : const Color(0xFFE5E7EB),
+                width: isHighlighted ? 2.5 : 1,
+              ),
               boxShadow: [
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.015), blurRadius: 8, offset: const Offset(0, 4))
+                  BoxShadow(
+                    color: isHighlighted ? AppColors.primaryGreen.withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.015),
+                    blurRadius: isHighlighted ? 12 : 8,
+                    offset: const Offset(0, 4),
+                  )
               ]
           ),
           child: Material(
@@ -520,6 +545,26 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                        if (isHighlighted)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryGreen,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.star, color: Colors.white, size: 12),
+                                SizedBox(width: 4),
+                                Text(
+                                  'HIGHLIGHTED ALERT ITEM',
+                                  style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
                         // Top Row: Date & Badges
                         Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,

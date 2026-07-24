@@ -5,7 +5,8 @@ import '../utils/colors.dart';
 import 'package:intl/intl.dart';
 
 class PriceUpdateScreen extends StatefulWidget {
-  const PriceUpdateScreen({super.key});
+  final String? highlightQuery;
+  const PriceUpdateScreen({super.key, this.highlightQuery});
 
   @override
   State<PriceUpdateScreen> createState() => _PriceUpdateScreenState();
@@ -21,6 +22,9 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.highlightQuery != null && widget.highlightQuery!.isNotEmpty) {
+      _searchController.text = widget.highlightQuery!;
+    }
     _loadStock();
   }
 
@@ -29,9 +33,15 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
     if (mounted) {
       setState(() {
         _allStock = data;
-        _filteredStock = data;
         _isLoading = false;
       });
+      if (_searchController.text.isNotEmpty) {
+        _filterStock(_searchController.text);
+      } else {
+        setState(() {
+          _filteredStock = data;
+        });
+      }
     }
   }
 
@@ -192,22 +202,52 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
                           final double currentUnitPrice = currentPiecePrice * multiplier;
                           final String source = item['device_source'] as String? ?? 'System';
 
+                          final String itemName = item['item']?.toString() ?? "Unknown Item";
+                          final bool isHighlighted = _searchController.text.isNotEmpty &&
+                              itemName.toLowerCase().contains(_searchController.text.toLowerCase());
+
                           return Container(
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: isHighlighted ? AppColors.primaryGreen.withValues(alpha: 0.08) : Colors.white,
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.04),
-                                  blurRadius: 10,
+                                  color: isHighlighted ? AppColors.primaryGreen.withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.04),
+                                  blurRadius: isHighlighted ? 12 : 10,
                                   offset: const Offset(0, 4),
                                 ),
                               ],
-                              border: Border.all(color: Colors.grey.shade100),
+                              border: Border.all(
+                                color: isHighlighted ? AppColors.primaryGreen : Colors.grey.shade100,
+                                width: isHighlighted ? 2.5 : 1,
+                              ),
                             ),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
-                              title: Row(
+                            child: Column(
+                              children: [
+                                if (isHighlighted)
+                                  Container(
+                                    margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    alignment: Alignment.centerLeft,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primaryGreen,
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.star, color: Colors.white, size: 12),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'HIGHLIGHTED ITEM',
+                                          style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ListTile(
+                                  contentPadding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
+                                  title: Row(
                                 children: [
                                   Text(
                                     item['item'] ?? "Unknown Item",
@@ -282,9 +322,11 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
                                 ),
                               ),
                             ),
-                          );
-                        },
-                      ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),

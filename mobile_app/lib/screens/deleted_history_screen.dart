@@ -5,7 +5,8 @@ import '../services/database_helper.dart';
 import '../utils/colors.dart';
 
 class DeletedHistoryScreen extends StatefulWidget {
-  const DeletedHistoryScreen({super.key});
+  final String? highlightQuery;
+  const DeletedHistoryScreen({super.key, this.highlightQuery});
 
   @override
   State<DeletedHistoryScreen> createState() => _DeletedHistoryScreenState();
@@ -25,6 +26,10 @@ class _DeletedHistoryScreenState extends State<DeletedHistoryScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.highlightQuery != null && widget.highlightQuery!.isNotEmpty) {
+      _searchQuery = widget.highlightQuery!;
+      _searchController.text = widget.highlightQuery!;
+    }
     _loadDeletedHistory();
   }
 
@@ -219,18 +224,51 @@ class _DeletedHistoryScreenState extends State<DeletedHistoryScreen> {
       }
     }
 
+    final bool isHighlighted = _searchQuery.isNotEmpty &&
+        (item.customer.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+         item.item.toLowerCase().contains(_searchQuery.toLowerCase()));
+
     return Container(
       decoration: BoxDecoration(
-          color: isOld ? const Color(0xFFFFF1F2) : Colors.white, // Light rose if old
+          color: isHighlighted
+              ? Colors.red.withOpacity(0.08)
+              : (isOld ? const Color(0xFFFFF1F2) : Colors.white),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isOld ? Colors.red.withOpacity(0.2) : Colors.grey.shade100),
+          border: Border.all(
+            color: isHighlighted ? Colors.red : (isOld ? Colors.red.withOpacity(0.2) : Colors.grey.shade100),
+            width: isHighlighted ? 2.5 : 1,
+          ),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 4, offset: const Offset(0, 2))
+            BoxShadow(
+              color: isHighlighted ? Colors.red.withOpacity(0.3) : Colors.black.withOpacity(0.02),
+              blurRadius: isHighlighted ? 12 : 4,
+              offset: const Offset(0, 2),
+            )
           ]),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
+            if (isHighlighted)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.star, color: Colors.white, size: 12),
+                    SizedBox(width: 4),
+                    Text(
+                      'HIGHLIGHTED DELETED ITEM',
+                      style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+              ),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [

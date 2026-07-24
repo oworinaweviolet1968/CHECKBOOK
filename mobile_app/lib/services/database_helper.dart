@@ -1697,7 +1697,17 @@ class DatabaseHelper {
       }
       
       if (isNew) {
-        if (deviceSource == 'Desktop' && isIncremental) {
+        bool isRecent = false;
+        if (obj['created_at'] != null) {
+          try {
+            final dt = DateTime.parse(obj['created_at'].toString());
+            if (DateTime.now().toUtc().difference(dt.toUtc()).inSeconds.abs() < 60) {
+              isRecent = true;
+            }
+          } catch (_) {}
+        }
+
+        if (deviceSource == 'Desktop' && isIncremental && isRecent) {
           if (type == 'NEW STOCK') {
             await addNotification("Added stock: $item", "Desktop");
           } else {
@@ -1711,8 +1721,8 @@ class DatabaseHelper {
           
           if (type == 'NEW STOCK') {
              await db.rawUpdate('''
-               UPDATE stock SET available_pieces = available_pieces + ?, supplier = ?, is_edited = 1 WHERE item = ? AND quantity = ?
-             ''', [count, customer, item, obj['quantity']]);
+               UPDATE stock SET supplier = ? WHERE item = ? AND quantity = ?
+             ''', [customer, item, obj['quantity']]);
           } else if (type.isNotEmpty && type != 'Debt Payment' && type != 'Payment') {
              await db.rawUpdate('''
                UPDATE stock SET available_pieces = available_pieces - ?, is_edited = 1 WHERE item = ? AND quantity = ?
@@ -1899,16 +1909,28 @@ class DatabaseHelper {
     }
   }
 
-  Future<void> addNotification(String message, String source) async {
+  Future<void> addNotification(String message, String source, {String? title}) async {
+    try {
       final db = await instance.database;
+      final recent = await db.rawQuery(
+        "SELECT id FROM notifications WHERE message = ? AND created_at >= datetime('now', '-10 seconds')",
+        [message]
+      );
+      if (recent.isNotEmpty) {
+        return;
+      }
+
       String syncId = generateUUID();
       await db.rawInsert(
-          "INSERT INTO notifications (message, source, sync_id) VALUES (?, ?, ?)",
-          [message, source, syncId]
+        "INSERT INTO notifications (message, source, sync_id) VALUES (?, ?, ?)",
+        [message, source, syncId]
       );
       if (source == 'Desktop') {
-          await showLocalNotification("Desktop App Input", message);
+        await showLocalNotification(title ?? "Desktop App Input", message);
       }
+    } catch (e) {
+      print("Error adding notification: $e");
+    }
   }
 
   Future<List<Map<String, dynamic>>> getNotifications() async {
@@ -1924,5 +1946,10 @@ class DatabaseHelper {
   Future<void> markNotificationAsRead(int id) async {
       final db = await instance.database;
       await db.rawUpdate("UPDATE notifications SET is_read = 1 WHERE id = ?", [id]);
+  }
+
+  Future<void> clearAllNotifications() async {
+      final db = await instance.database;
+      await db.rawDelete("DELETE FROM notifications");
   }
 }

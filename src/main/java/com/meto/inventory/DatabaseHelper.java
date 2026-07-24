@@ -1989,7 +1989,18 @@ public class DatabaseHelper {
                 }
                 
                 if (isNew) {
-                    if ("Mobile".equals(deviceSource)) {
+                    boolean isRecent = false;
+                    if (createdAt != null && !createdAt.isEmpty()) {
+                        try {
+                            java.time.Instant rowTime = java.time.Instant.parse(createdAt);
+                            long ageSec = java.time.Duration.between(rowTime, java.time.Instant.now()).getSeconds();
+                            if (Math.abs(ageSec) < 60) {
+                                isRecent = true;
+                            }
+                        } catch (Exception ignored) {}
+                    }
+
+                    if ("Mobile".equals(deviceSource) && isRecent) {
                         if ("NEW STOCK".equals(type)) {
                             addNotification("Added stock: " + item, "Mobile");
                         } else {
@@ -2003,13 +2014,12 @@ public class DatabaseHelper {
                         double count = extractNumericValue(unit) * multiplier;
 
                         if ("NEW STOCK".equals(type)) {
-                            // Add to stock AND update supplier
-                            String updateStock = "UPDATE stock SET available_pieces = available_pieces + ?, supplier = ?, is_edited = 1 WHERE item = ? AND quantity = ?";
+                            // Update supplier only (stock balance is synced via stock table snapshot)
+                            String updateStock = "UPDATE stock SET supplier = ? WHERE item = ? AND quantity = ?";
                             try (PreparedStatement uStmt = connection.prepareStatement(updateStock)) {
-                                uStmt.setDouble(1, count);
-                                uStmt.setString(2, customer); // Customer acts as supplier in NEW STOCK
-                                uStmt.setString(3, item);
-                                uStmt.setString(4, quantity);
+                                uStmt.setString(1, customer);
+                                uStmt.setString(2, item);
+                                uStmt.setString(3, quantity);
                                 uStmt.executeUpdate();
                             }
                         } else if (!type.isEmpty() && !"Debt Payment".equals(type) && !"Payment".equals(type)) { 
@@ -2267,6 +2277,15 @@ public class DatabaseHelper {
         }
     }
 
+    public void clearAllNotifications() {
+        String sql = "DELETE FROM notifications";
+        try (Statement stmt = connection.createStatement()) {
+            stmt.executeUpdate(sql);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
     private static class LegacySale {
         int id;
         String customer;
@@ -2335,3 +2354,5 @@ public class DatabaseHelper {
         }
     }
 }
+
+
