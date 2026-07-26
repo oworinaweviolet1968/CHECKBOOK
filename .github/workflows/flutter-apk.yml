@@ -35,13 +35,13 @@ jobs:
 
       # 5. Setup Shorebird
       - name: Setup Shorebird
-        uses: shorebirdtech/shorebird-action@v1
-        with:
-          shorebird-token: ${{ secrets.SHOREBIRD_TOKEN }}
+        uses: shorebirdtech/setup-shorebird@v1
 
       # 6. Build Shorebird Release APK
       - name: Build Shorebird Release APK
         working-directory: mobile_app
+        env:
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
         run: shorebird release android --artifact=apk --build-name=2.2.0 --build-number=${{ github.run_number }}
         
       # 7. Rename APK
