@@ -14,8 +14,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.List;
-import java.util.ArrayList;
 import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
@@ -603,134 +601,7 @@ public class SupabaseService {
 
             com.meto.inventory.DatabaseHelper db = com.meto.inventory.DataManager.getInstance().getDbHelper();
             
-            // Check for changes
-            JsonArray dirtyStock = db.getDirtyStock();
-            JsonArray dirtySales = db.getDirtySales();
-            JsonArray delStock = db.getDirtyDeletedStock();
-            JsonArray delSales = db.getDirtyDeletedHistory();
-
-            boolean hasChanges = dirtyStock.size() > 0 || dirtySales.size() > 0 || delStock.size() > 0 || delSales.size() > 0;
-            if (!hasChanges) {
-                notifyStatus("Cloud: Synced");
-                return true; // Silent success, update UI status dot to Online
-            }
-
-            if (!isSilent) {
-                notifyStatus("Syncing with Postgres...");
-            }
-            
-            // --- 1. PUSH ---
-            // STOCK
-            if (dirtyStock.size() > 0) {
-                String nowIso = java.time.Instant.now().toString();
-                for (JsonElement el : dirtyStock) {
-                    JsonObject o = el.getAsJsonObject();
-                    o.addProperty("user_id", currentUserId);
-                    o.addProperty("updated_at", nowIso);
-                }
-                HttpRequest req = HttpRequest.newBuilder()
-                        .uri(URI.create(REST_URL + "/stock?on_conflict=sync_id"))
-                        .header("apikey", SUPABASE_KEY)
-                        .header("Authorization", "Bearer " + currentAccessToken)
-                        .header("Content-Type", "application/json")
-                        .header("Prefer", "resolution=merge-duplicates")
-                        .POST(HttpRequest.BodyPublishers.ofString(dirtyStock.toString()))
-                        .build();
-                HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
-                System.out.println("STOCK UPLOAD RESPONSE: " + res.statusCode() + " " + res.body());
-            }
-            
-            // SALES
-            if (dirtySales.size() > 0) {
-                String nowIso = java.time.Instant.now().toString();
-                for (JsonElement el : dirtySales) {
-                    JsonObject o = el.getAsJsonObject();
-                    o.addProperty("user_id", currentUserId);
-                    o.addProperty("updated_at", nowIso);
-                }
-                HttpRequest req = HttpRequest.newBuilder()
-                        .uri(URI.create(REST_URL + "/sales?on_conflict=sync_id"))
-                        .header("apikey", SUPABASE_KEY)
-                        .header("Authorization", "Bearer " + currentAccessToken)
-                        .header("Content-Type", "application/json")
-                        .header("Prefer", "resolution=merge-duplicates")
-                        .POST(HttpRequest.BodyPublishers.ofString(dirtySales.toString()))
-                        .build();
-                HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
-                System.out.println("SALES UPLOAD RESPONSE: " + res.statusCode() + " " + res.body());
-            }
-
-            // DELETIONS
-            if (delStock.size() > 0) {
-                for (com.google.gson.JsonElement el : delStock) {
-                    com.google.gson.JsonObject o = el.getAsJsonObject();
-                    String syncId = o.has("sync_id") && !o.get("sync_id").isJsonNull() ? o.get("sync_id").getAsString() : null;
-                    String item = o.has("item") && !o.get("item").isJsonNull() ? o.get("item").getAsString() : null;
-                    String quantity = o.has("quantity") && !o.get("quantity").isJsonNull() ? o.get("quantity").getAsString() : null;
-
-                    if (syncId != null && !syncId.isEmpty()) {
-                        HttpRequest req = HttpRequest.newBuilder()
-                                .uri(URI.create(REST_URL + "/stock?sync_id=eq." + java.net.URLEncoder.encode(syncId, java.nio.charset.StandardCharsets.UTF_8)))
-                                .header("apikey", SUPABASE_KEY)
-                                .header("Authorization", "Bearer " + currentAccessToken)
-                                .DELETE().build();
-                        client.send(req, HttpResponse.BodyHandlers.ofString());
-                    }
-                    if (item != null && quantity != null) {
-                        HttpRequest req = HttpRequest.newBuilder()
-                                .uri(URI.create(REST_URL + "/stock?item=eq." + java.net.URLEncoder.encode(item, java.nio.charset.StandardCharsets.UTF_8) + "&quantity=eq." + java.net.URLEncoder.encode(quantity, java.nio.charset.StandardCharsets.UTF_8)))
-                                .header("apikey", SUPABASE_KEY)
-                                .header("Authorization", "Bearer " + currentAccessToken)
-                                .DELETE().build();
-                        client.send(req, HttpResponse.BodyHandlers.ofString());
-                    }
-                }
-            }
-
-            if (delSales.size() > 0) {
-                for (com.google.gson.JsonElement el : delSales) {
-                    com.google.gson.JsonObject o = el.getAsJsonObject();
-                    String syncId = o.has("sync_id") && !o.get("sync_id").isJsonNull() ? o.get("sync_id").getAsString() : null;
-                    String customer = o.has("customer") && !o.get("customer").isJsonNull() ? o.get("customer").getAsString() : "";
-                    String item = o.has("item") && !o.get("item").isJsonNull() ? o.get("item").getAsString() : "";
-                    String amount = o.has("amount") && !o.get("amount").isJsonNull() ? o.get("amount").getAsString() : "";
-                    String date = o.has("date") && !o.get("date").isJsonNull() ? o.get("date").getAsString() : "";
-
-                    if (syncId != null && !syncId.isEmpty()) {
-                        HttpRequest req = HttpRequest.newBuilder()
-                                .uri(URI.create(REST_URL + "/sales?sync_id=eq." + java.net.URLEncoder.encode(syncId, java.nio.charset.StandardCharsets.UTF_8)))
-                                .header("apikey", SUPABASE_KEY)
-                                .header("Authorization", "Bearer " + currentAccessToken)
-                                .DELETE().build();
-                        client.send(req, HttpResponse.BodyHandlers.ofString());
-                    }
-                    if (!item.isEmpty() && !date.isEmpty()) {
-                        String url = REST_URL + "/sales?customer=eq." + java.net.URLEncoder.encode(customer, java.nio.charset.StandardCharsets.UTF_8) + "&item=eq." + java.net.URLEncoder.encode(item, java.nio.charset.StandardCharsets.UTF_8) + "&date=eq." + java.net.URLEncoder.encode(date, java.nio.charset.StandardCharsets.UTF_8);
-                        if (!amount.isEmpty()) {
-                            url += "&amount=eq." + java.net.URLEncoder.encode(amount, java.nio.charset.StandardCharsets.UTF_8);
-                        }
-                        HttpRequest req = HttpRequest.newBuilder()
-                                .uri(URI.create(url))
-                                .header("apikey", SUPABASE_KEY)
-                                .header("Authorization", "Bearer " + currentAccessToken)
-                                .DELETE().build();
-                        client.send(req, HttpResponse.BodyHandlers.ofString());
-                    }
-                }
-            }
-
-            db.clearDirtyFlags();
-            lastSyncFailed = false;
-
-            // Update timestamp
-            long ts = System.currentTimeMillis();
-            Map<String, Object> updates = new HashMap<>();
-            updates.put("last_backup_timestamp", ts);
-            updateUserFields(updates);
-            db.saveSetting("last_backup_timestamp", String.valueOf(ts));
-            notifyStatus("Cloud: " + new java.util.Date(ts).toString());
-
-            return true;
+            return pushPendingChangesInternal(db, isSilent);
         } catch (IOException e) {
             if (e.getMessage() != null && e.getMessage().contains("401")) {
                 System.out.println("SYNC: Token expired (401), attempting to refresh session in background...");
@@ -872,6 +743,137 @@ public class SupabaseService {
         });
     }
 
+    private boolean pushPendingChangesInternal(com.meto.inventory.DatabaseHelper db, boolean isSilent) throws Exception {
+        // Check for changes
+        JsonArray dirtyStock = db.getDirtyStock();
+        JsonArray dirtySales = db.getDirtySales();
+        JsonArray delStock = db.getDirtyDeletedStock();
+        JsonArray delSales = db.getDirtyDeletedHistory();
+
+        boolean hasChanges = dirtyStock.size() > 0 || dirtySales.size() > 0 || delStock.size() > 0 || delSales.size() > 0;
+        if (!hasChanges) {
+            notifyStatus("Cloud: Synced");
+            return true; // Silent success
+        }
+
+        if (!isSilent) {
+            notifyStatus("Syncing with Postgres...");
+        }
+        
+        // --- 1. PUSH ---
+        // STOCK
+        if (dirtyStock.size() > 0) {
+            String nowIso = java.time.Instant.now().toString();
+            for (JsonElement el : dirtyStock) {
+                JsonObject o = el.getAsJsonObject();
+                o.addProperty("user_id", currentUserId);
+                o.addProperty("updated_at", nowIso);
+            }
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/stock?on_conflict=sync_id"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Content-Type", "application/json")
+                    .header("Prefer", "resolution=merge-duplicates")
+                    .POST(HttpRequest.BodyPublishers.ofString(dirtyStock.toString()))
+                    .build();
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            System.out.println("STOCK UPLOAD RESPONSE: " + res.statusCode() + " " + res.body());
+        }
+        
+        // SALES
+        if (dirtySales.size() > 0) {
+            String nowIso = java.time.Instant.now().toString();
+            for (JsonElement el : dirtySales) {
+                JsonObject o = el.getAsJsonObject();
+                o.addProperty("user_id", currentUserId);
+                o.addProperty("updated_at", nowIso);
+            }
+            HttpRequest req = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/sales?on_conflict=sync_id"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Content-Type", "application/json")
+                    .header("Prefer", "resolution=merge-duplicates")
+                    .POST(HttpRequest.BodyPublishers.ofString(dirtySales.toString()))
+                    .build();
+            HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
+            System.out.println("SALES UPLOAD RESPONSE: " + res.statusCode() + " " + res.body());
+        }
+
+        // DELETIONS
+        if (delStock.size() > 0) {
+            for (com.google.gson.JsonElement el : delStock) {
+                com.google.gson.JsonObject o = el.getAsJsonObject();
+                String syncId = o.has("sync_id") && !o.get("sync_id").isJsonNull() ? o.get("sync_id").getAsString() : null;
+                String item = o.has("item") && !o.get("item").isJsonNull() ? o.get("item").getAsString() : null;
+                String quantity = o.has("quantity") && !o.get("quantity").isJsonNull() ? o.get("quantity").getAsString() : null;
+
+                if (syncId != null && !syncId.isEmpty()) {
+                    HttpRequest req = HttpRequest.newBuilder()
+                            .uri(URI.create(REST_URL + "/stock?sync_id=eq." + java.net.URLEncoder.encode(syncId, java.nio.charset.StandardCharsets.UTF_8)))
+                            .header("apikey", SUPABASE_KEY)
+                            .header("Authorization", "Bearer " + currentAccessToken)
+                            .DELETE().build();
+                    client.send(req, HttpResponse.BodyHandlers.ofString());
+                }
+                if (item != null && quantity != null) {
+                    HttpRequest req = HttpRequest.newBuilder()
+                            .uri(URI.create(REST_URL + "/stock?item=eq." + java.net.URLEncoder.encode(item, java.nio.charset.StandardCharsets.UTF_8) + "&quantity=eq." + java.net.URLEncoder.encode(quantity, java.nio.charset.StandardCharsets.UTF_8)))
+                            .header("apikey", SUPABASE_KEY)
+                            .header("Authorization", "Bearer " + currentAccessToken)
+                            .DELETE().build();
+                    client.send(req, HttpResponse.BodyHandlers.ofString());
+                }
+            }
+        }
+
+        if (delSales.size() > 0) {
+            for (com.google.gson.JsonElement el : delSales) {
+                com.google.gson.JsonObject o = el.getAsJsonObject();
+                String syncId = o.has("sync_id") && !o.get("sync_id").isJsonNull() ? o.get("sync_id").getAsString() : null;
+                String customer = o.has("customer") && !o.get("customer").isJsonNull() ? o.get("customer").getAsString() : "";
+                String item = o.has("item") && !o.get("item").isJsonNull() ? o.get("item").getAsString() : "";
+                String amount = o.has("amount") && !o.get("amount").isJsonNull() ? o.get("amount").getAsString() : "";
+                String date = o.has("date") && !o.get("date").isJsonNull() ? o.get("date").getAsString() : "";
+
+                if (syncId != null && !syncId.isEmpty()) {
+                    HttpRequest req = HttpRequest.newBuilder()
+                            .uri(URI.create(REST_URL + "/sales?sync_id=eq." + java.net.URLEncoder.encode(syncId, java.nio.charset.StandardCharsets.UTF_8)))
+                            .header("apikey", SUPABASE_KEY)
+                            .header("Authorization", "Bearer " + currentAccessToken)
+                            .DELETE().build();
+                    client.send(req, HttpResponse.BodyHandlers.ofString());
+                }
+                if (!item.isEmpty() && !date.isEmpty()) {
+                    String url = REST_URL + "/sales?customer=eq." + java.net.URLEncoder.encode(customer, java.nio.charset.StandardCharsets.UTF_8) + "&item=eq." + java.net.URLEncoder.encode(item, java.nio.charset.StandardCharsets.UTF_8) + "&date=eq." + java.net.URLEncoder.encode(date, java.nio.charset.StandardCharsets.UTF_8);
+                    if (!amount.isEmpty()) {
+                        url += "&amount=eq." + java.net.URLEncoder.encode(amount, java.nio.charset.StandardCharsets.UTF_8);
+                    }
+                    HttpRequest req = HttpRequest.newBuilder()
+                            .uri(URI.create(url))
+                            .header("apikey", SUPABASE_KEY)
+                            .header("Authorization", "Bearer " + currentAccessToken)
+                            .DELETE().build();
+                    client.send(req, HttpResponse.BodyHandlers.ofString());
+                }
+            }
+        }
+
+        db.clearDirtyFlags();
+        lastSyncFailed = false;
+
+        // Update timestamp
+        long ts = System.currentTimeMillis();
+        Map<String, Object> updates = new HashMap<>();
+        updates.put("last_backup_timestamp", ts);
+        updateUserFields(updates);
+        db.saveSetting("last_backup_timestamp", String.valueOf(ts));
+        notifyStatus("Cloud: " + new java.util.Date(ts).toString());
+
+        return true;
+    }
+
     public boolean syncOnLogin(String dbPath, boolean localHasData, boolean isManual) {
         if (!syncLock.tryLock()) return false;
         try {
@@ -880,10 +882,15 @@ public class SupabaseService {
             com.meto.inventory.DatabaseHelper db = com.meto.inventory.DataManager.getInstance().getDbHelper();
             db.checkAutoResyncMigration();
 
+            // PUSH FIRST: Ensure all local unsynced edits reach the cloud before pulling
+            try {
+                pushPendingChangesInternal(db, true);
+            } catch (Exception pushEx) {
+                System.err.println("SYNC: Pre-pull push warning: " + pushEx.getMessage());
+            }
+
             String localVersionStr = db.getSetting("last_backup_timestamp");
             long localVersionTs = (localVersionStr != null) ? Long.parseLong(localVersionStr) : 0;
-            long queryTs = localVersionTs > 300000 ? localVersionTs - 300000 : 0;
-            String isoTimestamp = java.time.Instant.ofEpochMilli(queryTs).toString();
 
             if (isManual) {
                 notifyStatus("Downloading Updates...");

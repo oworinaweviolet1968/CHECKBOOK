@@ -426,6 +426,9 @@ class DatabaseHelper {
           await db.execute("UPDATE sales SET is_debt = CASE WHEN is_debt = 'true' OR is_debt = 1 THEN 1 ELSE 0 END, is_paid = CASE WHEN is_paid = 'true' OR is_paid = 1 THEN 1 ELSE 0 END");
           await db.execute("UPDATE deleted_history SET is_debt = CASE WHEN is_debt = 'true' OR is_debt = 1 THEN 1 ELSE 0 END, is_paid = CASE WHEN is_paid = 'true' OR is_paid = 1 THEN 1 ELSE 0 END");
 
+          // Clean up old presence log notifications (Desktop App Online / Connected to internet)
+          await db.execute("DELETE FROM notifications WHERE message LIKE '%online%' OR message LIKE '%offline%' OR message LIKE '%internet%'");
+
 
           // --- ENFORCE UNIQUE INDEXES FOR DELTA SYNC ---
           try {
@@ -811,6 +814,20 @@ class DatabaseHelper {
   Future<double> getTotalDebt() async {
     final db = await instance.database;
     final result = await db.rawQuery('SELECT SUM(amount - COALESCE(paid_amount, 0)) as total FROM sales WHERE is_debt = 1 AND is_paid = 0 AND customer != \'Walk-in Customer\'');
+    if (result.isNotEmpty && result.first['total'] != null) {
+      return (result.first['total'] as num).toDouble();
+    }
+    return 0.0;
+  }
+
+  // Dashboard / Account: Total Debt Collected Today
+  Future<double> getTodaysCollectedDebt() async {
+    final db = await instance.database;
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    final result = await db.rawQuery(
+      'SELECT SUM(amount_paid) as total FROM debt_payments WHERE payment_date = ? OR payment_date LIKE ?',
+      [today, '$today%']
+    );
     if (result.isNotEmpty && result.first['total'] != null) {
       return (result.first['total'] as num).toDouble();
     }
@@ -1737,7 +1754,7 @@ class DatabaseHelper {
         final double newPrice = parsePrice(obj['price']);
         final String deviceSource = obj['device_source'] ?? 'Cloud';
 
-        if (oldPrice != newPrice && deviceSource != 'Mobile') {
+        if (oldPrice > 0 && oldPrice != newPrice && deviceSource == 'PriceUpdateScreen') {
           final String itemName = existing.first['item'] as String? ?? cloudItem;
           final String size = existing.first['quantity'] as String? ?? cloudQuantity;
           final String unit = existing.first['unit'] as String? ?? obj['unit'] ?? 'pcs';
@@ -1913,9 +1930,9 @@ class DatabaseHelper {
           } catch (_) {}
         }
 
-        if (deviceSource == 'Desktop' && isIncremental && isRecent) {
+        if (deviceSource == 'Desktop' && isRecent) {
           if (type == 'NEW STOCK') {
-            await addNotification("Added stock: $item", "Desktop");
+            await addNotification("NEW STOCK: $item has been stocked", "Desktop");
           } else {
             await addNotification("Sale recorded for $customer: $item (UGX ${amount.toStringAsFixed(0)})", "Desktop");
           }
@@ -2183,7 +2200,7 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getNotifications() async {
       try {
           final db = await instance.database;
-          return await db.rawQuery("SELECT id, message, source, created_at, is_read FROM notifications ORDER BY created_at DESC");
+          return await db.rawQuery("SELECT id, message, source, created_at, is_read FROM notifications WHERE message NOT LIKE '%online%' AND message NOT LIKE '%offline%' AND message NOT LIKE '%internet%' ORDER BY created_at DESC");
       } catch (e) {
           print("Error fetching notifications: $e");
           return [];

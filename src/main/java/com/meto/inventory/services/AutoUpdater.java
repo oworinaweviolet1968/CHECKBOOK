@@ -13,6 +13,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 
 import com.google.gson.JsonObject;
@@ -138,7 +139,7 @@ public class AutoUpdater {
 
         new Thread(() -> {
             try {
-                URL url = new URL(downloadUrl);
+                URL url = URI.create(downloadUrl).toURL();
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setConnectTimeout(10000);
                 conn.setReadTimeout(30000);

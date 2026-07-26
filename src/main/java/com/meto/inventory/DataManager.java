@@ -134,7 +134,6 @@ public class DataManager {
                 // --- CONNECTIVITY TRANSITION NOTIFICATIONS ---
                 if (wasOnline == null || wasOnline != online) {
                     if (online) {
-                        dbHelper.addNotification("Desktop app accessed the internet and is now online.", "Desktop");
                         com.meto.inventory.services.NotificationService.getInstance()
                             .sendDesktopActionNotification("Desktop App Online", "Desktop app accessed the internet and is now online.");
                         
@@ -178,13 +177,12 @@ public class DataManager {
                                     try { service.signInWithRefreshToken(savedToken); } 
                                     catch (Exception ex) {}
                                 }
-                                service.uploadDatabase(getCurrentDbName(), true);
-                            } else {
-                                // Online: Poll for any new changes from mobile app
-                                boolean downloaded = service.syncOnLogin(getCurrentDbName(), true, false);
-                                if (downloaded) {
-                                    notifyDataChanged();
-                                }
+                            }
+                            // Always push local dirty changes first, then pull updates from cloud
+                            service.uploadDatabase(getCurrentDbName(), true);
+                            boolean downloaded = service.syncOnLogin(getCurrentDbName(), true, false);
+                            if (downloaded) {
+                                notifyDataChanged(false);
                             }
                         }
                         

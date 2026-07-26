@@ -25,6 +25,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
   bool _isBackingUp = false;
   late final AnimationController _spinController;
   double _totalDebt = 0;
+  double _todaysCollectedDebt = 0;
 
   @override
   void initState() {
@@ -39,9 +40,11 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
 
   Future<void> _loadDebtData() async {
     final debt = await DatabaseHelper.instance.getTotalDebt();
+    final collectedToday = await DatabaseHelper.instance.getTodaysCollectedDebt();
     if (mounted) {
       setState(() {
         _totalDebt = debt;
+        _todaysCollectedDebt = collectedToday;
       });
     }
   }
@@ -562,6 +565,27 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
               },
             ),
             const SizedBox(height: 16),
+            ValueListenableBuilder<DesktopStatus>(
+              valueListenable: SupasService.instance.desktopStatus,
+              builder: (context, status, child) {
+                final meta = SupasService.instance.userMetadata.value;
+                final lastSeenTs = meta?['desktop_last_seen'] as int?;
+                final subtitleText = status == DesktopStatus.online
+                    ? 'Currently Online'
+                    : _formatTimestamp(lastSeenTs);
+                final color = status == DesktopStatus.online ? AppColors.primaryGreen : Colors.grey;
+                return _buildInfoCard(
+                  title: 'DESKTOP LAST ONLINE',
+                  subtitle: subtitleText,
+                  icon: status == DesktopStatus.online ? Icons.desktop_windows : Icons.desktop_access_disabled,
+                  iconColor: color,
+                  onTap: () async {
+                    await SupasService.instance.checkDesktopPresence();
+                  },
+                );
+              },
+            ),
+            const SizedBox(height: 16),
             // Buttons Section
             _buildActionCard(
               title: 'Price Update / Repricing',
@@ -795,19 +819,68 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            'UGX ${NumberFormat("#,###").format(_totalDebt)}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'UGX ${NumberFormat("#,###").format(_totalDebt)}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1,
+              ),
             ),
           ),
           const SizedBox(height: 4),
           const Text(
             'Keep track of pending customer payments',
             style: TextStyle(color: Colors.white60, fontSize: 11),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.payments_outlined, color: Colors.white70, size: 15),
+                    SizedBox(width: 6),
+                    Text(
+                      'Collected Debt Today',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.center,
+                  child: Text(
+                    'UGX ${NumberFormat("#,###").format(_todaysCollectedDebt)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -841,15 +914,17 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
         subtitle: const Text('View and settle customer debts', style: TextStyle(fontSize: 12)),
         trailing: PopupMenuButton<int>(
           icon: const Icon(Icons.more_vert, color: Colors.grey),
-          onSelected: (value) {
+          onSelected: (value) async {
             if (value == 0) {
-              Navigator.of(context).push(
+              await Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const DebtHistoryScreen(initialIndex: 0)),
               );
+              _loadDebtData();
             } else if (value == 1) {
-              Navigator.of(context).push(
+              await Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const DebtHistoryScreen(initialIndex: 1)),
               );
+              _loadDebtData();
             }
           },
           itemBuilder: (context) => [

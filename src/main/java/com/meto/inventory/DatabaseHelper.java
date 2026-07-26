@@ -1975,7 +1975,7 @@ public class DatabaseHelper {
                         );
                     }
 
-                    if (!localIsDirty || forceAcceptPieces) {
+                    if (!localIsDirty) {
                         // Accept cloud available_pieces to sync stock changes across devices
                         updateFullStmt.setString(1, syncId);
                         updateFullStmt.setString(2, supplier);
@@ -2170,7 +2170,7 @@ public class DatabaseHelper {
 
                     if ("Mobile".equals(deviceSource) && isRecent) {
                         if ("NEW STOCK".equals(type)) {
-                            addNotification("Added stock: " + item, "Mobile");
+                            addNotification("NEW STOCK: " + item + " has been stocked", "Mobile");
                         } else {
                             addNotification("Sale recorded for " + customer + ": " + item + " (UGX " + amount + ")", "Mobile");
                         }

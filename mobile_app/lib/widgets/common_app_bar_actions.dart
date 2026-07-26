@@ -1,3 +1,4 @@
+import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import '../utils/colors.dart';
 import '../screens/account_screen.dart';
@@ -220,11 +221,18 @@ class _DesktopStatusChip extends StatelessWidget {
   }
 
   String _statusTooltip(DesktopStatus status) {
+    final meta = SupasService.instance.userMetadata.value;
+    final lastSeenTs = meta?['desktop_last_seen'] as int?;
+    String timeStr = 'Never';
+    if (lastSeenTs != null && lastSeenTs > 0) {
+      final date = DateTime.fromMillisecondsSinceEpoch(lastSeenTs);
+      timeStr = DateFormat('dd-MMM-yyyy HH:mm').format(date);
+    }
     switch (status) {
       case DesktopStatus.online:
         return 'Desktop app is online and connected';
       case DesktopStatus.offline:
-        return 'Desktop app is offline or closed';
+        return 'Desktop app is offline (Last seen: $timeStr)';
       case DesktopStatus.checking:
         return 'Checking desktop app status...';
       case DesktopStatus.unknown:

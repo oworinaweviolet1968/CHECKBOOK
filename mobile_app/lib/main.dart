@@ -333,44 +333,10 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
       final newStatus = await SupasService.instance.checkDesktopPresence();
       if (!mounted) return;
 
-      // Only notify on meaningful transitions (skip 'checking' and 'unknown')
-      final prev = _prevDesktopStatus;
       _prevDesktopStatus = newStatus;
 
-      // We only care about online ↔ offline transitions
-      if (newStatus == prev) return;
-      if (newStatus == DesktopStatus.checking || newStatus == DesktopStatus.unknown) return;
-      if (prev == DesktopStatus.checking) return; // First check — don't notify yet
-
-      String title;
-      String body;
-
-      if (newStatus == DesktopStatus.online) {
-        title = '🟢 Desktop App Online';
-        body = 'The desktop app is now connected to the internet.';
-      } else {
-        title = '🔴 Desktop App Offline';
-        body = 'The desktop app has gone offline or was closed.';
-      }
-
-      // Register in local notifications DB and trigger native local notification
-      await DatabaseHelper.instance.addNotification('$title: $body', 'Desktop', title: title);
-      
-      if (!Platform.isAndroid && !Platform.isIOS) {
-        // Linux / desktop fallback: SnackBar
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('$title — $body'),
-              backgroundColor: newStatus == DesktopStatus.online
-                  ? const Color(0xFF10B981)
-                  : Colors.redAccent,
-              duration: const Duration(seconds: 5),
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-        }
-      }
+      // Presence status updated on SupasService.instance.desktopStatus notifier.
+      // We do NOT pollute persistent notification DB or spam snackbars on status checks.
     } catch (e) {
       // Silent fail
     }
