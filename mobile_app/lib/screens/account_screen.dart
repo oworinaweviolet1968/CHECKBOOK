@@ -642,7 +642,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
             const SizedBox(height: 48),
             // Version
             const Text(
-              'VERSION V.0',
+              'VERSION 2.2.0+5',
               style: TextStyle(
                 color: Colors.grey,
                 fontSize: 12,

@@ -33,17 +33,23 @@ jobs:
         working-directory: mobile_app
         run: flutter pub get
 
-      # 5. Build APK (release mode with release signing and dynamic build number)
-      - name: Build APK
+      # 5. Setup Shorebird
+      - name: Setup Shorebird
+        uses: shorebirdtech/shorebird-action@v1
+        with:
+          shorebird-token: ${{ secrets.SHOREBIRD_TOKEN }}
+
+      # 6. Build Shorebird Release APK
+      - name: Build Shorebird Release APK
         working-directory: mobile_app
-        run: flutter build apk --release --build-name=2.2.0 --build-number=${{ github.run_number }}
+        run: shorebird release android --artifact=apk --build-name=2.2.0 --build-number=${{ github.run_number }}
         
-      # 6. Rename APK
+      # 7. Rename APK
       - name: Rename APK
         working-directory: mobile_app
         run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/CheckBook.apk
 
-      # 7. Release to beckhamz777/cb repository
+      # 8. Release to beckhamz777/cb repository
       - name: Create Release in cb repository
         uses: softprops/action-gh-release@v2
         with:
@@ -56,7 +62,7 @@ jobs:
           files: |
             mobile_app/build/app/outputs/flutter-apk/CheckBook.apk
 
-      # 8. Register Release in Supabase app_releases table
+      # 9. Register Release in Supabase app_releases table
       - name: Register Release in Supabase
         run: |
           curl -X POST "https://jhucvkqwenhyiveqsmtf.supabase.co/rest/v1/app_releases" \
