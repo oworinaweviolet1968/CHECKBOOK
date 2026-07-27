@@ -959,6 +959,9 @@ class DatabaseHelper {
     double multiplier = getUnitMultiplier(u, q, u);
     double totalPieces = unitCount * multiplier;
     
+    // Clear any prior deletion tombstone when re-adding stock
+    await db.rawDelete("DELETE FROM deleted_stock WHERE item = ? AND quantity = ?", [i, q]);
+
     // Price per single piece (base unit)
     double pricePerSinglePiece = p / (multiplier > 0 ? multiplier : 1); 
     String syncId = generateUUID();
@@ -1338,6 +1341,64 @@ class DatabaseHelper {
       await cleanupZombieStock();
       await saveSetting('auto_resync_zombie_v5', '1');
     }
+
+    final tombstoneSetting = await getSetting('has_cleared_stale_tombstones_v1');
+    if (tombstoneSetting == null || tombstoneSetting != '1') {
+      try {
+        final db = await instance.database;
+        await db.execute("DELETE FROM deleted_stock WHERE EXISTS (SELECT 1 FROM stock WHERE stock.item = deleted_stock.item AND stock.quantity = deleted_stock.quantity)");
+        await db.execute("DELETE FROM deleted_history WHERE EXISTS (SELECT 1 FROM sales WHERE sales.customer = deleted_history.customer AND sales.item = deleted_history.item AND sales.date = deleted_history.date)");
+        await saveSetting('has_cleared_stale_tombstones_v1', '1');
+        print('MIGRATION (Mobile): Cleared stale tombstones for active stock/sales');
+      } catch (e) {
+        print('Failed to clear stale tombstones on Mobile: $e');
+      }
+    }
+
+    final ghostSalesSetting = await getSetting('has_purged_ghost_sales_v1');
+    if (ghostSalesSetting == null || ghostSalesSetting != '1') {
+      try {
+        final db = await instance.database;
+        await db.execute("DELETE FROM sales WHERE EXISTS (SELECT 1 FROM deleted_history WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') OR (deleted_history.item = sales.item AND deleted_history.date = sales.date))");
+        await saveSetting('has_purged_ghost_sales_v1', '1');
+        print('MIGRATION (Mobile): Purged ghost sales matching deleted_history');
+      } catch (e) {
+        print('Failed to purge ghost sales on Mobile: $e');
+      }
+    }
+
+    final stockSalesSetting = await getSetting('has_purged_deleted_stock_sales_v3');
+    if (stockSalesSetting == null || stockSalesSetting != '1') {
+      try {
+        final db = await instance.database;
+        final uuidGenSql = "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))";
+        await db.execute('''
+          INSERT INTO deleted_history (sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited, device_source) 
+          SELECT COALESCE(NULLIF(sales.sync_id, ''), $uuidGenSql), 
+                 sales.customer, sales.item, sales.quantity, sales.unit, sales.price, sales.cost_price, sales.base_quantity, sales.amount, sales.type, sales.date, sales.is_debt, sales.is_paid, sales.paid_amount, 1, 'Migration' 
+          FROM sales WHERE (
+            EXISTS (
+              SELECT 1 FROM deleted_stock WHERE LOWER(REPLACE(deleted_stock.item, ' ', '')) = LOWER(REPLACE(sales.item, ' ', '')) OR sales.item LIKE '%' || deleted_stock.item || '%' OR deleted_stock.item LIKE '%' || sales.item || '%'
+            )
+            OR LOWER(sales.item) LIKE '%zerospot%'
+            OR LOWER(sales.item) LIKE '%zero%spot%'
+          ) AND sales.type != 'NEW STOCK'
+        ''');
+        await db.execute('''
+          DELETE FROM sales WHERE (
+            EXISTS (
+              SELECT 1 FROM deleted_stock WHERE LOWER(REPLACE(deleted_stock.item, ' ', '')) = LOWER(REPLACE(sales.item, ' ', '')) OR sales.item LIKE '%' || deleted_stock.item || '%' OR deleted_stock.item LIKE '%' || sales.item || '%'
+            )
+            OR LOWER(sales.item) LIKE '%zerospot%'
+            OR LOWER(sales.item) LIKE '%zero%spot%'
+          ) AND sales.type != 'NEW STOCK'
+        ''');
+        await saveSetting('has_purged_deleted_stock_sales_v3', '1');
+        print('MIGRATION (Mobile): Purged ghost sales associated with deleted stock / zerospot');
+      } catch (e) {
+        print('Failed to purge ghost sales for deleted stock on Mobile: $e');
+      }
+    }
   }
 
   Future<void> cleanupZombieStock() async {
@@ -1348,13 +1409,14 @@ class DatabaseHelper {
     final zombies = await db.rawQuery('''
       SELECT id, sync_id, item, quantity 
       FROM stock 
-      WHERE available_pieces <= 0 
+      WHERE (available_pieces <= 0 
       OR NOT EXISTS (
         SELECT 1 FROM sales 
         WHERE sales.item = stock.item 
         AND sales.quantity = stock.quantity 
         AND sales.type = 'NEW STOCK'
-      )
+      ))
+      AND (is_edited = 0 OR is_edited IS NULL)
     ''');
 
     for (var z in zombies) {
@@ -1693,6 +1755,7 @@ class DatabaseHelper {
     await db.rawUpdate("UPDATE stock SET is_edited = 0");
     await db.rawUpdate("UPDATE sales SET is_edited = 0");
     await db.rawDelete("DELETE FROM deleted_stock");
+    await db.rawDelete("DELETE FROM deleted_history");
   }
 
   Future<List<Map<String, dynamic>>> getDirtyStock() async {
@@ -1988,7 +2051,7 @@ class DatabaseHelper {
             if (createdAt != null) {
               try {
                 final dt = DateTime.parse(createdAt);
-                if (DateTime.now().toUtc().difference(dt.toUtc()).inSeconds.abs() < 120) {
+                if (DateTime.now().toUtc().difference(dt.toUtc()).inSeconds.abs() < 600) {
                   isRecentLocalDraft = true;
                 }
               } catch (_) {}
@@ -2074,8 +2137,8 @@ class DatabaseHelper {
       if (resBySync.isNotEmpty) return true;
     }
     final results = await db.query('deleted_history',
-        where: 'customer = ? AND item = ? AND amount = ? AND date = ?',
-        whereArgs: [customer, item, amount, date]);
+        where: 'item = ? AND date = ?',
+        whereArgs: [item, date]);
     return results.isNotEmpty;
   }
 

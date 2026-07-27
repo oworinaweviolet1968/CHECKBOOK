@@ -122,7 +122,7 @@ public class HistoryController implements DataManager.DataChangeListener {
                 } else {
                     HistoryItem historyItem = getTableView().getItems().get(getIndex());
                     // Only show print for sales (Retail, Wholesale, Debt)
-                    String type = historyItem.getTypeUnit();
+                    String type = historyItem != null ? historyItem.getTypeUnit() : null;
                     if (type != null && !type.equalsIgnoreCase("NEW STOCK")) {
                         setGraphic(printBtn);
                     } else {

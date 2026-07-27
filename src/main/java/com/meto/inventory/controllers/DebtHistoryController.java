@@ -1,8 +1,11 @@
 package com.meto.inventory.controllers;
 
 import com.meto.inventory.DataManager;
+import com.meto.inventory.components.BellIcon;
 import com.meto.inventory.models.DebtPaymentLog;
 import com.meto.inventory.models.HistoryItem;
+import com.meto.inventory.services.SupabaseService;
+import com.meto.inventory.utils.DialogHelper;
 
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
@@ -46,7 +49,7 @@ public class DebtHistoryController implements DataManager.DataChangeListener {
             refreshBtn.setDisable(true);
             new Thread(() -> {
                 try {
-                    com.meto.inventory.services.SupabaseService.getInstance().syncOnLogin(
+                    SupabaseService.getInstance().syncOnLogin(
                             dataManager.getCurrentDbName(),
                             dataManager.getDbHelper().hasData(),
                             true);
@@ -63,7 +66,7 @@ public class DebtHistoryController implements DataManager.DataChangeListener {
 
         if (notificationsBtn != null) {
             notificationsBtn.setGraphic(
-                    com.meto.inventory.components.BellIcon.create(12, javafx.scene.paint.Color.web("#6B7280")));
+                    BellIcon.create(12, javafx.scene.paint.Color.web("#6B7280")));
             notificationsBtn.setOnAction(e -> {
                 try {
                     javafx.fxml.FXMLLoader loader = new javafx.fxml.FXMLLoader(
@@ -221,7 +224,7 @@ public class DebtHistoryController implements DataManager.DataChangeListener {
                 dataManager.notifyDataChanged(); // Trigger cloud sync
                 loadData();
             } catch (NumberFormatException e) {
-                com.meto.inventory.utils.DialogHelper.showAlert("Invalid input. Please enter a number.");
+                DialogHelper.showAlert("Invalid input. Please enter a number.");
             }
         });
     }

@@ -117,9 +117,12 @@ class SupasService {
             if (syncId != null && syncId.isNotEmpty) {
               await client.from('sales').delete().eq('sync_id', syncId);
             }
-            if (itemName != null && itemName.isNotEmpty && customer != null && date != null) {
-              var query = client.from('sales').delete().eq('customer', customer).eq('item', itemName).eq('date', date);
-              if (amount != null) {
+            if (itemName != null && itemName.isNotEmpty && date != null && date.isNotEmpty) {
+              var query = client.from('sales').delete().eq('item', itemName).eq('date', date);
+              if (customer != null && customer.isNotEmpty && customer != 'Walk-in Customer') {
+                query = query.eq('customer', customer);
+              }
+              if (amount != null && amount.toString().isNotEmpty) {
                 query = query.eq('amount', amount);
               }
               await query;

@@ -846,7 +846,10 @@ public class SupabaseService {
                     client.send(req, HttpResponse.BodyHandlers.ofString());
                 }
                 if (!item.isEmpty() && !date.isEmpty()) {
-                    String url = REST_URL + "/sales?customer=eq." + java.net.URLEncoder.encode(customer, java.nio.charset.StandardCharsets.UTF_8) + "&item=eq." + java.net.URLEncoder.encode(item, java.nio.charset.StandardCharsets.UTF_8) + "&date=eq." + java.net.URLEncoder.encode(date, java.nio.charset.StandardCharsets.UTF_8);
+                    String url = REST_URL + "/sales?item=eq." + java.net.URLEncoder.encode(item, java.nio.charset.StandardCharsets.UTF_8) + "&date=eq." + java.net.URLEncoder.encode(date, java.nio.charset.StandardCharsets.UTF_8);
+                    if (!customer.isEmpty() && !"Walk-in Customer".equalsIgnoreCase(customer)) {
+                        url += "&customer=eq." + java.net.URLEncoder.encode(customer, java.nio.charset.StandardCharsets.UTF_8);
+                    }
                     if (!amount.isEmpty()) {
                         url += "&amount=eq." + java.net.URLEncoder.encode(amount, java.nio.charset.StandardCharsets.UTF_8);
                     }
