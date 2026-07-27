@@ -706,14 +706,7 @@ public class DatabaseHelper {
                         double expected = totalAdded - totalSold;
                         if (expected > avail && Math.abs(expected - avail) >= 1.0) {
                             double difference = expected - avail;
-                            try (PreparedStatement pFix = connection.prepareStatement("UPDATE stock SET available_pieces = ?, is_edited = 1 WHERE id = ?")) {
-                                pFix.setDouble(1, expected);
-                                pFix.setInt(2, id);
-                                pFix.executeUpdate();
-                                logStockMovement(item, size, difference, avail, expected, "Auto-Restored Untracked Discrepancy (" + String.format("%.0f", difference) + " pcs)", "Desktop Audit");
-                                addNotification("RESTORED: Restored " + String.format("%.0f", difference) + " untracked pieces for " + item + " (" + size + ") back to " + String.format("%.0f", expected) + " pcs", "Desktop Audit");
-                                System.out.println("AUDIT: Restored " + difference + " untracked pieces for " + item + " (" + size + ") back to expected balance " + expected);
-                            }
+                            System.out.println("AUDIT NOTE: Stock " + item + " (" + size + ") calculated net: " + expected + ", stored available: " + avail);
                         }
                     }
                 }
@@ -2052,16 +2045,15 @@ public class DatabaseHelper {
 
     public com.google.gson.JsonArray getDirtyStock() {
         com.google.gson.JsonArray array = new com.google.gson.JsonArray();
-        // Ensure any missing sync_ids are populated first
-        try (Statement stmt = connection.createStatement()) {
-            stmt.execute("UPDATE stock SET sync_id = (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))) WHERE sync_id IS NULL OR sync_id = ''");
-        } catch (Exception ignored) {}
-
         String sql = "SELECT sync_id, item, quantity, unit, price, cost_price, base_quantity, available_pieces, device_source, date FROM stock WHERE is_edited = 1";
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
                 com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
-                obj.addProperty("sync_id", rs.getString("sync_id"));
+                String syncId = rs.getString("sync_id");
+                if (syncId == null || syncId.isEmpty()) {
+                    syncId = java.util.UUID.randomUUID().toString();
+                }
+                obj.addProperty("sync_id", syncId);
                 obj.addProperty("item", rs.getString("item"));
                 obj.addProperty("quantity", rs.getString("quantity"));
                 obj.addProperty("unit", rs.getString("unit"));
@@ -2081,11 +2073,15 @@ public class DatabaseHelper {
 
     public com.google.gson.JsonArray getDirtySales() {
         com.google.gson.JsonArray array = new com.google.gson.JsonArray();
-        String sql = "SELECT sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, receipt_id, device_source, created_at FROM sales WHERE is_edited = 1 AND sync_id IS NOT NULL";
+        String sql = "SELECT sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, receipt_id, device_source, created_at FROM sales WHERE is_edited = 1";
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
                 com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
-                obj.addProperty("sync_id", rs.getString("sync_id"));
+                String syncId = rs.getString("sync_id");
+                if (syncId == null || syncId.isEmpty()) {
+                    syncId = java.util.UUID.randomUUID().toString();
+                }
+                obj.addProperty("sync_id", syncId);
                 obj.addProperty("customer", rs.getString("customer"));
                 obj.addProperty("item", rs.getString("item"));
                 obj.addProperty("quantity", rs.getString("quantity"));

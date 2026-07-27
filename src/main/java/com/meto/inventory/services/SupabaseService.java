@@ -898,15 +898,26 @@ public class SupabaseService {
             com.meto.inventory.DatabaseHelper db = com.meto.inventory.DataManager.getInstance().getDbHelper();
             db.checkAutoResyncMigration();
 
-            // PUSH FIRST: Ensure all local unsynced edits reach the cloud before pulling
-            try {
-                pushPendingChangesInternal(db, true);
-            } catch (Exception pushEx) {
-                System.err.println("SYNC: Pre-pull push warning: " + pushEx.getMessage());
-            }
-
             String localVersionStr = db.getSetting("last_backup_timestamp");
             long localVersionTs = (localVersionStr != null) ? Long.parseLong(localVersionStr) : 0;
+
+            JsonObject meta = getUserMetadata();
+            long cloudTs = 0;
+            if (meta != null && meta.has("last_backup_timestamp") && !meta.get("last_backup_timestamp").isJsonNull()) {
+                cloudTs = meta.get("last_backup_timestamp").getAsLong();
+            }
+
+            boolean isStaleDevice = cloudTs > localVersionTs;
+
+            // If local device is NOT stale (or up-to-date), push pending local changes first.
+            // If local device IS stale, pull remote changes first so stale local records don't overwrite newer cloud data.
+            if (!isStaleDevice) {
+                try {
+                    pushPendingChangesInternal(db, true);
+                } catch (Exception pushEx) {
+                    System.err.println("SYNC: Pre-pull push warning: " + pushEx.getMessage());
+                }
+            }
 
             if (isManual) {
                 notifyStatus("Downloading Updates...");
@@ -944,15 +955,17 @@ public class SupabaseService {
                 salesPulled = true;
             }
 
-            // Check if cloud timestamp increased
-            JsonObject meta = getUserMetadata();
-            long cloudTs = 0;
-            if (meta.has("last_backup_timestamp") && !meta.get("last_backup_timestamp").isJsonNull()) {
-                cloudTs = meta.get("last_backup_timestamp").getAsLong();
-            }
-
             // Pull receipt settings from cloud
             downloadReceiptSettings();
+
+            // If device was stale, now that we've pulled down the latest cloud data, push any remaining legitimate local edits
+            if (isStaleDevice) {
+                try {
+                    pushPendingChangesInternal(db, true);
+                } catch (Exception pushEx) {
+                    System.err.println("SYNC: Post-pull push warning: " + pushEx.getMessage());
+                }
+            }
 
             boolean anyPulled = stockPulled || salesPulled;
             if (cloudTs > localVersionTs) {
