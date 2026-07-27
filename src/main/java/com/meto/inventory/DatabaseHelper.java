@@ -840,8 +840,8 @@ public class DatabaseHelper {
                 + "WHERE date = ? AND type != 'NEW STOCK' "
                 + "AND NOT EXISTS ("
                 + "  SELECT 1 FROM deleted_history "
-                + "  WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') "
-                + "     OR (deleted_history.item = sales.item AND deleted_history.date = sales.date AND (deleted_history.customer = sales.customer OR deleted_history.customer IS NULL OR deleted_history.customer = '' OR deleted_history.customer = 'Walk-in Customer' OR sales.customer IS NULL OR sales.customer = '' OR sales.customer = 'Walk-in Customer'))"
+                + "  WHERE (sales.sync_id IS NOT NULL AND sales.sync_id != '' AND deleted_history.sync_id = sales.sync_id) "
+                + "     OR ((sales.sync_id IS NULL OR sales.sync_id = '') AND deleted_history.item = sales.item AND deleted_history.date = sales.date AND (deleted_history.customer = sales.customer OR deleted_history.customer IS NULL OR deleted_history.customer = '' OR sales.customer IS NULL OR sales.customer = ''))"
                 + ") ORDER BY created_at DESC";
 
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
@@ -1631,17 +1631,28 @@ public class DatabaseHelper {
                         "FROM sales WHERE (" +
                         "  EXISTS (" +
                         "    SELECT 1 FROM deleted_stock WHERE LOWER(REPLACE(deleted_stock.item, ' ', '')) = LOWER(REPLACE(sales.item, ' ', '')) OR sales.item LIKE '%' || deleted_stock.item || '%' OR deleted_stock.item LIKE '%' || sales.item || '%'" +
-                        "  ) OR LOWER(sales.item) LIKE '%zerospot%' OR LOWER(sales.item) LIKE '%zero%spot%'" +
+                        "  )" +
                         ") AND sales.type != 'NEW STOCK'");
                     stmt.execute("DELETE FROM sales WHERE (" +
                         "  EXISTS (" +
                         "    SELECT 1 FROM deleted_stock WHERE LOWER(REPLACE(deleted_stock.item, ' ', '')) = LOWER(REPLACE(sales.item, ' ', '')) OR sales.item LIKE '%' || deleted_stock.item || '%' OR deleted_stock.item LIKE '%' || sales.item || '%'" +
-                        "  ) OR LOWER(sales.item) LIKE '%zerospot%' OR LOWER(sales.item) LIKE '%zero%spot%'" +
+                        "  )" +
                         ") AND sales.type != 'NEW STOCK'");
                     saveSetting("has_purged_deleted_stock_sales_v3", "1");
-                    System.out.println("MIGRATION (Desktop): Purged ghost sales associated with deleted stock / zerospot.");
+                    System.out.println("MIGRATION (Desktop): Purged ghost sales associated with deleted stock.");
                 } catch (Exception e) {
                     System.err.println("Failed to purge ghost sales for deleted stock on Desktop: " + e.getMessage());
+                }
+            }
+
+            String fixZerospot = getSetting("fix_zerospot_tombstones_v1");
+            if (fixZerospot == null || !"1".equals(fixZerospot)) {
+                try (Statement stmt = connection.createStatement()) {
+                    stmt.execute("DELETE FROM deleted_history WHERE (LOWER(item) LIKE '%zerospot%' OR LOWER(item) LIKE '%zero%spot%') AND device_source = 'Migration'");
+                    saveSetting("fix_zerospot_tombstones_v1", "1");
+                    System.out.println("MIGRATION (Desktop): Cleared invalid migration tombstones for zerospot.");
+                } catch (Exception e) {
+                    System.err.println("Failed to clear zerospot tombstones: " + e.getMessage());
                 }
             }
         } catch (Exception e) {
@@ -1793,14 +1804,19 @@ public class DatabaseHelper {
             try (PreparedStatement pstmt = connection.prepareStatement(sqlSync)) {
                 pstmt.setString(1, syncId);
                 try (ResultSet rs = pstmt.executeQuery()) {
-                    if (rs.next()) return true;
+                    return rs.next();
                 }
-            } catch (SQLException ignored) {}
+            } catch (SQLException ignored) {
+                return false;
+            }
         }
-        String sql = "SELECT 1 FROM deleted_history WHERE item = ? AND date = ?";
+        String sql = "SELECT 1 FROM deleted_history WHERE item = ? AND date = ? AND (customer = ? OR customer IS NULL OR customer = '' OR ? IS NULL OR ? = '')";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, item != null ? item : "");
             pstmt.setString(2, date != null ? date : "");
+            pstmt.setString(3, customer != null ? customer : "");
+            pstmt.setString(4, customer != null ? customer : "");
+            pstmt.setString(5, customer != null ? customer : "");
             try (ResultSet rs = pstmt.executeQuery()) {
                 return rs.next();
             }

@@ -61,7 +61,11 @@ public class DataManager {
 
     public void notifyDataChanged(boolean triggerBackup) {
         for (DataChangeListener listener : listeners) {
-            listener.onDataChanged();
+            if (javafx.application.Platform.isFxApplicationThread()) {
+                listener.onDataChanged();
+            } else {
+                javafx.application.Platform.runLater(listener::onDataChanged);
+            }
         }
         if (triggerBackup) {
             triggerBackup();
@@ -125,7 +129,7 @@ public class DataManager {
             return t;
         });
 
-        // Run immediately with 0 initial delay and check every 3 seconds for quick network detection
+        // Run background sync check every 15 seconds to prevent network/DB locks and UI lag
         syncExecutor.scheduleAtFixedRate(() -> {
             try {
                 com.meto.inventory.services.SupabaseService service = com.meto.inventory.services.SupabaseService.getInstance();
@@ -166,7 +170,7 @@ public class DataManager {
 
                     if (service.isLoggedIn() && isBackupEnabled) {
                         long now = System.currentTimeMillis();
-                        if (now - lastCloudSyncTime >= 15000 || service.isSyncFailed()) {
+                        if (now - lastCloudSyncTime >= 45000 || service.isSyncFailed()) {
                             lastCloudSyncTime = now;
                             service.updateHeartbeat();
 
@@ -193,7 +197,7 @@ public class DataManager {
             } catch (Exception e) {
                 // Silently ignore background sync errors to avoid UI popups
             }
-        }, 0, 3, TimeUnit.SECONDS);
+        }, 0, 15, TimeUnit.SECONDS);
 
     }
 
