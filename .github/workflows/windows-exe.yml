@@ -48,7 +48,7 @@ jobs:
         run: |
           jpackage `
             --type msi `
-            --name "METO.IMS" `
+            --name "CHECKBOOK IMS" `
             --app-version 2.2.${{ github.run_number }} `
             --win-upgrade-uuid 38e83dd9-5692-4035-90af-56b8c3d149b5 `
             --dest output `
@@ -57,8 +57,8 @@ jobs:
             --main-class com.meto.inventory.AppLauncher `
             --add-modules java.base,java.desktop,java.sql,java.net.http,java.xml,java.prefs,java.management,jdk.crypto.ec,jdk.unsupported,java.scripting,java.rmi `
             --icon app_icon.ico `
-            --vendor "METO" `
-            --description "METO Inventory Management System" `
+            --vendor "CHECKBOOK" `
+            --description "CHECKBOOK Inventory Management System" `
             --win-dir-chooser `
             --win-menu `
             --win-shortcut
@@ -66,7 +66,7 @@ jobs:
       # 6.5 Rename MSI to a consistent filename
       - name: Rename MSI
         run: |
-          Get-ChildItem -Path output -Filter *.msi | Rename-Item -NewName "METO.IMS.msi"
+          Get-ChildItem -Path output -Filter *.msi | Rename-Item -NewName "CHECKBOOK.IMS.msi"
 
 
       # 7. Release MSI to beckhamz777/cb repository
@@ -89,7 +89,7 @@ jobs:
           $body = @{
               platform = "desktop"
               version = "2.2.${{ github.run_number }}"
-              download_url = "https://github.com/beckhamz777/cb/releases/download/v2.2/METO.IMS.msi"
+              download_url = "https://github.com/beckhamz777/cb/releases/download/v2.2/CHECKBOOK.IMS.msi"
               mandatory = $false
               release_notes = "Automated Windows Desktop Build 2.2.${{ github.run_number }}"
           } | ConvertTo-Json

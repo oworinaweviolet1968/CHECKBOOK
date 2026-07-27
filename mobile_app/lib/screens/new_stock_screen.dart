@@ -6,6 +6,8 @@ import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
 import '../models/stock_item.dart';
 import '../widgets/common_app_bar_actions.dart';
+import '../widgets/transaction_success_dialog.dart';
+import '../widgets/processing_loading_dialog.dart';
 import 'package:intl/intl.dart';
 
 class NewStockScreen extends StatefulWidget {
@@ -946,9 +948,25 @@ class _NewStockScreenState extends State<NewStockScreen> {
   }
 
   void _saveStock() async {
+      if (_items.isEmpty) return;
+
+      ProcessingLoadingDialog.show(
+        context,
+        title: 'Saving New Stock...',
+        message: 'Updating inventory counts and syncing data. Please wait...',
+        themeColor: AppColors.accentBlue,
+      );
+
+      final itemsCopy = List<StockItem>.from(_items);
+      final supplierCopy = _supplierController.text.isNotEmpty 
+          ? _supplierController.text 
+          : (itemsCopy.isNotEmpty ? itemsCopy.first.supplier : 'General Supplier');
+      final double totalStockValue = itemsCopy.fold<double>(0, (sum, i) => sum + (double.tryParse(i.amount) ?? 0));
+      final int totalItemsCount = itemsCopy.length;
+      final String receiptId = DatabaseHelper.generateUUID();
+
       try {
-          String receiptId = DatabaseHelper.generateUUID();
-          for (var item in _items) {
+          for (var item in itemsCopy) {
                double price = double.parse(item.price);
                
                bool exists = await DatabaseHelper.instance.itemExists(item.item, item.quantity);
@@ -968,17 +986,18 @@ class _NewStockScreenState extends State<NewStockScreen> {
                );
           }
 
-          if (_items.isNotEmpty) {
-              String itemsStr = _items.map((e) => e.item).join(", ");
-              String supplier = _items.first.supplier;
+          if (itemsCopy.isNotEmpty) {
+              String itemsStr = itemsCopy.map((e) => e.item).join(", ");
+              String supplier = itemsCopy.first.supplier;
               await DatabaseHelper.instance.addNotification("Added $itemsStr from $supplier", "Mobile");
           }
 
-          if (mounted) {
-              // Trigger background upload
-              await SupasService.instance.uploadDatabase();
+          // Trigger background upload
+          await SupasService.instance.uploadDatabase();
                
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stock Saved Successfully!')));
+          if (mounted) {
+              ProcessingLoadingDialog.hide(context);
+
               setState(() {
                   _items.clear();
                   _supplierController.clear();
@@ -992,9 +1011,31 @@ class _NewStockScreenState extends State<NewStockScreen> {
               });
               _loadItems();
               _loadRecentSuppliers();
+
+              TransactionSuccessDialog.show(
+                context,
+                type: TransactionType.newStock,
+                receiptId: receiptId,
+                partyName: supplierCopy,
+                totalAmount: totalStockValue,
+                totalItemsCount: totalItemsCount,
+                items: itemsCopy.map((item) => SuccessItemSummary(
+                  name: item.item,
+                  quantity: item.quantity,
+                  unit: item.unit,
+                  price: double.tryParse(item.price) ?? 0,
+                  amount: double.tryParse(item.amount) ?? 0,
+                )).toList(),
+                onDone: () {
+                  // Form is ready for more stock input
+                },
+              );
           }
       } catch (e) {
-         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving: $e')));
+         if (mounted) {
+           ProcessingLoadingDialog.hide(context);
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving: $e')));
+         }
       }
   }
 }

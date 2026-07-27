@@ -7,6 +7,8 @@ import '../services/supabase_service.dart';
 import '../services/printer_service.dart';
 import '../models/sale_item.dart';
 import '../widgets/common_app_bar_actions.dart';
+import '../widgets/transaction_success_dialog.dart';
+import '../widgets/processing_loading_dialog.dart';
 import 'package:intl/intl.dart';
 
 class ProcessSaleScreen extends StatefulWidget {
@@ -564,8 +566,8 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                              SizedBox(
                                  width: double.infinity,
                                  child: ElevatedButton.icon(
-                                     onPressed: _cart.isEmpty ? null : _showSaleSummaryDialog,
-                                     icon: const Icon(Icons.receipt_long, size: 20),
+                                     onPressed: _cart.isEmpty ? null : _checkout,
+                                     icon: const Icon(Icons.check_circle_outline, size: 20),
                                      label: const Text("Complete Sale"),
                                      style: ElevatedButton.styleFrom(
                                         backgroundColor: AppColors.textPrimary, // dark bg
@@ -860,213 +862,99 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
       );
   }
 
-  void _showSaleSummaryDialog() async {
-    final shopName = await DatabaseHelper.instance.getSetting("receipt_shop_name") ?? "";
-
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        contentPadding: EdgeInsets.zero,
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: AppColors.primaryGreen,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-              ),
-              child: Column(
-                children: [
-                   const Text(
-                    "CHECKBOOK APP",
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 2, fontSize: 18),
-                  ),
-                  if (shopName.trim().isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      shopName.toUpperCase(),
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                    ),
-                  ],
-                  const SizedBox(height: 4),
-                  const Text(
-                    "Receipt Summary",
-                    style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
-                  ),
-                ],
-              ),
-            ),
-            
-            // Content
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("Customer: ${_customerController.text.isEmpty ? 'Walk-in' : _customerController.text}", 
-                         style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                    const SizedBox(height: 12),
-                    const Divider(),
-                    const SizedBox(height: 12),
-                    ..._cart.map((item) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(item.item, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                                Text("${item.quantity} • ${item.unit}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                              ],
-                            ),
-                          ),
-                          Text("UGX ${_formatter.format(double.tryParse(item.amount) ?? 0)}", 
-                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                        ],
-                      ),
-                    )),
-                    const SizedBox(height: 12),
-                    const Divider(thickness: 2),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text("Total Amount", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text("UGX ${_formatter.format(_calculateTotalNum())}", 
-                             style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: AppColors.primaryGreen)),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    const Center(
-                      child: Text("Do you want to print an invoice?", 
-                           style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            
-            // Actions
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _checkout(shouldPrint: true);
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryGreen,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Text("Yes, Print & Finish", style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _checkout(shouldPrint: false);
-                          },
-                          child: const Text("No, Just Save", style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _checkout({bool shouldPrint = false}) async {
+  void _checkout() async {
     if (_isCheckingOut) return;
     setState(() {
       _isCheckingOut = true;
     });
-    if (shouldPrint) {
-      // Capture data for printing before state is cleared
-      final cartToPrint = List<SaleItem>.from(_cart);
-      final customerToPrint = _customerController.text.isEmpty ? 'Walk-in Customer' : _customerController.text;
-      _printInvoice(customerToPrint, cartToPrint);
-    }
-      try {
-          String customer = _customerController.text;
-          String receiptId = DatabaseHelper.generateUUID();
-          for (var item in _cart) {
-              double price = double.parse(item.price);
-              double amount = double.parse(item.amount);
-              String type = "RETAIL";
-              String u = item.unit.toLowerCase();
-              if (u.contains("half doz") || u.contains("carton") || u.contains("dozen") || u.contains("box") || u.contains("crate")) {
-                  type = "WHOLESALE";
-              }
-              await DatabaseHelper.instance.addSaleWithProfit(
-                  customer, item.item, item.quantity, item.unit, price, amount, type, isDebt: item.isDebt, receiptId: receiptId
-              );
-              await DatabaseHelper.instance.updateStockQuantity(
-                  item.item, item.quantity, item.unit
-              );
-          }
 
-          // Add combined notification
-          if (_cart.isNotEmpty) {
-              String itemsStr = _cart.map((e) => e.item).join(", ");
-              String action = _cart.any((e) => e.isDebt) ? "Debt recorded" : "Sale made";
-              await DatabaseHelper.instance.addNotification("$action for $customer: $itemsStr", "Mobile");
-          }
+    ProcessingLoadingDialog.show(
+      context,
+      title: 'Processing Sale...',
+      message: 'Recording items and syncing data. Please wait...',
+      themeColor: AppColors.primaryGreen,
+    );
 
-          // Trigger background upload
-          await SupasService.instance.uploadDatabase();
-           if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Sale Completed Successfully!')));
-              setState(() {
-                  _cart.clear();
-                  _customerController.clear();
-                  _selectedItem = null;
-                  _selectedSize = null;
-                  _availableSizes = [];
-                  _currentStock = "";
-                  _selectedUnitLabel = "pcs";
-              });
-          }
-      } catch (e) {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-      } finally {
-          setState(() {
-              _isCheckingOut = false;
-          });
+    final cartCopy = List<SaleItem>.from(_cart);
+    final customerCopy = _customerController.text.isEmpty ? 'Walk-in Customer' : _customerController.text;
+    final totalAmountCopy = _calculateTotalNum();
+    final itemsCountCopy = cartCopy.length;
+    final String receiptId = DatabaseHelper.generateUUID();
+
+
+    try {
+      for (var item in cartCopy) {
+        double price = double.parse(item.price);
+        double amount = double.parse(item.amount);
+        String type = "RETAIL";
+        String u = item.unit.toLowerCase();
+        if (u.contains("half doz") || u.contains("carton") || u.contains("dozen") || u.contains("box") || u.contains("crate")) {
+          type = "WHOLESALE";
+        }
+        await DatabaseHelper.instance.addSaleWithProfit(
+          customerCopy, item.item, item.quantity, item.unit, price, amount, type, isDebt: item.isDebt, receiptId: receiptId
+        );
+        await DatabaseHelper.instance.updateStockQuantity(
+          item.item, item.quantity, item.unit
+        );
       }
+
+      // Add combined notification
+      if (cartCopy.isNotEmpty) {
+        String itemsStr = cartCopy.map((e) => e.item).join(", ");
+        String action = cartCopy.any((e) => e.isDebt) ? "Debt recorded" : "Sale made";
+        await DatabaseHelper.instance.addNotification("$action for $customerCopy: $itemsStr", "Mobile");
+      }
+
+      // Trigger background upload
+      await SupasService.instance.uploadDatabase();
+
+      if (mounted) {
+        ProcessingLoadingDialog.hide(context);
+
+        setState(() {
+          _cart.clear();
+          _customerController.clear();
+          _selectedItem = null;
+          _selectedSize = null;
+          _availableSizes = [];
+          _currentStock = "";
+          _selectedUnitLabel = "pcs";
+        });
+
+        TransactionSuccessDialog.show(
+          context,
+          type: TransactionType.sale,
+          receiptId: receiptId,
+          partyName: customerCopy,
+          totalAmount: totalAmountCopy,
+          totalItemsCount: itemsCountCopy,
+          items: cartCopy.map((item) => SuccessItemSummary(
+            name: item.item,
+            quantity: item.quantity,
+            unit: item.unit,
+            price: double.tryParse(item.price) ?? 0,
+            amount: double.tryParse(item.amount) ?? 0,
+            isDebt: item.isDebt,
+          )).toList(),
+          onPrint: () async {
+            _printInvoice(customerCopy, cartCopy);
+          },
+          onDone: () {
+            // Form is ready for next sale
+          },
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ProcessingLoadingDialog.hide(context);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    } finally {
+      setState(() {
+        _isCheckingOut = false;
+      });
+    }
   }
 
   void _printInvoice(String customer, List<SaleItem> cart) async {

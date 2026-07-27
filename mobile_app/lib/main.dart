@@ -15,6 +15,7 @@ import 'screens/login_screen.dart';
 import 'services/database_helper.dart';
 import 'services/supabase_service.dart';
 import 'services/passcode_service.dart';
+import 'services/shorebird_service.dart';
 import 'utils/colors.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
@@ -256,6 +257,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     _initDatabase();
     _listenForLoginRequests();
     _startPolling();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ShorebirdService.instance.checkForUpdate(context);
+    });
   }
 
   Future<void> _initDatabase() async {

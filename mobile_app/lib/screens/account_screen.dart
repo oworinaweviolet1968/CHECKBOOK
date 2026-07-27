@@ -11,6 +11,7 @@ import '../screens/deleted_history_screen.dart';
 import '../screens/price_update_screen.dart';
 import '../screens/debt_history_screen.dart';
 import '../services/database_helper.dart';
+import '../services/shorebird_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class AccountScreen extends StatefulWidget {
@@ -626,6 +627,13 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
             ),
             const SizedBox(height: 16),
             _buildActionCard(
+              title: 'Check for Updates',
+              icon: Icons.system_update_rounded,
+              iconColor: AppColors.primaryGreen,
+              onTap: () => ShorebirdService.instance.checkForUpdate(context, showNoUpdateToast: true),
+            ),
+            const SizedBox(height: 16),
+            _buildActionCard(
               title: 'Customer support',
               icon: Icons.headset_mic_outlined,
               iconColor: AppColors.primaryGreen,
@@ -642,7 +650,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
             const SizedBox(height: 48),
             // Version
             const Text(
-              'VERSION 2.2.0+5',
+              'VERSION 2.2.0+54',
               style: TextStyle(
                 color: Colors.grey,
                 fontSize: 12,
