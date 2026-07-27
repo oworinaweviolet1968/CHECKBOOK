@@ -17,8 +17,8 @@
             </graphic>
         </Button>
         <VBox>
-            <Label text="Notifications" styleClass="h1"/>
-            <Label text="Recent activity from mobile and desktop applications" styleClass="text-muted"/>
+            <Label text="Audit Trail &amp; Activity Log" styleClass="h1"/>
+            <Label text="Track all user actions, sales, stock changes, and system auto-restorations" styleClass="text-muted"/>
         </VBox>
         <Region HBox.hgrow="ALWAYS"/>
     </HBox>

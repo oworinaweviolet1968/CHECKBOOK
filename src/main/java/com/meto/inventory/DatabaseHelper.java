@@ -162,6 +162,8 @@ public class DatabaseHelper {
                     "CREATE TABLE IF NOT EXISTS deleted_history (id INTEGER PRIMARY KEY AUTOINCREMENT, customer TEXT, item TEXT, amount TEXT, date TEXT, deleted_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
             stmt.execute(
                     "CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, message TEXT, source TEXT, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, is_read INTEGER DEFAULT 0)");
+            stmt.execute(
+                    "CREATE TABLE IF NOT EXISTS stock_movement_log (id INTEGER PRIMARY KEY AUTOINCREMENT, item TEXT, quantity TEXT, change_pieces REAL NOT NULL, previous_pieces REAL NOT NULL, new_pieces REAL NOT NULL, change_reason TEXT NOT NULL, device_source TEXT DEFAULT 'Desktop', created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
 
             // AUTOMATIC MIGRATION: Check for missing columns in legacy DBs
             ensureSchema(stmt);
@@ -627,6 +629,7 @@ public class DatabaseHelper {
                     updateStmt.setString(5, unitToSave);
                     updateStmt.setInt(6, id);
                     updateStmt.executeUpdate();
+                    logStockMovement(itemName, size, incomingPieces, existingPieces, existingPieces + incomingPieces, "Stock Merged (" + supplier + " - " + newUnit + ")", "Desktop");
                     return true;
                 }
             }
@@ -659,6 +662,60 @@ public class DatabaseHelper {
                     updatePstmt.setDouble(1, remaining);
                     updatePstmt.setInt(2, id);
                     updatePstmt.executeUpdate();
+                    logStockMovement(itemName, soldSize, -soldPieces, currentPieces, remaining, "Sale Deducted (" + soldUnit + ")", "Desktop");
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void reconcileUntrackedStockDiscrepancies() {
+        try (Statement stmt = connection.createStatement()) {
+            // Find stock items where available_pieces is less than initial addition and no sale log explains the deduction
+            String sql = "SELECT id, item, quantity, unit, available_pieces FROM stock";
+            try (ResultSet rs = stmt.executeQuery(sql)) {
+                while (rs.next()) {
+                    int id = rs.getInt("id");
+                    String item = rs.getString("item");
+                    String size = rs.getString("quantity");
+                    String unit = rs.getString("unit");
+                    double avail = rs.getDouble("available_pieces");
+
+                    // Sum all new stock additions for this item
+                    double totalAdded = 0.0;
+                    try (PreparedStatement pAdd = connection.prepareStatement("SELECT SUM(base_quantity) FROM sales WHERE item = ? AND quantity = ? AND type = 'NEW STOCK'")) {
+                        pAdd.setString(1, item);
+                        pAdd.setString(2, size);
+                        try (ResultSet rAdd = pAdd.executeQuery()) {
+                            if (rAdd.next()) totalAdded = rAdd.getDouble(1);
+                        }
+                    }
+
+                    // Sum all non-new-stock sales for this item
+                    double totalSold = 0.0;
+                    try (PreparedStatement pSale = connection.prepareStatement("SELECT SUM(base_quantity) FROM sales WHERE item = ? AND quantity = ? AND type != 'NEW STOCK'")) {
+                        pSale.setString(1, item);
+                        pSale.setString(2, size);
+                        try (ResultSet rSale = pSale.executeQuery()) {
+                            if (rSale.next()) totalSold = rSale.getDouble(1);
+                        }
+                    }
+
+                    if (totalAdded > 0) {
+                        double expected = totalAdded - totalSold;
+                        if (expected > avail && Math.abs(expected - avail) >= 1.0) {
+                            double difference = expected - avail;
+                            try (PreparedStatement pFix = connection.prepareStatement("UPDATE stock SET available_pieces = ?, is_edited = 1 WHERE id = ?")) {
+                                pFix.setDouble(1, expected);
+                                pFix.setInt(2, id);
+                                pFix.executeUpdate();
+                                logStockMovement(item, size, difference, avail, expected, "Auto-Restored Untracked Discrepancy (" + String.format("%.0f", difference) + " pcs)", "Desktop Audit");
+                                addNotification("RESTORED: Restored " + String.format("%.0f", difference) + " untracked pieces for " + item + " (" + size + ") back to " + String.format("%.0f", expected) + " pcs", "Desktop Audit");
+                                System.out.println("AUDIT: Restored " + difference + " untracked pieces for " + item + " (" + size + ") back to expected balance " + expected);
+                            }
+                        }
+                    }
                 }
             }
         } catch (SQLException e) {
@@ -914,6 +971,9 @@ public class DatabaseHelper {
             pstmt.setString(15, receiptId);
             pstmt.setString(16, java.time.LocalDateTime.now().toString());
             pstmt.executeUpdate();
+            if (!"NEW STOCK".equals(type)) {
+                addNotification("Sale recorded: " + customer + " bought " + item + " (" + unit + ", UGX " + String.format("%,.0f", totalAmount) + ")", "Desktop");
+            }
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -1294,6 +1354,23 @@ public class DatabaseHelper {
             pstmt.setDouble(7, totalPieces);
             pstmt.setString(8, d);
             pstmt.executeUpdate();
+            logStockMovement(i, q, totalPieces, 0, totalPieces, "New Stock Added (" + s + ")", "Desktop");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void logStockMovement(String item, String size, double changePieces, double prevPieces, double newPieces, String reason, String deviceSource) {
+        String sql = "INSERT INTO stock_movement_log(item, quantity, change_pieces, previous_pieces, new_pieces, change_reason, device_source) VALUES(?, ?, ?, ?, ?, ?, ?)";
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setString(1, item);
+            pstmt.setString(2, size);
+            pstmt.setDouble(3, changePieces);
+            pstmt.setDouble(4, prevPieces);
+            pstmt.setDouble(5, newPieces);
+            pstmt.setString(6, reason);
+            pstmt.setString(7, deviceSource != null ? deviceSource : "Desktop");
+            pstmt.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -1655,6 +1732,9 @@ public class DatabaseHelper {
                     System.err.println("Failed to clear zerospot tombstones: " + e.getMessage());
                 }
             }
+
+            // Perform automatic audit reconciliation for untracked piece discrepancies
+            reconcileUntrackedStockDiscrepancies();
         } catch (Exception e) {
             System.err.println("Auto resync migration check failed: " + e.getMessage());
         }
