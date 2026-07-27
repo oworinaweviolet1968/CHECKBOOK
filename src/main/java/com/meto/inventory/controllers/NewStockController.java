@@ -652,205 +652,225 @@ public class NewStockController implements DataManager.DataChangeListener {
     }
 
     private void onAdd() {
-        supplierNameComboBox.getEditor().getText().trim();
-        itemErrorLabel.setVisible(false);
-        itemErrorLabel.setManaged(false);
-        qtyErrorLabel.setVisible(false);
-        qtyErrorLabel.setManaged(false);
-        unitErrorLabel.setVisible(false);
-        unitErrorLabel.setManaged(false);
-        priceErrorLabel.setVisible(false);
-        priceErrorLabel.setManaged(false);
+        ProgressIndicator spinner = new ProgressIndicator();
+        spinner.setPrefSize(14, 14);
+        spinner.setMaxSize(14, 14);
+        addButton.setGraphic(spinner);
 
-        String itemName = itemsComboBox.getEditor().getText().trim();
-        String qtyRaw = qtyComboBox.getEditor().getText().trim().toLowerCase();
-        String unitText = unitField.getText().trim().toLowerCase();
-        String priceRaw = priceField.getText().trim().replaceAll("[^0-9.]", "");
-
-        // BLOCK DUPLICATE ITEMS IN PREVIEW LIST
-        for (StockItem existing : items) {
-            if (existing.getItems().equalsIgnoreCase(itemName) && existing.getQty().equalsIgnoreCase(qtyRaw)) {
-                showAlert("You already have '" + itemName + " " + qtyRaw
-                        + "' in the preview list! Please save or delete it first before adding a different unit to avoid average-cost calculation conflicts.");
-                return;
-            }
-        }
-
-        // CHECK FOR NEW QTY: Check if the typed size exists in the dropdown list
-        boolean sizeExists = qtyComboBox.getItems().contains(qtyRaw);
-
-        if (!sizeExists && !qtyRaw.isEmpty()) {
-            String content = "This size is not in your current stock records for " + itemName + ".\n\n" +
-                    "Are you sure you want to add this as a NEW product category?";
-
-            // If they don't click OK, stop the process
-            if (!com.meto.inventory.utils.DialogHelper.showConfirm("New Quantity Size Detected", "New Size: " + qtyRaw,
-                    content)) {
-                return;
-            }
-        }
-        // inside onAdd()
-        if (!itemsComboBox.getItems().contains(itemName)) {
-            itemsComboBox.getItems().add(itemName);
-            FXCollections.sort(itemsComboBox.getItems()); // Keep it alphabetical
-        }
-
-        // 2. Define allowed patterns
-        // Matches numbers followed by g, kg, ml, l or inch (e.g., 500ml, 1.5l, 10inch)
-        // OR "None"
-        String sizePattern = ".*\\d+(g|kg|ml|l|inch)$|^none$";
-        // Added specialized box units to the regex pattern
-        // Update the regex to accept 'pc' (without the s)
-        String countPattern = ".*\\d+.*(pc|pcs|doz|carton|box|sack|dozen|crate|box\\*10|box\\*12|box\\*20|box\\*24|box\\*72).*";
-
-        boolean hasError = false;
-
-        if (itemName.isEmpty()) {
-            itemErrorLabel.setVisible(true);
-            itemErrorLabel.setManaged(true);
-            hasError = true;
-        }
-        // 3. Validate QTY (Size)
-        if (!qtyRaw.matches(sizePattern)) {
-            qtyErrorLabel.setText("* Missing size unit (e.g., 500ml, 1kg, 12inch)");
-            qtyErrorLabel.setVisible(true);
-            qtyErrorLabel.setManaged(true);
-            hasError = true;
-        }
-
-        // 4. Validate UNIT (Count)
-        if (!unitText.matches(countPattern)) {
-            unitErrorLabel.setText("* Missing count unit (e.g., 10 pcs, 2 doz)");
-            unitErrorLabel.setVisible(true);
-            unitErrorLabel.setManaged(true);
-            hasError = true;
-        }
-        if (priceRaw.isEmpty()) {
-            priceErrorLabel.setVisible(true);
-            priceErrorLabel.setManaged(true);
-            hasError = true;
-        }
-
-        if (hasError)
-            return;
-
-        double inputPrice;
         try {
-            inputPrice = Double.parseDouble(priceRaw);
-        } catch (NumberFormatException ex) {
-            showAlert("Invalid price.");
-            return;
-        }
+            supplierNameComboBox.getEditor().getText().trim();
+            itemErrorLabel.setVisible(false);
+            itemErrorLabel.setManaged(false);
+            qtyErrorLabel.setVisible(false);
+            qtyErrorLabel.setManaged(false);
+            unitErrorLabel.setVisible(false);
+            unitErrorLabel.setManaged(false);
+            priceErrorLabel.setVisible(false);
+            priceErrorLabel.setManaged(false);
 
-        // 1. Get the count (e.g., the "2" from "2 sacks")
-        double count = extractNumericValue(unitText);
+            String itemName = itemsComboBox.getEditor().getText().trim();
+            String qtyRaw = qtyComboBox.getEditor().getText().trim().toLowerCase();
+            String unitText = unitField.getText().trim().toLowerCase();
+            String priceRaw = priceField.getText().trim().replaceAll("[^0-9.]", "");
 
-        // 2. THE CALCULATION
-        // If you enter 2 sacks at 200,000 per sack, total is 400,000.
-        // This assumes the price you type in the box is the price for the unit shown
-        // (pc, sack, box, etc.)
-        double totalAmount = count * inputPrice;
+            // BLOCK DUPLICATE ITEMS IN PREVIEW LIST
+            for (StockItem existing : items) {
+                if (existing.getItems().equalsIgnoreCase(itemName) && existing.getQty().equalsIgnoreCase(qtyRaw)) {
+                    showAlert("You already have '" + itemName + " " + qtyRaw
+                            + "' in the preview list! Please save or delete it first before adding a different unit to avoid average-cost calculation conflicts.");
+                    return;
+                }
+            }
 
-        String amountStr = String.format("%,.2f", totalAmount);
-        String priceStr = String.format("%,.2f", inputPrice);
+            // CHECK FOR NEW QTY: Check if the typed size exists in the dropdown list
+            boolean sizeExists = qtyComboBox.getItems().contains(qtyRaw);
 
-        StockItem si = new StockItem(itemName, qtyRaw, unitText, priceStr, amountStr);
-        items.add(si);
+            if (!sizeExists && !qtyRaw.isEmpty()) {
+                String content = "This size is not in your current stock records for " + itemName + ".\n\n" +
+                        "Are you sure you want to add this as a NEW product category?";
 
-        // Only clear size/unit/price — keep supplier and item name
-        // so the user can quickly add more sizes of the same item.
-        qtyComboBox.setValue(null);
-        qtyComboBox.getEditor().clear();
-        unitField.clear();
-        priceField.clear();
-        priceField.setEditable(true);
-        priceField.setMouseTransparent(false);
-        priceField.setStyle("");
+                // If they don't click OK, stop the process
+                if (!com.meto.inventory.utils.DialogHelper.showConfirm("New Quantity Size Detected", "New Size: " + qtyRaw,
+                        content)) {
+                    return;
+                }
+            }
+            // inside onAdd()
+            if (!itemsComboBox.getItems().contains(itemName)) {
+                itemsComboBox.getItems().add(itemName);
+                FXCollections.sort(itemsComboBox.getItems()); // Keep it alphabetical
+            }
 
-        // Reload sizes for the current item so the dropdown is ready
-        if (itemName != null && !itemName.isEmpty()) {
-            ObservableList<String> sizes = dataManager.getDbHelper().getItemSizes(itemName);
-            qtyComboBox.setItems(sizes);
-            setFlowLevel(1); // Stay at item-selected level
-        } else {
-            setFlowLevel(0);
+            // 2. Define allowed patterns
+            // Matches numbers followed by g, kg, ml, l or inch (e.g., 500ml, 1.5l, 10inch)
+            // OR "None"
+            String sizePattern = ".*\\d+(g|kg|ml|l|inch)$|^none$";
+            // Added specialized box units to the regex pattern
+            // Update the regex to accept 'pc' (without the s)
+            String countPattern = ".*\\d+.*(pc|pcs|doz|carton|box|sack|dozen|crate|box\\*10|box\\*12|box\\*20|box\\*24|box\\*72).*";
+
+            boolean hasError = false;
+
+            if (itemName.isEmpty()) {
+                itemErrorLabel.setVisible(true);
+                itemErrorLabel.setManaged(true);
+                hasError = true;
+            }
+            // 3. Validate QTY (Size)
+            if (!qtyRaw.matches(sizePattern)) {
+                qtyErrorLabel.setText("* Missing size unit (e.g., 500ml, 1kg, 12inch)");
+                qtyErrorLabel.setVisible(true);
+                qtyErrorLabel.setManaged(true);
+                hasError = true;
+            }
+
+            // 4. Validate UNIT (Count)
+            if (!unitText.matches(countPattern)) {
+                unitErrorLabel.setText("* Missing count unit (e.g., 10 pcs, 2 doz)");
+                unitErrorLabel.setVisible(true);
+                unitErrorLabel.setManaged(true);
+                hasError = true;
+            }
+            if (priceRaw.isEmpty()) {
+                priceErrorLabel.setVisible(true);
+                priceErrorLabel.setManaged(true);
+                hasError = true;
+            }
+
+            if (hasError)
+                return;
+
+            double inputPrice;
+            try {
+                inputPrice = Double.parseDouble(priceRaw);
+            } catch (NumberFormatException ex) {
+                showAlert("Invalid price.");
+                return;
+            }
+
+            // 1. Get the count (e.g., the "2" from "2 sacks")
+            double count = extractNumericValue(unitText);
+
+            // 2. THE CALCULATION
+            // If you enter 2 sacks at 200,000 per sack, total is 400,000.
+            // This assumes the price you type in the box is the price for the unit shown
+            // (pc, sack, box, etc.)
+            double totalAmount = count * inputPrice;
+
+            String amountStr = String.format("%,.2f", totalAmount);
+            String priceStr = String.format("%,.2f", inputPrice);
+
+            StockItem si = new StockItem(itemName, qtyRaw, unitText, priceStr, amountStr);
+            items.add(si);
+
+            // Only clear size/unit/price — keep supplier and item name
+            // so the user can quickly add more sizes of the same item.
+            qtyComboBox.setValue(null);
+            qtyComboBox.getEditor().clear();
+            unitField.clear();
+            priceField.clear();
+            priceField.setEditable(true);
+            priceField.setMouseTransparent(false);
+            priceField.setStyle("");
+
+            // Reload sizes for the current item so the dropdown is ready
+            if (itemName != null && !itemName.isEmpty()) {
+                ObservableList<String> sizes = dataManager.getDbHelper().getItemSizes(itemName);
+                qtyComboBox.setItems(sizes);
+                setFlowLevel(1); // Stay at item-selected level
+            } else {
+                setFlowLevel(0);
+            }
+        } finally {
+            addButton.setGraphic(null);
         }
     }
 
     @FXML
     private void onSave() {
-        String supplier = supplierNameComboBox.getEditor().getText().trim();
-        if (supplier.isEmpty()) {
-            supplierErrorLabel.setVisible(true);
-            supplierErrorLabel.setManaged(true);
-            return;
-        }
+        ProgressIndicator spinner = new ProgressIndicator();
+        spinner.setPrefSize(16, 16);
+        spinner.setMaxSize(16, 16);
+        saveButton.setGraphic(spinner);
+        saveButton.setDisable(true);
 
-        if (items.isEmpty()) {
-            showAlert("Please Fill in item to continue!");
-            return;
-        }
+        try {
+            String supplier = supplierNameComboBox.getEditor().getText().trim();
+            if (supplier.isEmpty()) {
+                supplierErrorLabel.setVisible(true);
+                supplierErrorLabel.setManaged(true);
+                return;
+            }
 
-        java.util.Iterator<StockItem> iterator = items.iterator();
-        while (iterator.hasNext()) {
-            StockItem s = iterator.next();
-            String item = s.getItems();
-            String qty = s.getQty();
-            String unit = s.getUnit();
-            double price = Double.parseDouble(s.getPrice().replaceAll("[^0-9.]", ""));
+            if (items.isEmpty()) {
+                showAlert("Please Fill in item to continue!");
+                return;
+            }
 
-            if (dataManager.getDbHelper().itemExists(item, qty)) {
-                // 1. Try to merge normally (forceSave = false)
-                boolean success = dataManager.getDbHelper().mergeStock(item, qty, unit, price, supplier, false);
+            java.util.Iterator<StockItem> iterator = items.iterator();
+            while (iterator.hasNext()) {
+                StockItem s = iterator.next();
+                String item = s.getItems();
+                String qty = s.getQty();
+                String unit = s.getUnit();
+                double price = Double.parseDouble(s.getPrice().replaceAll("[^0-9.]", ""));
 
-                if (!success) {
-                    // 2. If it fails, show the Alert
-                    String content = "The price for " + unit
-                            + " makes the unit price very different from current stock.\n\n" +
-                            "Do you want to save this anyway?";
+                if (dataManager.getDbHelper().itemExists(item, qty)) {
+                    // 1. Try to merge normally (forceSave = false)
+                    boolean success = dataManager.getDbHelper().mergeStock(item, qty, unit, price, supplier, false);
 
-                    if (com.meto.inventory.utils.DialogHelper.showConfirm("Price Variance Warning",
-                            "Price mismatch for " + item + " (" + qty + ")", content)) {
-                        // 3. If user says OK, merge with forceSave = true
-                        dataManager.getDbHelper().mergeStock(item, qty, unit, price, supplier, true);
-                    } else {
-                        break; // Stop processing further items so user can fix the price
+                    if (!success) {
+                        // 2. If it fails, show the Alert
+                        String content = "The price for " + unit
+                                + " makes the unit price very different from current stock.\n\n" +
+                                "Do you want to save this anyway?";
+
+                        if (com.meto.inventory.utils.DialogHelper.showConfirm("Price Variance Warning",
+                                "Price mismatch for " + item + " (" + qty + ")", content)) {
+                            // 3. If user says OK, merge with forceSave = true
+                            dataManager.getDbHelper().mergeStock(item, qty, unit, price, supplier, true);
+                        } else {
+                            break; // Stop processing further items so user can fix the price
+                        }
                     }
+                } else {
+                    dataManager.getDbHelper().addStock(supplier, item, qty, unit, price, LocalDate.now().toString());
                 }
+
+                // Parse Total Amount from the StockItem
+                double totalAmount = 0.0;
+                try {
+                    totalAmount = Double.parseDouble(s.getAmount().replaceAll("[^0-9.]", ""));
+                } catch (Exception e) {
+                }
+
+                dataManager.getDbHelper().addSaleWithProfit(supplier, item, qty, unit, price, totalAmount, "NEW STOCK",
+                        false, null);
+                com.meto.inventory.services.NotificationService.getInstance().sendDesktopActionNotification(
+                        "INventory Updated",
+                        unit + " have been added to " + item + " of " + qty + ". Tap to see whats new");
+
+                // Item successfully processed, remove it from the list
+                iterator.remove();
+            }
+            supplier = supplierNameComboBox.getEditor().getText().trim();
+
+            if (items.isEmpty()) {
+                showAlert("Stock saved successfully!");
+                dataManager.getDbHelper().addNotification("Added stock from " + supplier, "Desktop");
+                supplierNameComboBox.getEditor().clear();
+                supplierNameComboBox.setValue(null);
             } else {
-                dataManager.getDbHelper().addStock(supplier, item, qty, unit, price, LocalDate.now().toString());
+                // Some items were left in the list (because of cancellation)
+                showAlert("Save process aborted. Please fix the items remaining in the preview list.");
             }
 
-            // Parse Total Amount from the StockItem
-            double totalAmount = 0.0;
-            try {
-                totalAmount = Double.parseDouble(s.getAmount().replaceAll("[^0-9.]", ""));
-            } catch (Exception e) {
-            }
-
-            dataManager.getDbHelper().addSaleWithProfit(supplier, item, qty, unit, price, totalAmount, "NEW STOCK",
-                    false, null);
-            com.meto.inventory.services.NotificationService.getInstance().sendDesktopActionNotification(
-                    "INventory Updated",
-                    unit + " have been added to " + item + " of " + qty + ". Tap to see whats new");
-
-            // Item successfully processed, remove it from the list
-            iterator.remove();
+            dataManager.notifyDataChanged();
+            refreshDropdowns();
+        } finally {
+            saveButton.setGraphic(null);
+            saveButton.setDisable(false);
         }
-        supplier = supplierNameComboBox.getEditor().getText().trim();
-
-        if (items.isEmpty()) {
-            showAlert("Stock saved successfully!");
-            dataManager.getDbHelper().addNotification("Added stock from " + supplier, "Desktop");
-            supplierNameComboBox.getEditor().clear();
-            supplierNameComboBox.setValue(null);
-        } else {
-            // Some items were left in the list (because of cancellation)
-            showAlert("Save process aborted. Please fix the items remaining in the preview list.");
-        }
-
-        dataManager.notifyDataChanged();
-        refreshDropdowns();
     }
 
     @FXML

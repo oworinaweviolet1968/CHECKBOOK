@@ -9,6 +9,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
+import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.TextField;
 import javafx.stage.Stage;
 
@@ -377,6 +378,12 @@ public class LoginController {
         if (loading) {
             statusLabel.setText("Processing...");
             statusLabel.setStyle("-fx-text-fill: blue;");
+            ProgressIndicator spinner = new ProgressIndicator();
+            spinner.setPrefSize(18, 18);
+            spinner.setMaxSize(18, 18);
+            loginButton.setGraphic(spinner);
+        } else {
+            loginButton.setGraphic(null);
         }
     }
 

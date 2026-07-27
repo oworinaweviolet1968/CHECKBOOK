@@ -476,7 +476,22 @@ public class SalesController implements DataManager.DataChangeListener {
 
     private void setupButtons() {
         addButton.setOnAction(e -> addItem());
-        saveButton.setOnAction(e -> showSaleSummaryDialog());
+        saveButton.setOnAction(e -> {
+            ProgressIndicator spinner = new ProgressIndicator();
+            spinner.setPrefSize(16, 16);
+            spinner.setMaxSize(16, 16);
+            saveButton.setGraphic(spinner);
+            saveButton.setDisable(true);
+
+            javafx.application.Platform.runLater(() -> {
+                try {
+                    showSaleSummaryDialog();
+                } finally {
+                    saveButton.setGraphic(null);
+                    saveButton.setDisable(false);
+                }
+            });
+        });
 
         // Collect all weight buttons and unit buttons for selection tracking
         java.util.List<Button> wBtns = java.util.List.of(quarterKgBtn, halfKgBtn, kgBtn, sackBtn);
@@ -752,17 +767,50 @@ public class SalesController implements DataManager.DataChangeListener {
 
         dialogPane.getButtonTypes().addAll(printBtn, saveBtn, cancelBtn);
 
-        // Style the buttons
-        javafx.scene.Node printNode = dialogPane.lookupButton(printBtn);
+        // Style and add loading spinners on click
+        Button printNode = (Button) dialogPane.lookupButton(printBtn);
+        Button saveNode = (Button) dialogPane.lookupButton(saveBtn);
         printNode.setStyle("-fx-background-color: #2e7d32; -fx-text-fill: white; -fx-font-weight: bold;");
 
-        dialog.showAndWait().ifPresent(response -> {
-            if (response == printBtn) {
-                saveSale(true);
-            } else if (response == saveBtn) {
-                saveSale(false);
-            }
+        printNode.addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            event.consume(); // Prevent closing before save finishes
+            ProgressIndicator spinner = new ProgressIndicator();
+            spinner.setPrefSize(16, 16);
+            spinner.setMaxSize(16, 16);
+            printNode.setGraphic(spinner);
+            printNode.setDisable(true);
+            saveNode.setDisable(true);
+
+            javafx.application.Platform.runLater(() -> {
+                try {
+                    saveSale(true);
+                } finally {
+                    dialog.setResult(printBtn);
+                    dialog.close();
+                }
+            });
         });
+
+        saveNode.addEventFilter(javafx.event.ActionEvent.ACTION, event -> {
+            event.consume(); // Prevent closing before save finishes
+            ProgressIndicator spinner = new ProgressIndicator();
+            spinner.setPrefSize(16, 16);
+            spinner.setMaxSize(16, 16);
+            saveNode.setGraphic(spinner);
+            saveNode.setDisable(true);
+            printNode.setDisable(true);
+
+            javafx.application.Platform.runLater(() -> {
+                try {
+                    saveSale(false);
+                } finally {
+                    dialog.setResult(saveBtn);
+                    dialog.close();
+                }
+            });
+        });
+
+        dialog.showAndWait();
     }
 
     private void saveSale(boolean shouldPrint) {
