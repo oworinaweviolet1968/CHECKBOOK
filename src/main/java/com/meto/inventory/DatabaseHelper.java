@@ -1972,7 +1972,12 @@ public class DatabaseHelper {
 
     public com.google.gson.JsonArray getDirtyStock() {
         com.google.gson.JsonArray array = new com.google.gson.JsonArray();
-        String sql = "SELECT sync_id, item, quantity, unit, price, cost_price, base_quantity, available_pieces, device_source, date FROM stock WHERE is_edited = 1 AND sync_id IS NOT NULL";
+        // Ensure any missing sync_ids are populated first
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("UPDATE stock SET sync_id = (lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))) WHERE sync_id IS NULL OR sync_id = ''");
+        } catch (Exception ignored) {}
+
+        String sql = "SELECT sync_id, item, quantity, unit, price, cost_price, base_quantity, available_pieces, device_source, date FROM stock WHERE is_edited = 1";
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
                 com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
@@ -2154,6 +2159,32 @@ public class DatabaseHelper {
                     }
 
                     if (!localIsDirty) {
+                        // Check if local pieces is lower than cloud pieces due to local sales
+                        double localPieces = 0.0;
+                        try (PreparedStatement getPiecesPstmt = connection.prepareStatement("SELECT available_pieces FROM stock WHERE id = ?")) {
+                            getPiecesPstmt.setInt(1, localId);
+                            try (ResultSet rPieces = getPiecesPstmt.executeQuery()) {
+                                if (rPieces.next()) {
+                                    localPieces = rPieces.getDouble("available_pieces");
+                                }
+                            }
+                        } catch (Exception ignored) {}
+
+                        // If local has fewer pieces than cloud, check if a sale was made today locally
+                        double piecesToUse = availablePieces;
+                        if (localPieces < availablePieces) {
+                            try (PreparedStatement checkSalePstmt = connection.prepareStatement("SELECT 1 FROM sales WHERE item = ? AND date = ? LIMIT 1")) {
+                                checkSalePstmt.setString(1, localItem);
+                                checkSalePstmt.setString(2, LocalDate.now().toString());
+                                try (ResultSet rSale = checkSalePstmt.executeQuery()) {
+                                    if (rSale.next()) {
+                                        // Keep lower local pieces to prevent sold pieces from reappearing
+                                        piecesToUse = localPieces;
+                                    }
+                                }
+                            } catch (Exception ignored) {}
+                        }
+
                         // Accept cloud available_pieces to sync stock changes across devices
                         updateFullStmt.setString(1, syncId);
                         updateFullStmt.setString(2, supplier);
@@ -2161,7 +2192,7 @@ public class DatabaseHelper {
                         updateFullStmt.setString(4, quantity);
                         updateFullStmt.setString(5, unit);
                         updateFullStmt.setString(6, price);
-                        updateFullStmt.setDouble(7, availablePieces);
+                        updateFullStmt.setDouble(7, piecesToUse);
                         updateFullStmt.setString(8, deviceSource);
                         updateFullStmt.setString(9, date);
                         updateFullStmt.setInt(10, localId);

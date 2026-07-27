@@ -762,6 +762,7 @@ public class SupabaseService {
         
         // --- 1. PUSH ---
         // STOCK
+        boolean stockUploadSuccess = true;
         if (dirtyStock.size() > 0) {
             String nowIso = java.time.Instant.now().toString();
             for (JsonElement el : dirtyStock) {
@@ -779,9 +780,12 @@ public class SupabaseService {
                     .build();
             HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
             System.out.println("STOCK UPLOAD RESPONSE: " + res.statusCode() + " " + res.body());
+            if (res.statusCode() >= 300) {
+                stockUploadSuccess = false;
+            }
         }
         
-        // SALES
+        boolean salesUploadSuccess = true;
         if (dirtySales.size() > 0) {
             String nowIso = java.time.Instant.now().toString();
             for (JsonElement el : dirtySales) {
@@ -799,6 +803,9 @@ public class SupabaseService {
                     .build();
             HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
             System.out.println("SALES UPLOAD RESPONSE: " + res.statusCode() + " " + res.body());
+            if (res.statusCode() >= 300) {
+                salesUploadSuccess = false;
+            }
         }
 
         // DELETIONS
@@ -863,7 +870,13 @@ public class SupabaseService {
             }
         }
 
-        db.clearDirtyFlags();
+        if (stockUploadSuccess && salesUploadSuccess) {
+            db.clearDirtyFlags();
+            lastSyncFailed = false;
+        } else {
+            lastSyncFailed = true;
+            System.err.println("SYNC: Preserving dirty flags because cloud POST upload returned non-2xx status code.");
+        }
         lastSyncFailed = false;
 
         // Update timestamp
