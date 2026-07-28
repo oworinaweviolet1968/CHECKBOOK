@@ -312,17 +312,110 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
         ? const Center(child: CircularProgressIndicator())
         : _filteredItems.isEmpty 
             ? _buildEmptyState()
-            : ListView.separated(
-                padding: const EdgeInsets.all(16),
-                itemCount: _filteredItems.length,
-                separatorBuilder: (c, i) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                    return _buildHistoryCard(_filteredItems[index]);
-                },
-            ),
+            : _buildGroupedHistoryList(),
     );
   }
   
+  Widget _buildGroupedHistoryList() {
+    final grouped = _groupItemsByPeriod(_filteredItems);
+    final List<Widget> children = [];
+
+    grouped.forEach((period, items) {
+      if (items.isNotEmpty) {
+        children.add(_buildSectionHeader(period, items.length));
+        for (var item in items) {
+          children.add(_buildHistoryCard(item));
+          children.add(const SizedBox(height: 12));
+        }
+        children.add(const SizedBox(height: 8));
+      }
+    });
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: children,
+    );
+  }
+
+  Map<String, List<HistoryItem>> _groupItemsByPeriod(List<HistoryItem> items) {
+    final Map<String, List<HistoryItem>> groups = {
+      'Today': [],
+      'Yesterday': [],
+      'Earlier': [],
+    };
+
+    final now = DateTime.now();
+    final todayStr = DateFormat('yyyy-MM-dd').format(now);
+    final yesterdayStr = DateFormat('yyyy-MM-dd').format(now.subtract(const Duration(days: 1)));
+
+    for (var item in items) {
+      if (item.date == todayStr) {
+        groups['Today']!.add(item);
+      } else if (item.date == yesterdayStr) {
+        groups['Yesterday']!.add(item);
+      } else {
+        groups['Earlier']!.add(item);
+      }
+    }
+
+    return groups;
+  }
+
+  Widget _buildSectionHeader(String period, int count) {
+    IconData icon;
+    Color iconColor;
+    if (period == 'Today') {
+      icon = Icons.today;
+      iconColor = AppColors.primaryGreen;
+    } else if (period == 'Yesterday') {
+      icon = Icons.history;
+      iconColor = Colors.orange;
+    } else {
+      icon = Icons.calendar_today_outlined;
+      iconColor = Colors.grey;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.withOpacity(0.15)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: iconColor),
+          const SizedBox(width: 8),
+          Text(
+            period,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 15,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              '$count ${count == 1 ? "transaction" : "transactions"}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: iconColor,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEmptyState() {
       return Center(
           child: Column(

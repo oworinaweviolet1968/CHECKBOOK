@@ -87,4 +87,29 @@ public class HistoryItem {
     public StringProperty priceProperty() { return price; }
     public StringProperty amountProperty() { return amount; }
     public StringProperty dateProperty() { return date; }
+
+    public String getPeriodGroup() {
+        String dateStr = getDate();
+        if (dateStr == null || dateStr.isEmpty()) return "Earlier";
+        try {
+            java.time.LocalDate itemDate;
+            if (dateStr.contains("T")) {
+                itemDate = java.time.OffsetDateTime.parse(dateStr).toLocalDate();
+            } else if (dateStr.contains(" ")) {
+                itemDate = java.time.LocalDate.parse(dateStr.split(" ")[0]);
+            } else {
+                itemDate = java.time.LocalDate.parse(dateStr);
+            }
+            java.time.LocalDate today = java.time.LocalDate.now();
+            if (itemDate.equals(today)) {
+                return "Today";
+            } else if (itemDate.equals(today.minusDays(1))) {
+                return "Yesterday";
+            } else {
+                return "Earlier";
+            }
+        } catch (Exception e) {
+            return "Earlier";
+        }
+    }
 }

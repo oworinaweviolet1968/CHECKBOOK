@@ -909,14 +909,11 @@ public class SupabaseService {
 
             boolean isStaleDevice = cloudTs > localVersionTs;
 
-            // If local device is NOT stale (or up-to-date), push pending local changes first.
-            // If local device IS stale, pull remote changes first so stale local records don't overwrite newer cloud data.
-            if (!isStaleDevice) {
-                try {
-                    pushPendingChangesInternal(db, true);
-                } catch (Exception pushEx) {
-                    System.err.println("SYNC: Pre-pull push warning: " + pushEx.getMessage());
-                }
+            // PUSH FIRST: Ensure all local unsynced edits reach the cloud before pulling
+            try {
+                pushPendingChangesInternal(db, true);
+            } catch (Exception pushEx) {
+                System.err.println("SYNC: Pre-pull push warning: " + pushEx.getMessage());
             }
 
             if (isManual) {
@@ -1150,5 +1147,42 @@ public class SupabaseService {
         }
         return null;
     }
+
+    public boolean processPowerSyncBatchRPC(String deviceId, JsonArray operations) {
+        if (currentUserId == null || currentAccessToken == null) {
+            return false;
+        }
+        try {
+            JsonObject body = new JsonObject();
+            body.addProperty("p_device_id", deviceId);
+            body.addProperty("p_user_id", currentUserId);
+            body.add("p_operations", operations);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/rpc/rpc_process_sync_batch"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            // Server-Client Clock Sync: Calculate server time offset
+            if (response.headers().firstValue("Date").isPresent()) {
+                try {
+                    String dateStr = response.headers().firstValue("Date").get();
+                    java.time.Instant serverInstant = java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME.parse(dateStr, java.time.Instant::from);
+                    com.meto.inventory.powersync.ClockSync.updateClockOffset(serverInstant.toEpochMilli());
+                } catch (Exception ignored) {}
+            }
+
+            return response.statusCode() == 200 || response.statusCode() == 201;
+        } catch (Exception e) {
+            System.err.println("PowerSync RPC Error: " + e.getMessage());
+            return false;
+        }
+    }
 }
+
 

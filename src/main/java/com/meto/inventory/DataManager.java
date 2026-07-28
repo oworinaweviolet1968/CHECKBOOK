@@ -1,5 +1,8 @@
 package com.meto.inventory;
 
+import com.meto.inventory.services.NotificationService;
+import com.meto.inventory.services.SupabaseService;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -132,13 +135,13 @@ public class DataManager {
         // Run background sync check every 15 seconds to prevent network/DB locks and UI lag
         syncExecutor.scheduleAtFixedRate(() -> {
             try {
-                com.meto.inventory.services.SupabaseService service = com.meto.inventory.services.SupabaseService.getInstance();
+                SupabaseService service = SupabaseService.getInstance();
                 boolean online = service.isOnline();
 
                 // --- CONNECTIVITY TRANSITION NOTIFICATIONS ---
                 if (wasOnline == null || wasOnline != online) {
                     if (online) {
-                        com.meto.inventory.services.NotificationService.getInstance()
+                        NotificationService.getInstance()
                             .sendDesktopActionNotification("Desktop App Online", "Desktop app accessed the internet and is now online.");
                         
                         javafx.application.Platform.runLater(() -> {

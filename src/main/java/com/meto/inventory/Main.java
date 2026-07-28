@@ -24,7 +24,7 @@ public class Main extends Application {
 
         if (savedToken != null) {
             // Show a splash or just attempt silent login
-            new Thread(() -> {
+            Thread loginThread = new Thread(() -> {
                 try {
                     boolean success = service.signInWithRefreshToken(savedToken);
                     if (success) {
@@ -65,7 +65,9 @@ public class Main extends Application {
                         javafx.application.Platform.runLater(() -> showLoginView(primaryStage));
                     }
                 }
-            }).start();
+            });
+            loginThread.setDaemon(true);
+            loginThread.start();
         } else {
             showLoginView(primaryStage);
         }
@@ -105,7 +107,7 @@ public class Main extends Application {
 
     private void triggerSync() {
         // This mirrors the startSyncProcess in LoginController but for auto-login
-        new Thread(() -> {
+        Thread syncThread = new Thread(() -> {
             try {
                 com.meto.inventory.services.SupabaseService service = com.meto.inventory.services.SupabaseService
                         .getInstance();
@@ -180,11 +182,13 @@ public class Main extends Application {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-        }).start();
+        });
+        syncThread.setDaemon(true);
+        syncThread.start();
     }
 
     private void triggerOfflineMode(String currentUid) {
-        new Thread(() -> {
+        Thread offlineThread = new Thread(() -> {
             try {
                 System.out.println("Initializing Offline Database for: " + currentUid);
                 com.meto.inventory.DataManager.getInstance().switchDatabaseOnly(currentUid);
@@ -197,7 +201,9 @@ public class Main extends Application {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-        }).start();
+        });
+        offlineThread.setDaemon(true);
+        offlineThread.start();
     }
 
     private void showBackupDisabledAlert(String email) {
@@ -228,6 +234,16 @@ public class Main extends Application {
                 javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
         alert.getButtonTypes().setAll(closeBtn);
         alert.showAndWait();
+    }
+
+    @Override
+    public void stop() throws Exception {
+        super.stop();
+        try {
+            com.meto.inventory.powersync.PowerSyncEngine.getInstance().stop();
+        } catch (Exception ignore) {
+        }
+        System.exit(0);
     }
 
     public static void main(String[] args) {

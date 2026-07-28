@@ -36,6 +36,11 @@
                 </HBox>
 
                 <HBox spacing="10" alignment="CENTER_LEFT">
+                    <Label text="Period:" style="-fx-font-size: 12px; -fx-font-weight: 700; -fx-text-fill: #374151;"/>
+                    <ComboBox fx:id="periodFilterCombo" prefWidth="120" promptText="All Periods"/>
+                </HBox>
+
+                <HBox spacing="10" alignment="CENTER_LEFT">
                     <Label text="Type:" style="-fx-font-size: 12px; -fx-font-weight: 700; -fx-text-fill: #374151;"/>
                     <ComboBox fx:id="historyFilterCombo" prefWidth="120" promptText="All Transactions"/>
                 </HBox>
@@ -47,11 +52,12 @@
             <TableView fx:id="historyTable" VBox.vgrow="ALWAYS">
                 <columns>
                     <TableColumn fx:id="nameCol" text="Customer/Supplier" prefWidth="150"/>
-                    <TableColumn fx:id="itemCol" text="Item Details" prefWidth="400"/>
+                    <TableColumn fx:id="itemCol" text="Item Details" prefWidth="350"/>
                     <TableColumn fx:id="typeCol" text="Type" prefWidth="100"/>
+                    <TableColumn fx:id="periodCol" text="Period" prefWidth="110"/>
                     <TableColumn fx:id="amountCol" text="Total Amount" prefWidth="140"/>
-                    <TableColumn fx:id="dateCol" text="Date" prefWidth="140"/>
-                    <TableColumn fx:id="actionsCol" text="Actions" prefWidth="120"/>
+                    <TableColumn fx:id="dateCol" text="Date" prefWidth="120"/>
+                    <TableColumn fx:id="actionsCol" text="Actions" prefWidth="100"/>
                 </columns>
                 <columnResizePolicy>
                     <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>

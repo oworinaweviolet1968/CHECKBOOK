@@ -168,6 +168,14 @@ public class DatabaseHelper {
             // AUTOMATIC MIGRATION: Check for missing columns in legacy DBs
             ensureSchema(stmt);
 
+            // POWERSYNC INITIALIZATION: Queue table & index
+            try {
+                com.meto.inventory.powersync.WriteQueueManager.initializeQueueTable(stmt.getConnection());
+                com.meto.inventory.powersync.PowerSyncEngine.getInstance().start();
+            } catch (Exception ex) {
+                System.err.println("DatabaseHelper: Failed to init PowerSync Queue: " + ex.getMessage());
+            }
+
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -673,13 +681,11 @@ public class DatabaseHelper {
     public void reconcileUntrackedStockDiscrepancies() {
         try (Statement stmt = connection.createStatement()) {
             // Find stock items where available_pieces is less than initial addition and no sale log explains the deduction
-            String sql = "SELECT id, item, quantity, unit, available_pieces FROM stock";
+            String sql = "SELECT item, quantity, available_pieces FROM stock";
             try (ResultSet rs = stmt.executeQuery(sql)) {
                 while (rs.next()) {
-                    int id = rs.getInt("id");
                     String item = rs.getString("item");
                     String size = rs.getString("quantity");
-                    String unit = rs.getString("unit");
                     double avail = rs.getDouble("available_pieces");
 
                     // Sum all new stock additions for this item
@@ -706,7 +712,7 @@ public class DatabaseHelper {
                         double expected = totalAdded - totalSold;
                         if (expected > avail && Math.abs(expected - avail) >= 1.0) {
                             double difference = expected - avail;
-                            System.out.println("AUDIT NOTE: Stock " + item + " (" + size + ") calculated net: " + expected + ", stored available: " + avail);
+                            System.out.println("AUDIT NOTE: Stock " + item + " (" + size + ") calculated net: " + expected + ", stored available: " + avail + ", diff: " + difference);
                         }
                     }
                 }
@@ -941,7 +947,14 @@ public class DatabaseHelper {
         }
 
         double quantityFactor = extractNumericValue(unit);
-        double multiplier = getUnitMultiplier(unit, size, bulkUnit);
+        // For NEW STOCK the multiplier must be computed the same way addStock() does it
+        // (passing `unit` as its own bulkUnit reference), so that base_quantity in the
+        // sales history row exactly equals the available_pieces added to the stock table.
+        // For WHOLESALE / RETAIL we continue to use the stock table's bulk unit so that
+        // the deduction factor matches what updateStockQuantity() subtracts.
+        double multiplier = "NEW STOCK".equals(type)
+                ? getUnitMultiplier(unit, size, unit)
+                : getUnitMultiplier(unit, size, bulkUnit);
         double baseQty = quantityFactor * multiplier;
 
         String syncId = java.util.UUID.randomUUID().toString();
@@ -2461,8 +2474,8 @@ public class DatabaseHelper {
                         }
                     }
 
-                    // Apply Event-Sourced Delta Merge whenever new sales arrive from ANY device
-                    if (isNew && !item.isEmpty() && !quantity.isEmpty() && !unit.isEmpty()) {
+                    // Apply Event-Sourced Delta Merge whenever new sales arrive from ANY device in incremental mode
+                    if (isIncremental && isNew && !item.isEmpty() && !quantity.isEmpty() && !unit.isEmpty()) {
                         double multiplier = getUnitMultiplier(unit, quantity, unit);
                         double count = extractNumericValue(unit) * multiplier;
 

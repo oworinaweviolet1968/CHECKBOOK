@@ -7,6 +7,8 @@ import '../models/history_item.dart';
 import '../models/sale_item.dart';
 import '../main.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'powersync/write_queue.dart';
+import 'powersync/powersync_engine.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -300,6 +302,9 @@ class DatabaseHelper {
       onCreate: _createDB,
       onOpen: (db) async {
           // Ensure schemas if opening existing DB
+          await WriteQueueManager.initializeQueueTable(db);
+          PowerSyncEngine.instance.initialize();
+
           await db.execute('''
             CREATE TABLE IF NOT EXISTS settings (
               key TEXT PRIMARY KEY,

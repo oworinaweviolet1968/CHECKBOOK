@@ -2,6 +2,8 @@ package com.meto.inventory.controllers;
 
 import com.meto.inventory.DataManager;
 import com.meto.inventory.models.StockItem;
+import com.meto.inventory.services.NotificationService;
+import com.meto.inventory.utils.DialogHelper;
 import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -690,7 +692,7 @@ public class NewStockController implements DataManager.DataChangeListener {
                         "Are you sure you want to add this as a NEW product category?";
 
                 // If they don't click OK, stop the process
-                if (!com.meto.inventory.utils.DialogHelper.showConfirm("New Quantity Size Detected", "New Size: " + qtyRaw,
+                if (!DialogHelper.showConfirm("New Quantity Size Detected", "New Size: " + qtyRaw,
                         content)) {
                     return;
                 }
@@ -825,7 +827,7 @@ public class NewStockController implements DataManager.DataChangeListener {
                                 + " makes the unit price very different from current stock.\n\n" +
                                 "Do you want to save this anyway?";
 
-                        if (com.meto.inventory.utils.DialogHelper.showConfirm("Price Variance Warning",
+                        if (DialogHelper.showConfirm("Price Variance Warning",
                                 "Price mismatch for " + item + " (" + qty + ")", content)) {
                             // 3. If user says OK, merge with forceSave = true
                             dataManager.getDbHelper().mergeStock(item, qty, unit, price, supplier, true);
@@ -846,7 +848,7 @@ public class NewStockController implements DataManager.DataChangeListener {
 
                 dataManager.getDbHelper().addSaleWithProfit(supplier, item, qty, unit, price, totalAmount, "NEW STOCK",
                         false, null);
-                com.meto.inventory.services.NotificationService.getInstance().sendDesktopActionNotification(
+                NotificationService.getInstance().sendDesktopActionNotification(
                         "INventory Updated",
                         unit + " have been added to " + item + " of " + qty + ". Tap to see whats new");
 
@@ -901,7 +903,7 @@ public class NewStockController implements DataManager.DataChangeListener {
     }
 
     private void showAlert(String text) {
-        com.meto.inventory.utils.DialogHelper.showAlert(text);
+        DialogHelper.showAlert(text);
     }
 
     @Override

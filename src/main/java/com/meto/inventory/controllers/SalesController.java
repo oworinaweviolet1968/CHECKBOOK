@@ -3,6 +3,7 @@ package com.meto.inventory.controllers;
 import com.meto.inventory.DataManager;
 import com.meto.inventory.models.SaleItem;
 import com.meto.inventory.services.ReceiptPrinterService;
+import com.meto.inventory.utils.DialogHelper;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
@@ -651,7 +652,7 @@ public class SalesController implements DataManager.DataChangeListener {
                 String content = String.format(
                         "Warning: Potential Loss!\nSelling Price: UGX %,.2f\nActual Cost: UGX %,.2f\n\nProceed anyway?",
                         totalAmount, totalCost);
-                if (!com.meto.inventory.utils.DialogHelper.showConfirm("Profit Warning", "Selling Below Cost",
+                if (!DialogHelper.showConfirm("Profit Warning", "Selling Below Cost",
                         content)) {
                     return;
                 }
@@ -934,7 +935,7 @@ public class SalesController implements DataManager.DataChangeListener {
     }
 
     private void showAlert(String message) {
-        com.meto.inventory.utils.DialogHelper.showAlert(message);
+        DialogHelper.showAlert(message);
     }
 
     private boolean isValidExactUnit(String text) {

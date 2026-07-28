@@ -2,7 +2,7 @@ package com.meto.inventory.controllers;
 
 import com.meto.inventory.DataManager;
 import com.meto.inventory.models.HistoryItem;
-import com.meto.inventory.utils.DialogHelper;
+import com.meto.inventory.utils.*;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
@@ -11,6 +11,8 @@ public class HistoryController implements DataManager.DataChangeListener {
 
     @FXML
     private ComboBox<String> historyFilterCombo;
+    @FXML
+    private ComboBox<String> periodFilterCombo;
     @FXML
     private TextField searchField;
     @FXML
@@ -25,6 +27,8 @@ public class HistoryController implements DataManager.DataChangeListener {
     private TableColumn<HistoryItem, String> itemCol;
     @FXML
     private TableColumn<HistoryItem, String> typeCol;
+    @FXML
+    private TableColumn<HistoryItem, String> periodCol;
     @FXML
     private TableColumn<HistoryItem, String> amountCol;
     @FXML
@@ -42,11 +46,16 @@ public class HistoryController implements DataManager.DataChangeListener {
 
         historyFilterCombo.getItems().addAll("ALL", "NEW STOCK", "WHOLESALE", "RETAIL", "DEBTS");
         historyFilterCombo.setValue("ALL");
+
+        periodFilterCombo.getItems().addAll("All Periods", "Today", "Yesterday", "Earlier");
+        periodFilterCombo.setValue("All Periods");
+
         setupTableColumns();
         loadHistory();
 
         // Listeners for real-time filtering
         historyFilterCombo.setOnAction(e -> applyFilters());
+        periodFilterCombo.setOnAction(e -> applyFilters());
         searchField.textProperty().addListener((obs, oldVal, newVal) -> applyFilters());
         datePicker.valueProperty().addListener((obs, oldVal, newVal) -> applyFilters());
         clearDateBtn.setOnAction(e -> datePicker.setValue(null));
@@ -175,6 +184,37 @@ public class HistoryController implements DataManager.DataChangeListener {
             }
         });
 
+        // Custom Cell Factory for PERIOD column (Today / Yesterday / Earlier)
+        if (periodCol != null) {
+            periodCol.getStyleClass().add("col-center");
+            periodCol.setCellFactory(column -> new TableCell<HistoryItem, String>() {
+                @Override
+                protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    HistoryItem historyItem = getTableRow() != null ? getTableRow().getItem() : null;
+
+                    if (empty || historyItem == null) {
+                        setGraphic(null);
+                        setText(null);
+                    } else {
+                        String period = historyItem.getPeriodGroup();
+                        Label badge = new Label(period);
+                        badge.getStyleClass().add("badge");
+                        if ("Today".equals(period)) {
+                            badge.setStyle("-fx-background-color: #DCFCE7; -fx-text-fill: #15803D; -fx-font-weight: bold;");
+                        } else if ("Yesterday".equals(period)) {
+                            badge.setStyle("-fx-background-color: #FFEDD5; -fx-text-fill: #C2410C; -fx-font-weight: bold;");
+                        } else {
+                            badge.setStyle("-fx-background-color: #F3F4F6; -fx-text-fill: #4B5563;");
+                        }
+                        setGraphic(badge);
+                        setText(null);
+                        setAlignment(javafx.geometry.Pos.CENTER);
+                    }
+                }
+            });
+        }
+
         // Row Factory for background coloring and context menu
         historyTable.setRowFactory(tv -> {
             TableRow<HistoryItem> row = new TableRow<>() {
@@ -230,8 +270,6 @@ public class HistoryController implements DataManager.DataChangeListener {
         });
     }
 
-
-
     private <T> void rightAlignColumn(TableColumn<HistoryItem, T> column) {
         column.setCellFactory(col -> new TableCell<>() {
             @Override
@@ -263,10 +301,18 @@ public class HistoryController implements DataManager.DataChangeListener {
             return;
 
         String typeFilter = historyFilterCombo.getValue();
+        String periodFilter = periodFilterCombo != null ? periodFilterCombo.getValue() : "All Periods";
         String searchText = searchField.getText() == null ? "" : searchField.getText().toLowerCase().trim();
         java.time.LocalDate selectedDate = datePicker.getValue();
 
         filteredData.setPredicate(item -> {
+            // 0. Period Filter (Today, Yesterday, Earlier)
+            if (periodFilter != null && !"All Periods".equals(periodFilter)) {
+                if (!item.getPeriodGroup().equalsIgnoreCase(periodFilter)) {
+                    return false;
+                }
+            }
+
             // 1. Type Filter
             if (typeFilter != null && !"ALL".equals(typeFilter) && !"DEBTS".equals(typeFilter)) {
                 if (!item.getTypeUnit().equalsIgnoreCase(typeFilter))

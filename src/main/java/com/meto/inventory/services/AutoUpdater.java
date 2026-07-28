@@ -33,7 +33,7 @@ public class AutoUpdater {
      * Checks for updates asynchronously on app startup.
      */
     public static void checkForUpdatesAsync() {
-        new Thread(() -> {
+        Thread updateThread = new Thread(() -> {
             try {
                 // Fetch release information from Supabase REST API
                 SupabaseService service = SupabaseService.getInstance();
@@ -59,14 +59,16 @@ public class AutoUpdater {
                 String effectiveCurrent = (installedVer != null && isVersionNewer(CURRENT_VERSION, installedVer))
                         ? installedVer : CURRENT_VERSION;
 
-                // Behaviour 2: Prompts on launch whenever a newer version is available
                 if (isVersionNewer(effectiveCurrent, latestVersion)) {
                     Platform.runLater(() -> promptUserToUpdate(latestVersion, downloadUrl, mandatory, releaseNotes));
                 }
+
             } catch (Exception e) {
-                System.err.println("AutoUpdater: Version check skipped due to error: " + e.getMessage());
+                System.err.println("Auto-updater failed to check for updates: " + e.getMessage());
             }
-        }).start();
+        });
+        updateThread.setDaemon(true);
+        updateThread.start();
     }
 
     /**
