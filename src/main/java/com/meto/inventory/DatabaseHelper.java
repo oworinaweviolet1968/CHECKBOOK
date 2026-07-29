@@ -205,17 +205,23 @@ public class DatabaseHelper {
             }
         }
 
-        // Normalize any existing 32-character hex sync_ids to standard 36-character dashed UUIDs
+        // Normalize any existing 32-character hex sync_ids to standard 36-character
+        // dashed UUIDs
         for (String table : tables) {
             try {
-                stmt.execute("UPDATE " + table + " SET sync_id = substr(sync_id, 1, 8) || '-' || substr(sync_id, 9, 4) || '-' || substr(sync_id, 13, 4) || '-' || substr(sync_id, 17, 4) || '-' || substr(sync_id, 21, 12) WHERE length(sync_id) = 32");
+                stmt.execute("UPDATE " + table
+                        + " SET sync_id = substr(sync_id, 1, 8) || '-' || substr(sync_id, 9, 4) || '-' || substr(sync_id, 13, 4) || '-' || substr(sync_id, 17, 4) || '-' || substr(sync_id, 21, 12) WHERE length(sync_id) = 32");
             } catch (SQLException e) {
                 System.err.println("Failed to normalize sync_id on table " + table + ": " + e.getMessage());
                 try {
-                    stmt.execute("DELETE FROM " + table + " WHERE length(sync_id) = 32 AND (substr(sync_id, 1, 8) || '-' || substr(sync_id, 9, 4) || '-' || substr(sync_id, 13, 4) || '-' || substr(sync_id, 17, 4) || '-' || substr(sync_id, 21, 12)) IN (SELECT sync_id FROM " + table + " WHERE length(sync_id) = 36)");
-                    stmt.execute("UPDATE " + table + " SET sync_id = substr(sync_id, 1, 8) || '-' || substr(sync_id, 9, 4) || '-' || substr(sync_id, 13, 4) || '-' || substr(sync_id, 17, 4) || '-' || substr(sync_id, 21, 12) WHERE length(sync_id) = 32");
+                    stmt.execute("DELETE FROM " + table
+                            + " WHERE length(sync_id) = 32 AND (substr(sync_id, 1, 8) || '-' || substr(sync_id, 9, 4) || '-' || substr(sync_id, 13, 4) || '-' || substr(sync_id, 17, 4) || '-' || substr(sync_id, 21, 12)) IN (SELECT sync_id FROM "
+                            + table + " WHERE length(sync_id) = 36)");
+                    stmt.execute("UPDATE " + table
+                            + " SET sync_id = substr(sync_id, 1, 8) || '-' || substr(sync_id, 9, 4) || '-' || substr(sync_id, 13, 4) || '-' || substr(sync_id, 17, 4) || '-' || substr(sync_id, 21, 12) WHERE length(sync_id) = 32");
                 } catch (SQLException innerErr) {
-                    System.err.println("Failed to resolve unique constraint conflict on table " + table + ": " + innerErr.getMessage());
+                    System.err.println("Failed to resolve unique constraint conflict on table " + table + ": "
+                            + innerErr.getMessage());
                 }
             }
         }
@@ -318,19 +324,32 @@ public class DatabaseHelper {
             while (rs.next()) {
                 existingCols.add(rs.getString("name").toLowerCase());
             }
-            if (!existingCols.contains("quantity")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN quantity TEXT");
-            if (!existingCols.contains("unit")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN unit TEXT");
-            if (!existingCols.contains("price")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN price REAL");
-            if (!existingCols.contains("cost_price")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN cost_price REAL");
-            if (!existingCols.contains("base_quantity")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN base_quantity REAL");
-            if (!existingCols.contains("type")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN type TEXT");
-            if (!existingCols.contains("date")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN date TEXT");
-            if (!existingCols.contains("is_debt")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN is_debt INTEGER DEFAULT 0");
-            if (!existingCols.contains("is_paid")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN is_paid INTEGER DEFAULT 0");
-            if (!existingCols.contains("paid_amount")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN paid_amount REAL DEFAULT 0");
-            if (!existingCols.contains("is_edited")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN is_edited INTEGER DEFAULT 0");
-            if (!existingCols.contains("device_source")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN device_source TEXT DEFAULT 'Desktop'");
-            if (!existingCols.contains("sync_id")) stmt.execute("ALTER TABLE deleted_history ADD COLUMN sync_id TEXT");
+            if (!existingCols.contains("quantity"))
+                stmt.execute("ALTER TABLE deleted_history ADD COLUMN quantity TEXT");
+            if (!existingCols.contains("unit"))
+                stmt.execute("ALTER TABLE deleted_history ADD COLUMN unit TEXT");
+            if (!existingCols.contains("price"))
+                stmt.execute("ALTER TABLE deleted_history ADD COLUMN price REAL");
+            if (!existingCols.contains("cost_price"))
+                stmt.execute("ALTER TABLE deleted_history ADD COLUMN cost_price REAL");
+            if (!existingCols.contains("base_quantity"))
+                stmt.execute("ALTER TABLE deleted_history ADD COLUMN base_quantity REAL");
+            if (!existingCols.contains("type"))
+                stmt.execute("ALTER TABLE deleted_history ADD COLUMN type TEXT");
+            if (!existingCols.contains("date"))
+                stmt.execute("ALTER TABLE deleted_history ADD COLUMN date TEXT");
+            if (!existingCols.contains("is_debt"))
+                stmt.execute("ALTER TABLE deleted_history ADD COLUMN is_debt INTEGER DEFAULT 0");
+            if (!existingCols.contains("is_paid"))
+                stmt.execute("ALTER TABLE deleted_history ADD COLUMN is_paid INTEGER DEFAULT 0");
+            if (!existingCols.contains("paid_amount"))
+                stmt.execute("ALTER TABLE deleted_history ADD COLUMN paid_amount REAL DEFAULT 0");
+            if (!existingCols.contains("is_edited"))
+                stmt.execute("ALTER TABLE deleted_history ADD COLUMN is_edited INTEGER DEFAULT 0");
+            if (!existingCols.contains("device_source"))
+                stmt.execute("ALTER TABLE deleted_history ADD COLUMN device_source TEXT DEFAULT 'Desktop'");
+            if (!existingCols.contains("sync_id"))
+                stmt.execute("ALTER TABLE deleted_history ADD COLUMN sync_id TEXT");
         } catch (SQLException e) {
             System.err.println("Schema check failed for deleted_history: " + e.getMessage());
         }
@@ -353,56 +372,63 @@ public class DatabaseHelper {
                 if (rs.next()) {
                     backfilled = true;
                 }
-            } catch (SQLException ignore) {}
+            } catch (SQLException ignore) {
+            }
             if (!backfilled) {
                 stmt.execute("UPDATE sales SET is_edited = 1 WHERE is_edited = 0");
                 stmt.execute("UPDATE stock SET is_edited = 1 WHERE is_edited = 0");
-                stmt.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('has_backfilled_is_edited_v1', '1')");
+                stmt.execute(
+                        "INSERT OR REPLACE INTO settings (key, value) VALUES ('has_backfilled_is_edited_v1', '1')");
                 System.out.println("DEBUG: Backfilled local changes with is_edited = 1 for sync.");
             }
 
             // One-time migration to re-sync all sales to restore any missing records
             boolean reSynced = false;
-            try (ResultSet rs = stmt.executeQuery("SELECT 1 FROM settings WHERE key = 'has_re_synced_missing_sales_v3'")) {
+            try (ResultSet rs = stmt
+                    .executeQuery("SELECT 1 FROM settings WHERE key = 'has_re_synced_missing_sales_v3'")) {
                 if (rs.next()) {
                     reSynced = true;
                 }
-            } catch (SQLException ignore) {}
+            } catch (SQLException ignore) {
+            }
             if (!reSynced) {
                 try {
                     stmt.execute("UPDATE sales SET is_edited = 1");
                     stmt.execute("DELETE FROM deleted_history"); // Clear all stale deletion logs!
                     stmt.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('last_backup_timestamp', '0')");
-                    stmt.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('has_re_synced_missing_sales_v3', '1')");
-                    System.out.println("RE-SYNC MIGRATION (Desktop): Marked all sales as edited, cleared deleted_history, and reset sync cursor.");
+                    stmt.execute(
+                            "INSERT OR REPLACE INTO settings (key, value) VALUES ('has_re_synced_missing_sales_v3', '1')");
+                    System.out.println(
+                            "RE-SYNC MIGRATION (Desktop): Marked all sales as edited, cleared deleted_history, and reset sync cursor.");
                 } catch (SQLException e) {
                     System.err.println("Failed to run re-sync migration on Desktop: " + e.getMessage());
                 }
             }
 
-            stmt.execute("UPDATE sales SET receipt_id = NULL, is_edited = 1 WHERE receipt_id = '' OR receipt_id = 'null'");
+            stmt.execute(
+                    "UPDATE sales SET receipt_id = NULL, is_edited = 1 WHERE receipt_id = '' OR receipt_id = 'null'");
 
-            // Cleanup/reconcile legacy sales that lack a receipt_id but were created around the same time for the same customer
+            // Cleanup/reconcile legacy sales that lack a receipt_id but were created around
+            // the same time for the same customer
             try {
                 String selectSql = "SELECT id, customer, date, created_at FROM sales WHERE (receipt_id IS NULL OR receipt_id = '') AND customer != 'Walk-in Customer' ORDER BY customer, created_at";
                 List<LegacySale> legacySales = new ArrayList<>();
                 try (ResultSet rs = stmt.executeQuery(selectSql)) {
                     while (rs.next()) {
                         legacySales.add(new LegacySale(
-                            rs.getInt("id"),
-                            rs.getString("customer"),
-                            rs.getString("date"),
-                            rs.getString("created_at")
-                        ));
+                                rs.getInt("id"),
+                                rs.getString("customer"),
+                                rs.getString("date"),
+                                rs.getString("created_at")));
                     }
                 }
-                
+
                 int i = 0;
                 while (i < legacySales.size()) {
                     LegacySale base = legacySales.get(i);
                     List<Integer> idsToGroup = new ArrayList<>();
                     idsToGroup.add(base.id);
-                    
+
                     int j = i + 1;
                     while (j < legacySales.size()) {
                         LegacySale next = legacySales.get(j);
@@ -418,10 +444,11 @@ public class DatabaseHelper {
                             break;
                         }
                     }
-                    
+
                     if (idsToGroup.size() > 1) {
                         String newReceiptId = java.util.UUID.randomUUID().toString();
-                        StringBuilder updateSqlBuilder = new StringBuilder("UPDATE sales SET receipt_id = ?, is_edited = 1 WHERE id IN (");
+                        StringBuilder updateSqlBuilder = new StringBuilder(
+                                "UPDATE sales SET receipt_id = ?, is_edited = 1 WHERE id IN (");
                         for (int k = 0; k < idsToGroup.size(); k++) {
                             updateSqlBuilder.append(idsToGroup.get(k));
                             if (k < idsToGroup.size() - 1) {
@@ -432,7 +459,8 @@ public class DatabaseHelper {
                         try (PreparedStatement updateStmt = connection.prepareStatement(updateSqlBuilder.toString())) {
                             updateStmt.setString(1, newReceiptId);
                             updateStmt.executeUpdate();
-                            System.out.println("DEBUG: Consolidated legacy sales: " + idsToGroup + " under receipt_id: " + newReceiptId);
+                            System.out.println("DEBUG: Consolidated legacy sales: " + idsToGroup + " under receipt_id: "
+                                    + newReceiptId);
                         }
                     }
                     i = j;
@@ -445,16 +473,18 @@ public class DatabaseHelper {
             try {
                 String dupQuery = "SELECT id, sync_id, customer FROM sales WHERE sync_id IS NOT NULL AND id NOT IN (SELECT MIN(id) FROM sales GROUP BY sync_id)";
                 try (PreparedStatement dupStmt = connection.prepareStatement(dupQuery);
-                     ResultSet dupRs = dupStmt.executeQuery()) {
+                        ResultSet dupRs = dupStmt.executeQuery()) {
                     while (dupRs.next()) {
                         int dupId = dupRs.getInt("id");
                         String dupSyncId = dupRs.getString("sync_id");
                         String dupCustomer = dupRs.getString("customer");
 
-                        try (PreparedStatement deleteStmt = connection.prepareStatement("DELETE FROM sales WHERE id = ?")) {
+                        try (PreparedStatement deleteStmt = connection
+                                .prepareStatement("DELETE FROM sales WHERE id = ?")) {
                             deleteStmt.setInt(1, dupId);
                             deleteStmt.executeUpdate();
-                            System.out.println("DEDUPLICATE CLEANUP (Desktop): Deleted duplicate sale ID: " + dupId + " (sync_id: " + dupSyncId + ") for customer: " + dupCustomer);
+                            System.out.println("DEDUPLICATE CLEANUP (Desktop): Deleted duplicate sale ID: " + dupId
+                                    + " (sync_id: " + dupSyncId + ") for customer: " + dupCustomer);
                         }
                     }
                 }
@@ -637,7 +667,8 @@ public class DatabaseHelper {
                     updateStmt.setString(5, unitToSave);
                     updateStmt.setInt(6, id);
                     updateStmt.executeUpdate();
-                    logStockMovement(itemName, size, incomingPieces, existingPieces, existingPieces + incomingPieces, "Stock Merged (" + supplier + " - " + newUnit + ")", "Desktop");
+                    logStockMovement(itemName, size, incomingPieces, existingPieces, existingPieces + incomingPieces,
+                            "Stock Merged (" + supplier + " - " + newUnit + ")", "Desktop");
                     return true;
                 }
             }
@@ -670,7 +701,8 @@ public class DatabaseHelper {
                     updatePstmt.setDouble(1, remaining);
                     updatePstmt.setInt(2, id);
                     updatePstmt.executeUpdate();
-                    logStockMovement(itemName, soldSize, -soldPieces, currentPieces, remaining, "Sale Deducted (" + soldUnit + ")", "Desktop");
+                    logStockMovement(itemName, soldSize, -soldPieces, currentPieces, remaining,
+                            "Sale Deducted (" + soldUnit + ")", "Desktop");
                 }
             }
         } catch (SQLException e) {
@@ -680,7 +712,8 @@ public class DatabaseHelper {
 
     public void reconcileUntrackedStockDiscrepancies() {
         try (Statement stmt = connection.createStatement()) {
-            // Find stock items where available_pieces is less than initial addition and no sale log explains the deduction
+            // Find stock items where available_pieces is less than initial addition and no
+            // sale log explains the deduction
             String sql = "SELECT item, quantity, available_pieces FROM stock";
             try (ResultSet rs = stmt.executeQuery(sql)) {
                 while (rs.next()) {
@@ -690,21 +723,25 @@ public class DatabaseHelper {
 
                     // Sum all new stock additions for this item
                     double totalAdded = 0.0;
-                    try (PreparedStatement pAdd = connection.prepareStatement("SELECT SUM(base_quantity) FROM sales WHERE item = ? AND quantity = ? AND type = 'NEW STOCK'")) {
+                    try (PreparedStatement pAdd = connection.prepareStatement(
+                            "SELECT SUM(base_quantity) FROM sales WHERE item = ? AND quantity = ? AND type = 'NEW STOCK'")) {
                         pAdd.setString(1, item);
                         pAdd.setString(2, size);
                         try (ResultSet rAdd = pAdd.executeQuery()) {
-                            if (rAdd.next()) totalAdded = rAdd.getDouble(1);
+                            if (rAdd.next())
+                                totalAdded = rAdd.getDouble(1);
                         }
                     }
 
                     // Sum all non-new-stock sales for this item
                     double totalSold = 0.0;
-                    try (PreparedStatement pSale = connection.prepareStatement("SELECT SUM(base_quantity) FROM sales WHERE item = ? AND quantity = ? AND type != 'NEW STOCK'")) {
+                    try (PreparedStatement pSale = connection.prepareStatement(
+                            "SELECT SUM(base_quantity) FROM sales WHERE item = ? AND quantity = ? AND type != 'NEW STOCK'")) {
                         pSale.setString(1, item);
                         pSale.setString(2, size);
                         try (ResultSet rSale = pSale.executeQuery()) {
-                            if (rSale.next()) totalSold = rSale.getDouble(1);
+                            if (rSale.next())
+                                totalSold = rSale.getDouble(1);
                         }
                     }
 
@@ -712,7 +749,8 @@ public class DatabaseHelper {
                         double expected = totalAdded - totalSold;
                         if (expected > avail && Math.abs(expected - avail) >= 1.0) {
                             double difference = expected - avail;
-                            System.out.println("AUDIT NOTE: Stock " + item + " (" + size + ") calculated net: " + expected + ", stored available: " + avail + ", diff: " + difference);
+                            System.out.println("AUDIT NOTE: Stock " + item + " (" + size + ") calculated net: "
+                                    + expected + ", stored available: " + avail + ", diff: " + difference);
                         }
                     }
                 }
@@ -855,7 +893,8 @@ public class DatabaseHelper {
                 // When ALL is selected, just show everything including NEW STOCK
                 sql += "WHERE 1=1 ";
             }
-            sql += " GROUP BY COALESCE(NULLIF(receipt_id, ''), CASE WHEN (created_at IS NOT NULL AND created_at != '') THEN (created_at || customer) ELSE id END) " +
+            sql += " GROUP BY COALESCE(NULLIF(receipt_id, ''), CASE WHEN (created_at IS NOT NULL AND created_at != '') THEN (created_at || customer) ELSE id END) "
+                    +
                     " ORDER BY date DESC, REPLACE(MAX(created_at), 'T', ' ') DESC";
         }
 
@@ -949,7 +988,8 @@ public class DatabaseHelper {
         double quantityFactor = extractNumericValue(unit);
         // For NEW STOCK the multiplier must be computed the same way addStock() does it
         // (passing `unit` as its own bulkUnit reference), so that base_quantity in the
-        // sales history row exactly equals the available_pieces added to the stock table.
+        // sales history row exactly equals the available_pieces added to the stock
+        // table.
         // For WHOLESALE / RETAIL we continue to use the stock table's bulk unit so that
         // the deduction factor matches what updateStockQuantity() subtracts.
         double multiplier = "NEW STOCK".equals(type)
@@ -978,7 +1018,8 @@ public class DatabaseHelper {
             pstmt.setString(16, java.time.LocalDateTime.now().toString());
             pstmt.executeUpdate();
             if (!"NEW STOCK".equals(type)) {
-                addNotification("Sale recorded: " + customer + " bought " + item + " (" + unit + ", UGX " + String.format("%,.0f", totalAmount) + ")", "Desktop");
+                addNotification("Sale recorded: " + customer + " bought " + item + " (" + unit + ", UGX "
+                        + String.format("%,.0f", totalAmount) + ")", "Desktop");
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -1342,11 +1383,13 @@ public class DatabaseHelper {
         double pricePerSinglePiece = (double) p / multiplier; // e.g., 2083.33333333
 
         // Clear any prior deletion tombstone when re-adding stock
-        try (PreparedStatement delTomb = connection.prepareStatement("DELETE FROM deleted_stock WHERE item = ? AND quantity = ?")) {
+        try (PreparedStatement delTomb = connection
+                .prepareStatement("DELETE FROM deleted_stock WHERE item = ? AND quantity = ?")) {
             delTomb.setString(1, i);
             delTomb.setString(2, q);
             delTomb.executeUpdate();
-        } catch (SQLException ignored) {}
+        } catch (SQLException ignored) {
+        }
 
         String syncId = java.util.UUID.randomUUID().toString();
         String sql = "INSERT INTO stock(sync_id, supplier, item, quantity, unit, price, available_pieces, date, is_edited, device_source) VALUES(?, ?, ?, ?, ?, ?, ?, ?, 1, 'Desktop')";
@@ -1366,7 +1409,8 @@ public class DatabaseHelper {
         }
     }
 
-    public void logStockMovement(String item, String size, double changePieces, double prevPieces, double newPieces, String reason, String deviceSource) {
+    public void logStockMovement(String item, String size, double changePieces, double prevPieces, double newPieces,
+            String reason, String deviceSource) {
         String sql = "INSERT INTO stock_movement_log(item, quantity, change_pieces, previous_pieces, new_pieces, change_reason, device_source) VALUES(?, ?, ?, ?, ?, ?, ?)";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, item);
@@ -1461,15 +1505,19 @@ public class DatabaseHelper {
             }
 
             // Also move associated sales into deleted_history and remove from sales table
-            try (PreparedStatement fetchSales = connection.prepareStatement("SELECT sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount FROM sales WHERE item = ? OR LOWER(REPLACE(item, ' ', '')) = LOWER(REPLACE(?, ' ', ''))");
-                 PreparedStatement insHist = connection.prepareStatement("INSERT INTO deleted_history(sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
-                 PreparedStatement delSales = connection.prepareStatement("DELETE FROM sales WHERE item = ? OR LOWER(REPLACE(item, ' ', '')) = LOWER(REPLACE(?, ' ', ''))")) {
+            try (PreparedStatement fetchSales = connection.prepareStatement(
+                    "SELECT sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount FROM sales WHERE item = ? OR LOWER(REPLACE(item, ' ', '')) = LOWER(REPLACE(?, ' ', ''))");
+                    PreparedStatement insHist = connection.prepareStatement(
+                            "INSERT INTO deleted_history(sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
+                    PreparedStatement delSales = connection.prepareStatement(
+                            "DELETE FROM sales WHERE item = ? OR LOWER(REPLACE(item, ' ', '')) = LOWER(REPLACE(?, ' ', ''))")) {
                 fetchSales.setString(1, itemName);
                 fetchSales.setString(2, itemName);
                 ResultSet rsSales = fetchSales.executeQuery();
                 while (rsSales.next()) {
                     String sId = rsSales.getString("sync_id");
-                    if (sId == null || sId.isEmpty()) sId = java.util.UUID.randomUUID().toString();
+                    if (sId == null || sId.isEmpty())
+                        sId = java.util.UUID.randomUUID().toString();
                     insHist.setString(1, sId);
                     insHist.setString(2, rsSales.getString("customer"));
                     insHist.setString(3, rsSales.getString("item"));
@@ -1521,24 +1569,29 @@ public class DatabaseHelper {
 
             List<Integer> idsToDelete = new ArrayList<>();
             if (receiptId != null && !receiptId.isEmpty() && !"null".equalsIgnoreCase(receiptId)) {
-                try (PreparedStatement gPstmt = connection.prepareStatement("SELECT id FROM sales WHERE receipt_id = ?")) {
+                try (PreparedStatement gPstmt = connection
+                        .prepareStatement("SELECT id FROM sales WHERE receipt_id = ?")) {
                     gPstmt.setString(1, receiptId);
                     ResultSet gRs = gPstmt.executeQuery();
-                    while (gRs.next()) idsToDelete.add(gRs.getInt("id"));
+                    while (gRs.next())
+                        idsToDelete.add(gRs.getInt("id"));
                 }
             } else {
                 idsToDelete.add(id);
             }
 
             for (int itemId : idsToDelete) {
-                try (PreparedStatement fetch = connection.prepareStatement("SELECT sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount FROM sales WHERE id = ?");
-                     PreparedStatement ins = connection.prepareStatement("INSERT INTO deleted_history(sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
-                     PreparedStatement del = connection.prepareStatement("DELETE FROM sales WHERE id = ?")) {
+                try (PreparedStatement fetch = connection.prepareStatement(
+                        "SELECT sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount FROM sales WHERE id = ?");
+                        PreparedStatement ins = connection.prepareStatement(
+                                "INSERT INTO deleted_history(sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
+                        PreparedStatement del = connection.prepareStatement("DELETE FROM sales WHERE id = ?")) {
                     fetch.setInt(1, itemId);
                     ResultSet r = fetch.executeQuery();
                     if (r.next()) {
                         String sId = r.getString("sync_id");
-                        if (sId == null || sId.isEmpty()) sId = java.util.UUID.randomUUID().toString();
+                        if (sId == null || sId.isEmpty())
+                            sId = java.util.UUID.randomUUID().toString();
                         ins.setString(1, sId);
                         ins.setString(2, r.getString("customer"));
                         ins.setString(3, r.getString("item"));
@@ -1562,8 +1615,10 @@ public class DatabaseHelper {
 
                         if (sItem != null && !sItem.isEmpty() && sQty != null && !sQty.isEmpty()) {
                             double count = extractNumericValue(sUnit) * getUnitMultiplier(sUnit, sQty, sUnit);
-                            if (!"NEW STOCK".equals(sType) && !"Debt Payment".equals(sType) && !"Payment".equals(sType)) {
-                                try (PreparedStatement uStock = connection.prepareStatement("UPDATE stock SET available_pieces = available_pieces + ?, is_edited = 1 WHERE item = ? AND quantity = ?")) {
+                            if (!"NEW STOCK".equals(sType) && !"Debt Payment".equals(sType)
+                                    && !"Payment".equals(sType)) {
+                                try (PreparedStatement uStock = connection.prepareStatement(
+                                        "UPDATE stock SET available_pieces = available_pieces + ?, is_edited = 1 WHERE item = ? AND quantity = ?")) {
                                     uStock.setDouble(1, count);
                                     uStock.setString(2, sItem);
                                     uStock.setString(3, sQty);
@@ -1587,9 +1642,10 @@ public class DatabaseHelper {
     public ObservableList<String> getDistinctSuppliers() {
         ObservableList<String> names = FXCollections.observableArrayList();
         String sql = "SELECT supplier FROM stock WHERE supplier IS NOT NULL AND supplier != '' " +
-                     "UNION " +
-                     "SELECT customer AS supplier FROM sales WHERE type = 'NEW STOCK' AND customer IS NOT NULL AND customer != '' " +
-                     "ORDER BY supplier COLLATE NOCASE";
+                "UNION " +
+                "SELECT customer AS supplier FROM sales WHERE type = 'NEW STOCK' AND customer IS NOT NULL AND customer != '' "
+                +
+                "ORDER BY supplier COLLATE NOCASE";
         try (Statement stmt = connection.createStatement();
                 ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
@@ -1673,10 +1729,12 @@ public class DatabaseHelper {
         try {
             String done = getSetting("auto_resync_zombie_v5");
             if (done == null || !"1".equals(done)) {
-                System.out.println("MIGRATION (Desktop): Performing one-time auto-resync and cache cleanup for zombie stock & sales");
+                System.out.println(
+                        "MIGRATION (Desktop): Performing one-time auto-resync and cache cleanup for zombie stock & sales");
                 try (Statement stmt = connection.createStatement()) {
                     stmt.execute("UPDATE sales SET is_edited = 0 WHERE sync_id IS NOT NULL AND sync_id != ''");
-                } catch (Exception e) {}
+                } catch (Exception e) {
+                }
                 saveSetting("last_backup_timestamp", "0");
                 cleanupZombieStock();
                 saveSetting("auto_resync_zombie_v5", "1");
@@ -1685,8 +1743,10 @@ public class DatabaseHelper {
             String doneTombstones = getSetting("has_cleared_stale_tombstones_v1");
             if (doneTombstones == null || !"1".equals(doneTombstones)) {
                 try (Statement stmt = connection.createStatement()) {
-                    stmt.execute("DELETE FROM deleted_stock WHERE EXISTS (SELECT 1 FROM stock WHERE stock.item = deleted_stock.item AND stock.quantity = deleted_stock.quantity)");
-                    stmt.execute("DELETE FROM deleted_history WHERE EXISTS (SELECT 1 FROM sales WHERE sales.customer = deleted_history.customer AND sales.item = deleted_history.item AND sales.date = deleted_history.date)");
+                    stmt.execute(
+                            "DELETE FROM deleted_stock WHERE EXISTS (SELECT 1 FROM stock WHERE stock.item = deleted_stock.item AND stock.quantity = deleted_stock.quantity)");
+                    stmt.execute(
+                            "DELETE FROM deleted_history WHERE EXISTS (SELECT 1 FROM sales WHERE sales.customer = deleted_history.customer AND sales.item = deleted_history.item AND sales.date = deleted_history.date)");
                     saveSetting("has_cleared_stale_tombstones_v1", "1");
                     System.out.println("MIGRATION (Desktop): Cleared stale tombstones for active stock/sales.");
                 } catch (Exception e) {
@@ -1697,7 +1757,8 @@ public class DatabaseHelper {
             String doneGhostSales = getSetting("has_purged_ghost_sales_v1");
             if (doneGhostSales == null || !"1".equals(doneGhostSales)) {
                 try (Statement stmt = connection.createStatement()) {
-                    stmt.execute("DELETE FROM sales WHERE EXISTS (SELECT 1 FROM deleted_history WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') OR (deleted_history.item = sales.item AND deleted_history.date = sales.date))");
+                    stmt.execute(
+                            "DELETE FROM sales WHERE EXISTS (SELECT 1 FROM deleted_history WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') OR (deleted_history.item = sales.item AND deleted_history.date = sales.date))");
                     saveSetting("has_purged_ghost_sales_v1", "1");
                     System.out.println("MIGRATION (Desktop): Purged ghost sales matching deleted_history.");
                 } catch (Exception e) {
@@ -1708,19 +1769,25 @@ public class DatabaseHelper {
             String doneStockSales = getSetting("has_purged_deleted_stock_sales_v3");
             if (doneStockSales == null || !"1".equals(doneStockSales)) {
                 try (Statement stmt = connection.createStatement()) {
-                    stmt.execute("INSERT INTO deleted_history (sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited, device_source) " +
-                        "SELECT COALESCE(NULLIF(sales.sync_id, ''), lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))), " +
-                        "sales.customer, sales.item, sales.quantity, sales.unit, sales.price, sales.cost_price, sales.base_quantity, sales.amount, sales.type, sales.date, sales.is_debt, sales.is_paid, sales.paid_amount, 1, 'Migration' " +
-                        "FROM sales WHERE (" +
-                        "  EXISTS (" +
-                        "    SELECT 1 FROM deleted_stock WHERE LOWER(REPLACE(deleted_stock.item, ' ', '')) = LOWER(REPLACE(sales.item, ' ', '')) OR sales.item LIKE '%' || deleted_stock.item || '%' OR deleted_stock.item LIKE '%' || sales.item || '%'" +
-                        "  )" +
-                        ") AND sales.type != 'NEW STOCK'");
+                    stmt.execute(
+                            "INSERT INTO deleted_history (sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited, device_source) "
+                                    +
+                                    "SELECT COALESCE(NULLIF(sales.sync_id, ''), lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))), "
+                                    +
+                                    "sales.customer, sales.item, sales.quantity, sales.unit, sales.price, sales.cost_price, sales.base_quantity, sales.amount, sales.type, sales.date, sales.is_debt, sales.is_paid, sales.paid_amount, 1, 'Migration' "
+                                    +
+                                    "FROM sales WHERE (" +
+                                    "  EXISTS (" +
+                                    "    SELECT 1 FROM deleted_stock WHERE LOWER(REPLACE(deleted_stock.item, ' ', '')) = LOWER(REPLACE(sales.item, ' ', '')) OR sales.item LIKE '%' || deleted_stock.item || '%' OR deleted_stock.item LIKE '%' || sales.item || '%'"
+                                    +
+                                    "  )" +
+                                    ") AND sales.type != 'NEW STOCK'");
                     stmt.execute("DELETE FROM sales WHERE (" +
-                        "  EXISTS (" +
-                        "    SELECT 1 FROM deleted_stock WHERE LOWER(REPLACE(deleted_stock.item, ' ', '')) = LOWER(REPLACE(sales.item, ' ', '')) OR sales.item LIKE '%' || deleted_stock.item || '%' OR deleted_stock.item LIKE '%' || sales.item || '%'" +
-                        "  )" +
-                        ") AND sales.type != 'NEW STOCK'");
+                            "  EXISTS (" +
+                            "    SELECT 1 FROM deleted_stock WHERE LOWER(REPLACE(deleted_stock.item, ' ', '')) = LOWER(REPLACE(sales.item, ' ', '')) OR sales.item LIKE '%' || deleted_stock.item || '%' OR deleted_stock.item LIKE '%' || sales.item || '%'"
+                            +
+                            "  )" +
+                            ") AND sales.type != 'NEW STOCK'");
                     saveSetting("has_purged_deleted_stock_sales_v3", "1");
                     System.out.println("MIGRATION (Desktop): Purged ghost sales associated with deleted stock.");
                 } catch (Exception e) {
@@ -1731,7 +1798,8 @@ public class DatabaseHelper {
             String fixZerospot = getSetting("fix_zerospot_tombstones_v1");
             if (fixZerospot == null || !"1".equals(fixZerospot)) {
                 try (Statement stmt = connection.createStatement()) {
-                    stmt.execute("DELETE FROM deleted_history WHERE (LOWER(item) LIKE '%zerospot%' OR LOWER(item) LIKE '%zero%spot%') AND device_source = 'Migration'");
+                    stmt.execute(
+                            "DELETE FROM deleted_history WHERE (LOWER(item) LIKE '%zerospot%' OR LOWER(item) LIKE '%zero%spot%') AND device_source = 'Migration'");
                     saveSetting("fix_zerospot_tombstones_v1", "1");
                     System.out.println("MIGRATION (Desktop): Cleared invalid migration tombstones for zerospot.");
                 } catch (Exception e) {
@@ -1749,7 +1817,7 @@ public class DatabaseHelper {
     public void cleanupZombieStock() {
         String sql = "SELECT id, item, quantity, sync_id FROM stock WHERE (available_pieces <= 0 OR NOT EXISTS (SELECT 1 FROM sales WHERE sales.item = stock.item AND sales.quantity = stock.quantity AND sales.type = 'NEW STOCK')) AND (is_edited = 0 OR is_edited IS NULL)";
         try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+                ResultSet rs = stmt.executeQuery(sql)) {
             List<Map<String, String>> zombies = new ArrayList<>();
             while (rs.next()) {
                 Map<String, String> z = new HashMap<>();
@@ -1757,11 +1825,13 @@ public class DatabaseHelper {
                 z.put("item", rs.getString("item"));
                 z.put("quantity", rs.getString("quantity"));
                 String syncId = rs.getString("sync_id");
-                z.put("sync_id", (syncId != null && !syncId.isEmpty()) ? syncId : java.util.UUID.randomUUID().toString());
+                z.put("sync_id",
+                        (syncId != null && !syncId.isEmpty()) ? syncId : java.util.UUID.randomUUID().toString());
                 zombies.add(z);
             }
-            try (PreparedStatement ins = connection.prepareStatement("INSERT INTO deleted_stock (sync_id, item, quantity) VALUES (?, ?, ?)");
-                 PreparedStatement del = connection.prepareStatement("DELETE FROM stock WHERE id = ?")) {
+            try (PreparedStatement ins = connection
+                    .prepareStatement("INSERT INTO deleted_stock (sync_id, item, quantity) VALUES (?, ?, ?)");
+                    PreparedStatement del = connection.prepareStatement("DELETE FROM stock WHERE id = ?")) {
                 for (Map<String, String> z : zombies) {
                     ins.setString(1, z.get("sync_id"));
                     ins.setString(2, z.get("item"));
@@ -1770,7 +1840,8 @@ public class DatabaseHelper {
 
                     del.setInt(1, Integer.parseInt(z.get("id")));
                     del.executeUpdate();
-                    System.out.println("CLEANUP ZOMBIE STOCK (Desktop): Deleted orphan stock '" + z.get("item") + " (" + z.get("quantity") + ")'");
+                    System.out.println("CLEANUP ZOMBIE STOCK (Desktop): Deleted orphan stock '" + z.get("item") + " ("
+                            + z.get("quantity") + ")'");
                 }
             }
         } catch (SQLException e) {
@@ -1864,9 +1935,11 @@ public class DatabaseHelper {
             try (PreparedStatement pstmt = connection.prepareStatement(sqlSync)) {
                 pstmt.setString(1, syncId);
                 try (ResultSet rs = pstmt.executeQuery()) {
-                    if (rs.next()) return true;
+                    if (rs.next())
+                        return true;
                 }
-            } catch (SQLException ignored) {}
+            } catch (SQLException ignored) {
+            }
         }
         String sql = "SELECT 1 FROM deleted_stock WHERE item = ? AND quantity = ?";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
@@ -2045,10 +2118,12 @@ public class DatabaseHelper {
         int count = 0;
         try (Statement stmt = connection.createStatement()) {
             try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM stock WHERE is_edited = 1")) {
-                if (rs.next()) count += rs.getInt(1);
+                if (rs.next())
+                    count += rs.getInt(1);
             }
             try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM sales WHERE is_edited = 1")) {
-                if (rs.next()) count += rs.getInt(1);
+                if (rs.next())
+                    count += rs.getInt(1);
             }
         } catch (SQLException e) {
             e.printStackTrace();
@@ -2160,44 +2235,62 @@ public class DatabaseHelper {
 
     /**
      * Pull cloud stock into local DB.
+     * 
      * @param forceAcceptPieces true on manual/full sync to correct drift.
-     *   During incremental background sync, pass false so delta merge handles counts.
+     *                          During incremental background sync, pass false so
+     *                          delta merge handles counts.
      */
     public void upsertCloudStock(com.google.gson.JsonArray cloudStock, boolean forceAcceptPieces) {
         if (cloudStock == null || cloudStock.size() == 0)
             return;
-            
+
         String updateMetaOnly = "UPDATE stock SET sync_id=?, supplier=?, item=?, quantity=?, unit=?, price=?, device_source=?, date=? WHERE id=?";
         String updateWithPieces = "UPDATE stock SET sync_id=?, supplier=?, item=?, quantity=?, unit=?, price=?, available_pieces=?, device_source=?, date=?, is_edited=0 WHERE id=?";
         String insertSql = "INSERT INTO stock (sync_id, supplier, item, quantity, unit, price, available_pieces, device_source, date, is_edited) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
-        
-        try (PreparedStatement checkStmt = connection.prepareStatement("SELECT id, is_edited, price, item, quantity, unit FROM stock WHERE sync_id = ?");
-             PreparedStatement checkByItemQtyStmt = connection.prepareStatement("SELECT id, is_edited, price, item, quantity, unit FROM stock WHERE item = ? AND quantity = ?");
-             PreparedStatement updateMetaStmt = connection.prepareStatement(updateMetaOnly);
-             PreparedStatement updateFullStmt = connection.prepareStatement(updateWithPieces);
-             PreparedStatement insertStmt = connection.prepareStatement(insertSql)) {
-             
+
+        try (PreparedStatement checkStmt = connection
+                .prepareStatement("SELECT id, is_edited, price, item, quantity, unit FROM stock WHERE sync_id = ?");
+                PreparedStatement checkByItemQtyStmt = connection.prepareStatement(
+                        "SELECT id, is_edited, price, item, quantity, unit FROM stock WHERE item = ? AND quantity = ?");
+                PreparedStatement updateMetaStmt = connection.prepareStatement(updateMetaOnly);
+                PreparedStatement updateFullStmt = connection.prepareStatement(updateWithPieces);
+                PreparedStatement insertStmt = connection.prepareStatement(insertSql)) {
+
             for (com.google.gson.JsonElement el : cloudStock) {
                 com.google.gson.JsonObject obj = el.getAsJsonObject();
-                String syncId = obj.has("sync_id") && !obj.get("sync_id").isJsonNull() ? obj.get("sync_id").getAsString() : null;
-                String supplier = obj.has("supplier") && !obj.get("supplier").isJsonNull() ? obj.get("supplier").getAsString() : "Unknown";
-                String item = obj.has("item") && !obj.get("item").isJsonNull() ? obj.get("item").getAsString() : "Unknown";
-                String quantity = obj.has("quantity") && !obj.get("quantity").isJsonNull() ? obj.get("quantity").getAsString() : "0";
+                String syncId = obj.has("sync_id") && !obj.get("sync_id").isJsonNull()
+                        ? obj.get("sync_id").getAsString()
+                        : null;
+                String supplier = obj.has("supplier") && !obj.get("supplier").isJsonNull()
+                        ? obj.get("supplier").getAsString()
+                        : "Unknown";
+                String item = obj.has("item") && !obj.get("item").isJsonNull() ? obj.get("item").getAsString()
+                        : "Unknown";
+                String quantity = obj.has("quantity") && !obj.get("quantity").isJsonNull()
+                        ? obj.get("quantity").getAsString()
+                        : "0";
 
                 if (isStockDeleted(item, quantity, syncId)) {
-                    System.out.println("SYNC: Skipping restore of stock " + item + " (" + quantity + ") - Deleted in tombstone.");
+                    System.out.println(
+                            "SYNC: Skipping restore of stock " + item + " (" + quantity + ") - Deleted in tombstone.");
                     continue;
                 }
                 String unit = obj.has("unit") && !obj.get("unit").isJsonNull() ? obj.get("unit").getAsString() : "";
-                String price = obj.has("price") && !obj.get("price").isJsonNull() ? obj.get("price").getAsString() : "0";
-                double availablePieces = obj.has("available_pieces") && !obj.get("available_pieces").isJsonNull() ? obj.get("available_pieces").getAsDouble() : 0;
-                String deviceSource = obj.has("device_source") && !obj.get("device_source").isJsonNull() ? obj.get("device_source").getAsString() : "Cloud";
-                String date = obj.has("date") && !obj.get("date").isJsonNull() ? obj.get("date").getAsString() : LocalDate.now().toString();
+                String price = obj.has("price") && !obj.get("price").isJsonNull() ? obj.get("price").getAsString()
+                        : "0";
+                double availablePieces = obj.has("available_pieces") && !obj.get("available_pieces").isJsonNull()
+                        ? obj.get("available_pieces").getAsDouble()
+                        : 0;
+                String deviceSource = obj.has("device_source") && !obj.get("device_source").isJsonNull()
+                        ? obj.get("device_source").getAsString()
+                        : "Cloud";
+                String date = obj.has("date") && !obj.get("date").isJsonNull() ? obj.get("date").getAsString()
+                        : LocalDate.now().toString();
 
                 checkStmt.setString(1, syncId);
                 ResultSet rs = checkStmt.executeQuery();
                 boolean exists = rs.next();
-                
+
                 int localId = -1;
                 boolean localIsDirty = false;
                 double oldPrice = 0.0;
@@ -2228,41 +2321,44 @@ public class DatabaseHelper {
                         }
                     }
                 }
-                
+
                 if (exists) {
                     double newPriceVal = 0.0;
                     try {
                         newPriceVal = Double.parseDouble(price);
-                    } catch (NumberFormatException ignored) {}
-                    
+                    } catch (NumberFormatException ignored) {
+                    }
+
                     if (Math.abs(oldPrice - newPriceVal) > 0.0001 && !"Desktop".equals(deviceSource)) {
                         double multiplier = getUnitMultiplier(localUnit, localQuantity, localUnit);
                         double oldUnitPrice = oldPrice * multiplier;
                         double newUnitPrice = newPriceVal * multiplier;
-                        
+
                         addNotification(
-                            String.format("Price updated for %s (%s): UGX %,.0f ➔ UGX %,.0f per %s", 
-                                localItem, localQuantity, oldUnitPrice, newUnitPrice, localUnit),
-                            deviceSource
-                        );
+                                String.format("Price updated for %s (%s): UGX %,.0f ➔ UGX %,.0f per %s",
+                                        localItem, localQuantity, oldUnitPrice, newUnitPrice, localUnit),
+                                deviceSource);
                     }
 
                     if (!localIsDirty) {
                         // Check if local pieces is lower than cloud pieces due to local sales
                         double localPieces = 0.0;
-                        try (PreparedStatement getPiecesPstmt = connection.prepareStatement("SELECT available_pieces FROM stock WHERE id = ?")) {
+                        try (PreparedStatement getPiecesPstmt = connection
+                                .prepareStatement("SELECT available_pieces FROM stock WHERE id = ?")) {
                             getPiecesPstmt.setInt(1, localId);
                             try (ResultSet rPieces = getPiecesPstmt.executeQuery()) {
                                 if (rPieces.next()) {
                                     localPieces = rPieces.getDouble("available_pieces");
                                 }
                             }
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
 
                         // If local has fewer pieces than cloud, check if a sale was made today locally
                         double piecesToUse = availablePieces;
                         if (localPieces < availablePieces) {
-                            try (PreparedStatement checkSalePstmt = connection.prepareStatement("SELECT 1 FROM sales WHERE item = ? AND date = ? LIMIT 1")) {
+                            try (PreparedStatement checkSalePstmt = connection
+                                    .prepareStatement("SELECT 1 FROM sales WHERE item = ? AND date = ? LIMIT 1")) {
                                 checkSalePstmt.setString(1, localItem);
                                 checkSalePstmt.setString(2, LocalDate.now().toString());
                                 try (ResultSet rSale = checkSalePstmt.executeQuery()) {
@@ -2271,7 +2367,8 @@ public class DatabaseHelper {
                                         piecesToUse = localPieces;
                                     }
                                 }
-                            } catch (Exception ignored) {}
+                            } catch (Exception ignored) {
+                            }
                         }
 
                         // Accept cloud available_pieces to sync stock changes across devices
@@ -2318,14 +2415,17 @@ public class DatabaseHelper {
                 Set<String> cloudItemKeys = new HashSet<>();
                 for (com.google.gson.JsonElement el : cloudStock) {
                     com.google.gson.JsonObject o = el.getAsJsonObject();
-                    if (o.has("sync_id") && !o.get("sync_id").isJsonNull()) cloudSyncIds.add(o.get("sync_id").getAsString());
+                    if (o.has("sync_id") && !o.get("sync_id").isJsonNull())
+                        cloudSyncIds.add(o.get("sync_id").getAsString());
                     String item = o.has("item") && !o.get("item").isJsonNull() ? o.get("item").getAsString() : "";
-                    String quantity = o.has("quantity") && !o.get("quantity").isJsonNull() ? o.get("quantity").getAsString() : "";
+                    String quantity = o.has("quantity") && !o.get("quantity").isJsonNull()
+                            ? o.get("quantity").getAsString()
+                            : "";
                     cloudItemKeys.add(item + "____" + quantity);
                 }
 
                 try (Statement stmt = connection.createStatement();
-                     ResultSet rs = stmt.executeQuery("SELECT id, sync_id, item, quantity, is_edited FROM stock")) {
+                        ResultSet rs = stmt.executeQuery("SELECT id, sync_id, item, quantity, is_edited FROM stock")) {
                     List<Integer> idsToDelete = new ArrayList<>();
                     while (rs.next()) {
                         int id = rs.getInt("id");
@@ -2333,7 +2433,8 @@ public class DatabaseHelper {
                         String itemKey = rs.getString("item") + "____" + rs.getString("quantity");
                         boolean isEdited = rs.getInt("is_edited") == 1;
 
-                        boolean inCloud = (syncId != null && cloudSyncIds.contains(syncId)) || cloudItemKeys.contains(itemKey);
+                        boolean inCloud = (syncId != null && cloudSyncIds.contains(syncId))
+                                || cloudItemKeys.contains(itemKey);
                         if (!inCloud && !isEdited) {
                             idsToDelete.add(id);
                         }
@@ -2356,15 +2457,16 @@ public class DatabaseHelper {
             return;
         String updateSql = "UPDATE sales SET customer=?, item=?, quantity=?, unit=?, price=?, cost_price=?, base_quantity=?, amount=?, type=?, date=?, is_debt=?, is_paid=?, paid_amount=?, receipt_id=?, device_source=?, is_edited=0 WHERE sync_id=?";
         String insertSql = "INSERT INTO sales (sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, receipt_id, device_source, created_at, is_edited) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)";
-        
-        try (PreparedStatement checkStmt = connection.prepareStatement("SELECT id, paid_amount FROM sales WHERE sync_id = ?");
-             PreparedStatement updateStmt = connection.prepareStatement(updateSql);
-             PreparedStatement insertStmt = connection.prepareStatement(insertSql)) {
-             
+
+        try (PreparedStatement checkStmt = connection
+                .prepareStatement("SELECT id, paid_amount FROM sales WHERE sync_id = ?");
+                PreparedStatement updateStmt = connection.prepareStatement(updateSql);
+                PreparedStatement insertStmt = connection.prepareStatement(insertSql)) {
+
             for (com.google.gson.JsonElement el : cloudSales) {
                 com.google.gson.JsonObject obj = el.getAsJsonObject();
                 String syncId = obj.get("sync_id").getAsString();
-                
+
                 // Check if this is a brand new entry from the cloud
                 boolean isNew = false;
                 double localPaidAmount = 0.0;
@@ -2378,42 +2480,65 @@ public class DatabaseHelper {
                         localPaidAmount = checkRs.getDouble("paid_amount");
                     }
                 }
-                
-                String customer = obj.has("customer") && !obj.get("customer").isJsonNull() ? obj.get("customer").getAsString() : "";
-                String item = obj.has("item") && !obj.get("item").isJsonNull() ? obj.get("item").getAsString() : "Unknown";
-                String quantity = obj.has("quantity") && !obj.get("quantity").isJsonNull() ? obj.get("quantity").getAsString() : "0";
+
+                String customer = obj.has("customer") && !obj.get("customer").isJsonNull()
+                        ? obj.get("customer").getAsString()
+                        : "";
+                String item = obj.has("item") && !obj.get("item").isJsonNull() ? obj.get("item").getAsString()
+                        : "Unknown";
+                String quantity = obj.has("quantity") && !obj.get("quantity").isJsonNull()
+                        ? obj.get("quantity").getAsString()
+                        : "0";
                 String unit = obj.has("unit") && !obj.get("unit").isJsonNull() ? obj.get("unit").getAsString() : "";
-                String price = obj.has("price") && !obj.get("price").isJsonNull() ? obj.get("price").getAsString() : "0";
-                double costPrice = obj.has("cost_price") && !obj.get("cost_price").isJsonNull() ? obj.get("cost_price").getAsDouble() : 0;
-                double baseQuantity = obj.has("base_quantity") && !obj.get("base_quantity").isJsonNull() ? obj.get("base_quantity").getAsDouble() : 0;
-                String amount = obj.has("amount") && !obj.get("amount").isJsonNull() ? obj.get("amount").getAsString() : "0";
+                String price = obj.has("price") && !obj.get("price").isJsonNull() ? obj.get("price").getAsString()
+                        : "0";
+                double costPrice = obj.has("cost_price") && !obj.get("cost_price").isJsonNull()
+                        ? obj.get("cost_price").getAsDouble()
+                        : 0;
+                double baseQuantity = obj.has("base_quantity") && !obj.get("base_quantity").isJsonNull()
+                        ? obj.get("base_quantity").getAsDouble()
+                        : 0;
+                String amount = obj.has("amount") && !obj.get("amount").isJsonNull() ? obj.get("amount").getAsString()
+                        : "0";
                 String type = obj.has("type") && !obj.get("type").isJsonNull() ? obj.get("type").getAsString() : "";
-                String date = obj.has("date") && !obj.get("date").isJsonNull() ? obj.get("date").getAsString() : LocalDate.now().toString();
+                String date = obj.has("date") && !obj.get("date").isJsonNull() ? obj.get("date").getAsString()
+                        : LocalDate.now().toString();
 
                 if (isNew && isSaleDeleted(customer, item, amount, date, syncId)) {
-                    System.out.println("SYNC: Skipping restore of sale " + item + " (" + customer + ") - Deleted in tombstone.");
+                    System.out.println(
+                            "SYNC: Skipping restore of sale " + item + " (" + customer + ") - Deleted in tombstone.");
                     continue;
                 }
-                
+
                 int isDebt = 0;
                 if (obj.has("is_debt") && !obj.get("is_debt").isJsonNull()) {
                     com.google.gson.JsonElement e = obj.get("is_debt");
-                    isDebt = (e.isJsonPrimitive() && e.getAsJsonPrimitive().isBoolean()) ? (e.getAsBoolean() ? 1 : 0) : e.getAsInt();
+                    isDebt = (e.isJsonPrimitive() && e.getAsJsonPrimitive().isBoolean()) ? (e.getAsBoolean() ? 1 : 0)
+                            : e.getAsInt();
                 }
-                
+
                 int isPaid = 0;
                 if (obj.has("is_paid") && !obj.get("is_paid").isJsonNull()) {
                     com.google.gson.JsonElement e = obj.get("is_paid");
-                    isPaid = (e.isJsonPrimitive() && e.getAsJsonPrimitive().isBoolean()) ? (e.getAsBoolean() ? 1 : 0) : e.getAsInt();
+                    isPaid = (e.isJsonPrimitive() && e.getAsJsonPrimitive().isBoolean()) ? (e.getAsBoolean() ? 1 : 0)
+                            : e.getAsInt();
                 }
-                
-                double cloudPaidAmount = obj.has("paid_amount") && !obj.get("paid_amount").isJsonNull() ? obj.get("paid_amount").getAsDouble() : 0.0;
-                String receiptId = obj.has("receipt_id") && !obj.get("receipt_id").isJsonNull() ? obj.get("receipt_id").getAsString() : null;
+
+                double cloudPaidAmount = obj.has("paid_amount") && !obj.get("paid_amount").isJsonNull()
+                        ? obj.get("paid_amount").getAsDouble()
+                        : 0.0;
+                String receiptId = obj.has("receipt_id") && !obj.get("receipt_id").isJsonNull()
+                        ? obj.get("receipt_id").getAsString()
+                        : null;
                 if (receiptId != null && (receiptId.isEmpty() || "null".equalsIgnoreCase(receiptId))) {
                     receiptId = null;
                 }
-                String deviceSource = obj.has("device_source") && !obj.get("device_source").isJsonNull() ? obj.get("device_source").getAsString() : "Cloud";
-                String createdAt = obj.has("created_at") && !obj.get("created_at").isJsonNull() ? obj.get("created_at").getAsString() : java.time.LocalDateTime.now().toString();
+                String deviceSource = obj.has("device_source") && !obj.get("device_source").isJsonNull()
+                        ? obj.get("device_source").getAsString()
+                        : "Cloud";
+                String createdAt = obj.has("created_at") && !obj.get("created_at").isJsonNull()
+                        ? obj.get("created_at").getAsString()
+                        : java.time.LocalDateTime.now().toString();
 
                 if (isNew) {
                     insertStmt.setString(1, syncId);
@@ -2453,7 +2578,7 @@ public class DatabaseHelper {
                     updateStmt.setString(16, syncId);
                     updateStmt.executeUpdate();
                 }
-                
+
                 if (isNew) {
                     boolean isRecent = false;
                     if (createdAt != null && !createdAt.isEmpty()) {
@@ -2463,18 +2588,21 @@ public class DatabaseHelper {
                             if (Math.abs(ageSec) < 60) {
                                 isRecent = true;
                             }
-                        } catch (Exception ignored) {}
+                        } catch (Exception ignored) {
+                        }
                     }
 
                     if ("Mobile".equals(deviceSource) && isRecent) {
                         if ("NEW STOCK".equals(type)) {
                             addNotification("NEW STOCK: " + item + " has been stocked", "Mobile");
                         } else {
-                            addNotification("Sale recorded for " + customer + ": " + item + " (UGX " + amount + ")", "Mobile");
+                            addNotification("Sale recorded for " + customer + ": " + item + " (UGX " + amount + ")",
+                                    "Mobile");
                         }
                     }
 
-                    // Apply Event-Sourced Delta Merge whenever new sales arrive from ANY device in incremental mode
+                    // Apply Event-Sourced Delta Merge whenever new sales arrive from ANY device in
+                    // incremental mode
                     if (isIncremental && isNew && !item.isEmpty() && !quantity.isEmpty() && !unit.isEmpty()) {
                         double multiplier = getUnitMultiplier(unit, quantity, unit);
                         double count = extractNumericValue(unit) * multiplier;
@@ -2488,7 +2616,7 @@ public class DatabaseHelper {
                                 uStmt.setString(3, quantity);
                                 uStmt.executeUpdate();
                             }
-                        } else if (!type.isEmpty() && !"Debt Payment".equals(type) && !"Payment".equals(type)) { 
+                        } else if (!type.isEmpty() && !"Debt Payment".equals(type) && !"Payment".equals(type)) {
                             // Regular sales and Debts subtract from local stock balance (CRDT Delta)
                             String updateStock = "UPDATE stock SET available_pieces = available_pieces - ? WHERE item = ? AND quantity = ?";
                             try (PreparedStatement uStmt = connection.prepareStatement(updateStock)) {
@@ -2506,19 +2634,22 @@ public class DatabaseHelper {
                                 try (ResultSet rs = cStmt.executeQuery()) {
                                     if (rs.next() && rs.getDouble("available_pieces") < 0) {
                                         addNotification(
-                                            String.format("⚠️ Negative Stock Discrepancy: %s (%s) balance is %s pieces.", 
-                                                item, quantity, String.format("%.0f", rs.getDouble("available_pieces"))),
-                                            "System"
-                                        );
+                                                String.format(
+                                                        "⚠️ Negative Stock Discrepancy: %s (%s) balance is %s pieces.",
+                                                        item, quantity,
+                                                        String.format("%.0f", rs.getDouble("available_pieces"))),
+                                                "System");
                                     }
                                 }
-                            } catch (SQLException ignored) {}
+                            } catch (SQLException ignored) {
+                            }
                         }
                     }
                 } else {
                     if (cloudPaidAmount > localPaidAmount) {
                         double diff = cloudPaidAmount - localPaidAmount;
-                        addNotification("Payment of UGX " + (int) Math.round(diff) + " received for " + customer, "Mobile");
+                        addNotification("Payment of UGX " + (int) Math.round(diff) + " received for " + customer,
+                                "Mobile");
                         if (localId != -1) {
                             try (PreparedStatement payStmt = connection.prepareStatement(
                                     "INSERT INTO debt_payments(sale_id, amount_paid, payment_date, sync_id) VALUES(?, ?, ?, ?)")) {
@@ -2543,7 +2674,8 @@ public class DatabaseHelper {
                     if (o.has("sync_id") && !o.get("sync_id").isJsonNull()) {
                         cloudSyncIds.add(o.get("sync_id").getAsString());
                     }
-                    String cust = o.has("customer") && !o.get("customer").isJsonNull() ? o.get("customer").getAsString() : "";
+                    String cust = o.has("customer") && !o.get("customer").isJsonNull() ? o.get("customer").getAsString()
+                            : "";
                     String item = o.has("item") && !o.get("item").isJsonNull() ? o.get("item").getAsString() : "";
                     String date = o.has("date") && !o.get("date").isJsonNull() ? o.get("date").getAsString() : "";
                     String amt = o.has("amount") && !o.get("amount").isJsonNull() ? o.get("amount").getAsString() : "";
@@ -2551,15 +2683,18 @@ public class DatabaseHelper {
                 }
 
                 try (Statement stmt = connection.createStatement();
-                     ResultSet rs = stmt.executeQuery("SELECT id, sync_id, customer, item, date, amount, is_edited, created_at FROM sales")) {
+                        ResultSet rs = stmt.executeQuery(
+                                "SELECT id, sync_id, customer, item, date, amount, is_edited, created_at FROM sales")) {
                     List<Integer> idsToDelete = new ArrayList<>();
                     while (rs.next()) {
                         int id = rs.getInt("id");
                         String syncId = rs.getString("sync_id");
-                        String key = rs.getString("customer") + "____" + rs.getString("item") + "____" + rs.getString("date") + "____" + rs.getString("amount");
+                        String key = rs.getString("customer") + "____" + rs.getString("item") + "____"
+                                + rs.getString("date") + "____" + rs.getString("amount");
                         boolean isEdited = rs.getInt("is_edited") == 1;
 
-                        boolean inCloud = (syncId != null && cloudSyncIds.contains(syncId)) || cloudSaleKeys.contains(key);
+                        boolean inCloud = (syncId != null && cloudSyncIds.contains(syncId))
+                                || cloudSaleKeys.contains(key);
                         if (!inCloud) {
                             boolean isRecentLocalDraft = false;
                             if (isEdited && (syncId == null || syncId.isEmpty())) {
@@ -2567,11 +2702,13 @@ public class DatabaseHelper {
                                 if (createdAt != null && !createdAt.isEmpty()) {
                                     try {
                                         java.time.Instant rowTime = java.time.Instant.parse(createdAt);
-                                        long ageSec = java.time.Duration.between(rowTime, java.time.Instant.now()).getSeconds();
+                                        long ageSec = java.time.Duration.between(rowTime, java.time.Instant.now())
+                                                .getSeconds();
                                         if (Math.abs(ageSec) < 600) {
                                             isRecentLocalDraft = true;
                                         }
-                                    } catch (Exception ignored) {}
+                                    } catch (Exception ignored) {
+                                    }
                                 }
                             }
                             if (!isRecentLocalDraft) {
@@ -2683,7 +2820,8 @@ public class DatabaseHelper {
                 "GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount || ' (' || date || ')', '\n') as item, "
                 +
                 "type, '-' as quantity, '-' as unit, 0 as price, 0 as cost_price, 0 as base_quantity, " +
-                "SUM(amount) as amount, MAX(date) as date, is_debt, is_paid, SUM(COALESCE(paid_amount, 0)) as paid_amount " +
+                "SUM(amount) as amount, MAX(date) as date, is_debt, is_paid, SUM(COALESCE(paid_amount, 0)) as paid_amount "
+                +
                 "FROM sales WHERE is_debt = 1 AND is_paid = 1 AND customer != 'Walk-in Customer' " +
                 "GROUP BY customer ORDER BY MAX(date) DESC LIMIT 100";
         try (Statement stmt = connection.createStatement();
@@ -2834,7 +2972,8 @@ public class DatabaseHelper {
     }
 
     private static long getSecondsDifference(String t1, String t2) {
-        if (t1 == null || t2 == null) return 9999;
+        if (t1 == null || t2 == null)
+            return 9999;
         try {
             String cleanT1 = t1.replace("Z", "").replace(" ", "T");
             String cleanT2 = t2.replace("Z", "").replace(" ", "T");
@@ -2889,5 +3028,3 @@ public class DatabaseHelper {
         }
     }
 }
-
-

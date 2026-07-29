@@ -22,12 +22,84 @@ class NotificationRouteInfo {
 
     if (lower.contains('online') || lower.contains('offline') || lower.contains('internet')) {
       type = NotificationTargetType.none;
-    } else if (lower.contains('payment') || lower.contains('debt') || lower.contains('paid')) {
+    } else if (lower.startsWith('new stock:')) {
+      type = NotificationTargetType.stock;
+      String itemPart = message.substring(10).trim(); // Skip 'NEW STOCK:'
+      final idx = itemPart.toLowerCase().lastIndexOf('has been stocked');
+      if (idx != -1) {
+        query = itemPart.substring(0, idx).trim();
+      } else {
+        query = itemPart;
+      }
+    } else if (lower.startsWith('added ')) {
+      type = NotificationTargetType.stock;
+      final fromIdx = lower.lastIndexOf(' from ');
+      if (fromIdx != -1) {
+        String itemPart = message.substring(6, fromIdx).trim(); // Skip 'Added '
+        if (itemPart.toLowerCase() == 'stock') {
+          query = message.substring(fromIdx + 6).trim();
+        } else {
+          query = itemPart;
+        }
+      } else {
+        query = message.substring(6).trim();
+      }
+    } else if (lower.startsWith('sale recorded:')) {
+      type = NotificationTargetType.sale;
+      final boughtIdx = lower.indexOf(' bought ');
+      if (boughtIdx != -1) {
+        String itemPart = message.substring(boughtIdx + 8).trim();
+        final parenIdx = itemPart.indexOf('(');
+        if (parenIdx != -1) {
+          query = itemPart.substring(0, parenIdx).trim();
+        } else {
+          query = itemPart;
+        }
+      } else {
+        query = message.substring(14).trim();
+      }
+    } else if (lower.startsWith('sale recorded for ')) {
+      type = NotificationTargetType.sale;
+      final colonIdx = message.indexOf(':');
+      if (colonIdx != -1) {
+        String itemPart = message.substring(colonIdx + 1).trim();
+        final parenIdx = itemPart.indexOf('(');
+        if (parenIdx != -1) {
+          query = itemPart.substring(0, parenIdx).trim();
+        } else {
+          query = itemPart;
+        }
+      } else {
+        query = message.substring(18).trim();
+      }
+    } else if (lower.startsWith('sale made for ')) {
+      type = NotificationTargetType.sale;
+      final colonIdx = message.indexOf(':');
+      if (colonIdx != -1) {
+        query = message.substring(colonIdx + 1).trim();
+      } else {
+        query = message.substring(14).trim();
+      }
+    } else if (lower.startsWith('debt recorded for ')) {
       type = NotificationTargetType.debt;
-      final match = RegExp(r'(?:received for|from|for|debt)\s+([A-Za-z0-9\s#\-\.]+)', caseSensitive: false).firstMatch(message);
-      if (match != null) {
-        query = match.group(1)!.trim();
-        query = query.replaceAll(RegExp(r'^(sale\s*#|sale\s*)', caseSensitive: false), '').trim();
+      final colonIdx = message.indexOf(':');
+      if (colonIdx != -1) {
+        query = message.substring(colonIdx + 1).trim();
+      } else {
+        query = message.substring(18).trim();
+      }
+    } else if (lower.contains('payment') || lower.contains('paid')) {
+      type = NotificationTargetType.debt;
+      final receivedIdx = lower.indexOf(' received for ');
+      if (receivedIdx != -1) {
+        String whoPart = message.substring(receivedIdx + 14).trim();
+        if (whoPart.toLowerCase().startsWith('sale #')) {
+          query = whoPart.substring(6).trim();
+        } else if (whoPart.toLowerCase().startsWith('sale')) {
+          query = whoPart.substring(4).trim();
+        } else {
+          query = whoPart;
+        }
       }
     } else if (lower.contains('deleted')) {
       type = NotificationTargetType.deleted;
@@ -38,18 +110,6 @@ class NotificationRouteInfo {
     } else if (lower.contains('price') || lower.contains('updated')) {
       type = NotificationTargetType.price;
       final match = RegExp(r'(?:price\s+updated\s+for|for)\s+([A-Za-z0-9\s#\-\.]+)', caseSensitive: false).firstMatch(message);
-      if (match != null) {
-        query = match.group(1)!.trim();
-      }
-    } else if (lower.contains('added') || lower.contains('stock')) {
-      type = NotificationTargetType.stock;
-      final match = RegExp(r'(?:added\s+stock:|added|from)\s+([A-Za-z0-9\s#\-\.]+)', caseSensitive: false).firstMatch(message);
-      if (match != null) {
-        query = match.group(1)!.trim();
-      }
-    } else if (lower.contains('sale') || lower.contains('sold')) {
-      type = NotificationTargetType.sale;
-      final match = RegExp(r'(?:sale\s+recorded\s+for|sale\s+for|for)\s+([A-Za-z0-9\s#\-\.]+)', caseSensitive: false).firstMatch(message);
       if (match != null) {
         query = match.group(1)!.trim();
       }

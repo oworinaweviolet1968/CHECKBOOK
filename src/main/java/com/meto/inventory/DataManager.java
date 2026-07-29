@@ -21,7 +21,7 @@ public class DataManager {
         startAutoSyncTask();
     }
 
-    public static DataManager getInstance() {
+    public static synchronized DataManager getInstance() {
         if (instance == null) {
             instance = new DataManager();
         }
@@ -135,6 +135,10 @@ public class DataManager {
         // Run background sync check every 15 seconds to prevent network/DB locks and UI lag
         syncExecutor.scheduleAtFixedRate(() -> {
             try {
+                if (getCurrentDbName().endsWith("inventory.db")) {
+                    return; // Skip auto-sync if we are on the generic/unlogged database
+                }
+
                 SupabaseService service = SupabaseService.getInstance();
                 boolean online = service.isOnline();
 
@@ -200,7 +204,7 @@ public class DataManager {
             } catch (Exception e) {
                 // Silently ignore background sync errors to avoid UI popups
             }
-        }, 0, 15, TimeUnit.SECONDS);
+        }, 5, 15, TimeUnit.SECONDS);
 
     }
 

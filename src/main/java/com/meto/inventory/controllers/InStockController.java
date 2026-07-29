@@ -282,6 +282,7 @@ public class InStockController implements DataManager.DataChangeListener {
 
     @Override
     public void onDataChanged() {
+        System.out.println("DASHBOARD: onDataChanged triggered!");
         javafx.application.Platform.runLater(() -> {
             loadInStock();
             loadDailySales();
@@ -290,6 +291,7 @@ public class InStockController implements DataManager.DataChangeListener {
 
     private void loadInStock() {
         ObservableList<StockItem> stock = dataManager.getDbHelper().getInStock();
+        System.out.println("DASHBOARD: loadInStock count = " + stock.size() + " from DB: " + dataManager.getCurrentDbName());
         inStockTable.setItems(stock);
 
         stockCountLabel.setText(String.valueOf(stock.size()));
@@ -303,6 +305,7 @@ public class InStockController implements DataManager.DataChangeListener {
 
     private void loadDailySales() {
         ObservableList<HistoryItem> todaySales = dataManager.getDbHelper().getTodaysSales();
+        System.out.println("DASHBOARD: loadDailySales count = " + todaySales.size());
         dailySalesTable.setItems(todaySales);
 
         transactionCountLabel.setText(String.valueOf(todaySales.size()));

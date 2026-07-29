@@ -7,7 +7,6 @@ import '../screens/notifications_screen.dart';
 import '../services/supabase_service.dart';
 
 import '../services/database_helper.dart';
-import 'powersync_status_badge.dart';
 
 class StandardAppBarActions extends StatefulWidget {
   final VoidCallback? onNotificationPressed;
@@ -72,7 +71,6 @@ class _StandardAppBarActionsState extends State<StandardAppBarActions> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        const PowerSyncStatusBadge(),
         // Desktop app presence indicator
         const _DesktopStatusChip(),
         const SizedBox(width: 4),

@@ -52,8 +52,48 @@ class DatabaseHelper {
 
   String _dbName = 'inventory.db';
 
+  Future<String> _getPreferencesPath() async {
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      final userHome = Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+      return join(userHome, 'METO_IMS_DATA', 'active_user.txt');
+    } else {
+      final dbPath = await getDatabasesPath();
+      return join(dbPath, 'active_user.txt');
+    }
+  }
+
+  Future<void> _saveLastActiveUserId(String userId) async {
+    try {
+      final path = await _getPreferencesPath();
+      final file = File(path);
+      await file.writeAsString(userId);
+    } catch (e) {
+      print('Error saving active user ID: $e');
+    }
+  }
+
+  Future<String?> _loadLastActiveUserId() async {
+    try {
+      final path = await _getPreferencesPath();
+      final file = File(path);
+      if (await file.exists()) {
+        return (await file.readAsString()).trim();
+      }
+    } catch (e) {
+      print('Error loading active user ID: $e');
+    }
+    return null;
+  }
+
   Future<Database> get database async {
     if (_database != null) return _database!;
+    if (_dbName == 'inventory.db') {
+      final savedUserId = await _loadLastActiveUserId();
+      if (savedUserId != null && savedUserId.isNotEmpty) {
+        String cleanId = savedUserId.replaceAll(RegExp(r'[^a-zA-Z0-9]'), '_');
+        _dbName = "inventory_$cleanId.db";
+      }
+    }
     _database = await _initDB(_dbName);
     return _database!;
   }
@@ -74,7 +114,7 @@ class DatabaseHelper {
     }
 
     _dbName = newDbName;
-    // Database will be re-initialized on next 'get database' call
+    await _saveLastActiveUserId(userId);
   }
 
   Future<void> close() async {
@@ -1992,7 +2032,7 @@ class DatabaseHelper {
         if (obj['created_at'] != null) {
           try {
             final dt = DateTime.parse(obj['created_at'].toString());
-            if (DateTime.now().toUtc().difference(dt.toUtc()).inSeconds.abs() < 60) {
+            if (DateTime.now().toUtc().difference(dt.toUtc()).inSeconds.abs() < 86400) {
               isRecent = true;
             }
           } catch (_) {}
@@ -2000,9 +2040,9 @@ class DatabaseHelper {
 
         if (deviceSource == 'Desktop' && isRecent) {
           if (type == 'NEW STOCK') {
-            await addNotification("NEW STOCK: $item has been stocked", "Desktop");
+            await addNotification("NEW STOCK: $item has been stocked", "Desktop", syncId: syncId);
           } else {
-            await addNotification("Sale recorded for $customer: $item (UGX ${amount.toStringAsFixed(0)})", "Desktop");
+            await addNotification("Sale recorded for $customer: $item (UGX ${amount.toStringAsFixed(0)})", "Desktop", syncId: syncId);
           }
         }
 
@@ -2024,7 +2064,7 @@ class DatabaseHelper {
         if (cloudPaidAmount > localPaidAmount) {
           double diff = cloudPaidAmount - localPaidAmount;
           if (deviceSource == 'Desktop' && isIncremental) {
-            await addNotification("Payment of UGX ${diff.toStringAsFixed(0)} received for $customer", "Desktop");
+            await addNotification("Payment of UGX ${diff.toStringAsFixed(0)} received for $customer", "Desktop", syncId: syncId);
           }
           if (localId != -1) {
             final uuidGenSql = "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))";
@@ -2241,21 +2281,31 @@ class DatabaseHelper {
     }
   }
 
-  Future<void> addNotification(String message, String source, {String? title}) async {
+  Future<void> addNotification(String message, String source, {String? title, String? syncId}) async {
     try {
       final db = await instance.database;
-      final recent = await db.rawQuery(
-        "SELECT id FROM notifications WHERE message = ? AND created_at >= datetime('now', '-10 seconds')",
-        [message]
-      );
-      if (recent.isNotEmpty) {
-        return;
+      if (syncId != null && syncId.isNotEmpty) {
+        final existing = await db.rawQuery(
+          "SELECT id FROM notifications WHERE sync_id = ?",
+          [syncId]
+        );
+        if (existing.isNotEmpty) {
+          return;
+        }
+      } else {
+        final recent = await db.rawQuery(
+          "SELECT id FROM notifications WHERE message = ? AND created_at >= datetime('now', '-10 seconds')",
+          [message]
+        );
+        if (recent.isNotEmpty) {
+          return;
+        }
       }
 
-      String syncId = generateUUID();
+      String finalSyncId = syncId ?? generateUUID();
       await db.rawInsert(
         "INSERT INTO notifications (message, source, sync_id) VALUES (?, ?, ?)",
-        [message, source, syncId]
+        [message, source, finalSyncId]
       );
       if (source == 'Desktop') {
         await showLocalNotification(title ?? "Desktop App Input", message);

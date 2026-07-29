@@ -66,7 +66,7 @@ public class SupabaseService {
         return new java.io.File(dir, fileName).getAbsolutePath();
     }
 
-    public static SupabaseService getInstance() {
+    public static synchronized SupabaseService getInstance() {
         if (instance == null) {
             instance = new SupabaseService();
         }

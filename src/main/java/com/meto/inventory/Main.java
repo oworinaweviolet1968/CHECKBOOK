@@ -22,24 +22,31 @@ public class Main extends Application {
         // Restore last active userId from saved JSON session first if present
         String savedToken = service.loadSession();
 
+        System.out.println("STARTUP: loaded token = " + (savedToken == null ? "null" : savedToken));
+
         if (savedToken != null) {
             // Show a splash or just attempt silent login
             Thread loginThread = new Thread(() -> {
                 try {
+                    System.out.println("STARTUP: Thread started, attempting silent login...");
                     boolean success = service.signInWithRefreshToken(savedToken);
+                    System.out.println("STARTUP: Silent login result: " + success);
                     if (success) {
                         javafx.application.Platform.runLater(() -> {
                             try {
+                                System.out.println("STARTUP: Loading main view...");
                                 loadMainView(primaryStage);
-                                // Trigger sync in background
+                                System.out.println("STARTUP: Triggering sync...");
                                 triggerSync();
                             } catch (Exception e) {
+                                System.err.println("STARTUP ERROR: Failed to load main view: " + e.getMessage());
                                 e.printStackTrace();
                                 showLoginView(primaryStage);
                             }
                         });
                         return;
                     } else {
+                        System.out.println("STARTUP: Silent login failed. Showing login view.");
                         // Refresh token was invalid/expired (HTTP 400/401/etc.) -> Go to login screen
                         javafx.application.Platform.runLater(() -> showLoginView(primaryStage));
                     }

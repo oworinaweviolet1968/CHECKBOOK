@@ -20,7 +20,7 @@ public class NotificationService {
         initFirebase();
     }
 
-    public static NotificationService getInstance() {
+    public static synchronized NotificationService getInstance() {
         if (instance == null) {
             instance = new NotificationService();
         }
