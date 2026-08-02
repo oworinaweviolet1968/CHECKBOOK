@@ -1069,6 +1069,18 @@ public class SupabaseService {
     // --- PUSH-TO-LOGIN ---
 
     public String createLoginRequest(String email) throws IOException, InterruptedException {
+        // Purge any stale pending login requests for this email first
+        try {
+            String encodedEmail = java.net.URLEncoder.encode(email, java.nio.charset.StandardCharsets.UTF_8);
+            HttpRequest deleteOld = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/login_requests?email=eq." + encodedEmail + "&status=eq.pending"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + SUPABASE_KEY)
+                    .DELETE()
+                    .build();
+            client.send(deleteOld, HttpResponse.BodyHandlers.ofString());
+        } catch (Exception ignored) {}
+
         JsonObject row = new JsonObject();
         row.addProperty("email", email);
         row.addProperty("status", "pending");

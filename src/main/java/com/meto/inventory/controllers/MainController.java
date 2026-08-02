@@ -81,11 +81,10 @@ public class MainController {
                         // Fire "back online" notification if we were previously offline
                         if (wasOffline) {
                             wasOffline = false;
-                            org.controlsfx.control.Notifications.create()
-                                .title("✅ Back Online")
-                                .text("Desktop app is now connected to the cloud.")
-                                .position(javafx.geometry.Pos.BOTTOM_RIGHT)
-                                .showInformation();
+                            com.meto.inventory.utils.ToastService.showSuccess(
+                                "Back Online",
+                                "Desktop app is now connected to the cloud."
+                            );
                         }
                     }
                 }
@@ -122,6 +121,20 @@ public class MainController {
         }
     }
 
+    public void openNotificationsView(Runnable onBack) {
+        try {
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/meto/inventory/views/Notifications.fxml"));
+            Node notifView = loader.load();
+            NotificationsController controller = loader.getController();
+            if (controller != null && onBack != null) {
+                controller.setOnBackAction(onBack);
+            }
+            setView(notifView, null);
+        } catch (IOException ex) {
+            ex.printStackTrace();
+        }
+    }
+
     public void navigateTo(String viewName) {
         switch (viewName.toLowerCase()) {
             case "newstock":
@@ -138,6 +151,10 @@ public class MainController {
                 break;
             case "debthistory":
                 setView(debtHistoryView, navMore);
+                break;
+            case "notifications":
+            case "audit":
+                openNotificationsView(() -> setView(debtHistoryView, navMore));
                 break;
         }
     }

@@ -47,10 +47,16 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
 
   void _filterStock(String query) {
     setState(() {
+      final terms = query
+          .split(',')
+          .map((t) => t.trim().toLowerCase())
+          .where((t) => t.isNotEmpty)
+          .toList();
+
       _filteredStock = _allStock.where((item) {
         final name = item['item']?.toString().toLowerCase() ?? "";
         final size = item['quantity']?.toString().toLowerCase() ?? "";
-        return name.contains(query.toLowerCase()) || size.contains(query.toLowerCase());
+        return terms.isEmpty || terms.any((q) => name.contains(q) || size.contains(q));
       }).toList();
     });
   }

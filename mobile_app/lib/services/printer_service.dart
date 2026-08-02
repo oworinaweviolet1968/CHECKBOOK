@@ -4,6 +4,7 @@ import 'package:esc_pos_utils_plus/esc_pos_utils_plus.dart';
 import 'package:intl/intl.dart';
 import '../models/sale_item.dart';
 import 'database_helper.dart';
+import 'logger_service.dart';
 
 class PrinterService {
   static final PrinterService instance = PrinterService._();
@@ -37,8 +38,8 @@ class PrinterService {
         await _bluetooth.connect(printerDevice);
         _connectedDevice = printerDevice;
         return true;
-      } catch (e) {
-        print("Error connecting to printer: $e");
+      } catch (e, stack) {
+        AppLogger.error("Error connecting to printer: $e", tag: 'PrinterService', error: e, stackTrace: stack);
         return false;
       }
     }

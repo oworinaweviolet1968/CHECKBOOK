@@ -54,11 +54,10 @@ public class ReceiptPrinterService {
             System.out.println("⚠️ Print request ignored: Cooldown active to prevent duplicate receipts.");
             javafx.application.Platform.runLater(() -> {
                 try {
-                    org.controlsfx.control.Notifications.create()
-                            .title("⏳ Please Wait")
-                            .text("Print request already sent! Please wait a moment.")
-                            .position(javafx.geometry.Pos.TOP_RIGHT)
-                            .showWarning();
+                    com.meto.inventory.utils.ToastService.showWarning(
+                            "Please Wait",
+                            "Print request already sent! Please wait a moment."
+                    );
                 } catch (Exception ignore) {
                 }
             });

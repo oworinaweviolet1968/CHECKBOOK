@@ -103,17 +103,19 @@
                         <Button fx:id="viewAllBtn" text="View All" styleClass="pill" style="-fx-background-color: #F9FAFB; -fx-border-color: #E5E7EB; -fx-border-radius: 6; -fx-padding: 4 12;"/>
                     </HBox>
                     
-                    <TableView fx:id="dailySalesTable" VBox.vgrow="ALWAYS" prefHeight="350">
-                        <columns>
-                            <TableColumn fx:id="salesItemCol" text="Item" prefWidth="180"/>
-                            <TableColumn fx:id="salesAmountCol" text="Amount" prefWidth="140"/>
-                            <TableColumn fx:id="salesQtyCol" text="Qty" prefWidth="80"/>
-                            <TableColumn fx:id="salesCustomerCol" text="Customer" prefWidth="140"/>
-                        </columns>
-                        <columnResizePolicy>
-                            <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
-                        </columnResizePolicy>
-                    </TableView>
+                    <!-- Vertical ScrollPane for Today's Sales Log -->
+                    <ScrollPane fitToWidth="true" styleClass="history-scroll-pane" VBox.vgrow="ALWAYS" prefHeight="350">
+                        <content>
+                            <VBox fx:id="dailySalesListContainer" styleClass="history-list-container" spacing="8">
+                                <padding>
+                                    <Insets top="8" right="8" bottom="12" left="8"/>
+                                </padding>
+                            </VBox>
+                        </content>
+                    </ScrollPane>
+
+                    <!-- Hidden TableView for backwards compatibility if referenced by optional legacy code -->
+                    <TableView fx:id="dailySalesTable" visible="false" managed="false"/>
                 </VBox>
             </HBox>
         </VBox>

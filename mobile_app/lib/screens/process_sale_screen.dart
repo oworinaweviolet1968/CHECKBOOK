@@ -902,8 +902,14 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
       // Add combined notification
       if (cartCopy.isNotEmpty) {
         String itemsStr = cartCopy.map((e) => e.item).join(", ");
-        String action = cartCopy.any((e) => e.isDebt) ? "Debt recorded" : "Sale made";
-        await DatabaseHelper.instance.addNotification("$action for $customerCopy: $itemsStr", "Mobile");
+        bool hasDebt = cartCopy.any((e) => e.isDebt);
+        String action = hasDebt ? "Debt recorded" : "Sale made";
+        await DatabaseHelper.instance.addNotification(
+          "$action for $customerCopy: $itemsStr",
+          "Mobile",
+          targetType: hasDebt ? 'debt' : 'sale',
+          targetId: receiptId,
+        );
       }
 
       // Trigger background upload

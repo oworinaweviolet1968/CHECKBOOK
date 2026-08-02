@@ -9,6 +9,8 @@ import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.FlowPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
 
 import java.util.function.UnaryOperator;
 
@@ -43,6 +45,16 @@ public class SalesController implements DataManager.DataChangeListener {
     @FXML
     private Label unitErrorLabel;
     @FXML
+    private Label availableStockBadge;
+    @FXML
+    private VBox stockBadgeBox;
+    @FXML
+    private Label stockWarningLabel;
+    @FXML
+    private Label stockPackagingLabel;
+    @FXML
+    private VBox salesListContainer;
+    @FXML
     private FlowPane weightButtonsBox;
     @FXML
     private FlowPane unitButtonsBox;
@@ -73,7 +85,13 @@ public class SalesController implements DataManager.DataChangeListener {
         setupTable();
         setupButtons();
         setupDropdowns();
+        renderSaleItems();
         updateTotal();
+
+        items.addListener((javafx.collections.ListChangeListener<SaleItem>) c -> {
+            renderSaleItems();
+            updateTotal();
+        });
 
         // --- SECURITY: BLOCK FORBIDDEN CHARACTERS & LIMIT LENGTH ---
         UnaryOperator<TextFormatter.Change> filter = change -> {
@@ -155,18 +173,38 @@ public class SalesController implements DataManager.DataChangeListener {
                 if (!newText.matches("\\d*"))
                     return null;
 
-                // 3. Auto-format with commas while protecting the cursor
+                // 3. Auto-format with commas while preserving the caret position
                 if (!newText.isEmpty()) {
                     try {
                         long value = Long.parseLong(newText);
                         String formatted = priceDf.format(value);
 
-                        // We must be careful not to trigger infinite loops
-                        // The TextFormatter handles the 'change' object directly
+                        int oldCaret = change.getControlCaretPosition();
+                        String oldText = change.getControlText();
+                        int digitsBeforeCaret = 0;
+                        for (int i = 0; i < Math.min(oldCaret, oldText.length()); i++) {
+                            if (Character.isDigit(oldText.charAt(i))) {
+                                digitsBeforeCaret++;
+                            }
+                        }
+                        String addedDigits = change.getText().replaceAll("[^0-9]", "");
+                        digitsBeforeCaret += addedDigits.length();
+
+                        int newCaret = 0;
+                        int digitCount = 0;
+                        for (int i = 0; i < formatted.length(); i++) {
+                            if (digitCount < digitsBeforeCaret) {
+                                if (Character.isDigit(formatted.charAt(i))) {
+                                    digitCount++;
+                                }
+                                newCaret = i + 1;
+                            }
+                        }
+
                         change.setText(formatted);
                         change.setRange(0, change.getControlText().length());
-                        change.setCaretPosition(formatted.length());
-                        change.setAnchor(formatted.length());
+                        change.setCaretPosition(newCaret);
+                        change.setAnchor(newCaret);
                     } catch (NumberFormatException e) {
                         return null;
                     }
@@ -203,6 +241,7 @@ public class SalesController implements DataManager.DataChangeListener {
             } else {
                 setFlowLevel(2);
             }
+            updateAvailableStockDisplay();
         });
 
         qtyComboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
@@ -222,6 +261,7 @@ public class SalesController implements DataManager.DataChangeListener {
                 // --- PRICE HISTORY UPDATE ---
                 refreshPriceHistory(itemsComboBox.getValue(), newVal);
             }
+            updateAvailableStockDisplay();
         });
 
         unitField.textProperty().addListener((obs, oldVal, newVal) -> {
@@ -240,6 +280,7 @@ public class SalesController implements DataManager.DataChangeListener {
                     setFlowLevel(5);
                 }
             }
+            validateStockLimit();
         });
 
         // --- DELETED CRASH-PRONE CHANGE LISTENER ---
@@ -422,57 +463,75 @@ public class SalesController implements DataManager.DataChangeListener {
     }
 
     private void setupTable() {
-        salesTable.setItems(items);
-        itemCol.setCellValueFactory(data -> data.getValue().itemsProperty());
-        qtyCol.setCellValueFactory(data -> data.getValue().qtyProperty());
-        unitCol.setCellValueFactory(data -> data.getValue().unitProperty());
-        unitCol.setCellFactory(col -> new TableCell<>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                    setStyle("");
-                } else {
-                    setText(item);
-                    setStyle("-fx-text-fill: green; -fx-font-weight: bold;");
+        if (salesTable != null) {
+            salesTable.setItems(items);
+        }
+        if (itemCol != null) {
+            itemCol.setCellValueFactory(data -> data.getValue().itemsProperty());
+        }
+        if (qtyCol != null) {
+            qtyCol.setCellValueFactory(data -> data.getValue().qtyProperty());
+        }
+        if (unitCol != null) {
+            unitCol.setCellValueFactory(data -> data.getValue().unitProperty());
+            unitCol.setCellFactory(col -> new TableCell<>() {
+                @Override
+                protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (empty || item == null) {
+                        setText(null);
+                        setStyle("");
+                    } else {
+                        setText(item);
+                        setStyle("-fx-text-fill: green; -fx-font-weight: bold;");
+                    }
                 }
-            }
-        });
-        priceCol.setCellValueFactory(data -> data.getValue().priceProperty());
-        amountCol.setCellValueFactory(data -> data.getValue().amountProperty());
-        amountCol.setCellFactory(col -> new TableCell<>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                    setStyle("");
-                } else {
-                    setText(item);
-                    setStyle("-fx-text-fill: green; -fx-font-weight: bold;");
+            });
+        }
+        if (priceCol != null) {
+            priceCol.setCellValueFactory(data -> data.getValue().priceProperty());
+        }
+        if (amountCol != null) {
+            amountCol.setCellValueFactory(data -> data.getValue().amountProperty());
+            amountCol.setCellFactory(col -> new TableCell<>() {
+                @Override
+                protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (empty || item == null) {
+                        setText(null);
+                        setStyle("");
+                    } else {
+                        setText(item);
+                        setStyle("-fx-text-fill: green; -fx-font-weight: bold;");
+                    }
                 }
-            }
-        });
+            });
+        }
 
-        deleteCol.setCellFactory(param -> new TableCell<>() {
-            private final Button deleteBtn = new Button("Delete");
-            {
-                deleteBtn.setStyle(
-                        "-fx-background-color: red; -fx-text-fill: white; -fx-font-size: 10px; -fx-padding: 2 6;");
-                deleteBtn.setOnAction(event -> {
-                    SaleItem item = getTableView().getItems().get(getIndex());
-                    items.remove(item);
-                    updateTotal();
-                });
-            }
+        if (deleteCol != null) {
+            deleteCol.setCellFactory(param -> new TableCell<>() {
+                private final Button deleteBtn = new Button("Delete");
+                {
+                    deleteBtn.setStyle(
+                            "-fx-background-color: red; -fx-text-fill: white; -fx-font-size: 10px; -fx-padding: 2 6;");
+                    deleteBtn.setOnAction(event -> {
+                        SaleItem item = getTableView().getItems().get(getIndex());
+                        items.remove(item);
+                        updateTotal();
+                    });
+                }
 
-            @Override
-            protected void updateItem(Void item, boolean empty) {
-                super.updateItem(item, empty);
-                setGraphic(empty ? null : deleteBtn);
-            }
-        });
+                @Override
+                protected void updateItem(Void item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (empty) {
+                        setGraphic(null);
+                    } else {
+                        setGraphic(deleteBtn);
+                    }
+                }
+            });
+        }
     }
 
     private void setupButtons() {
@@ -931,7 +990,97 @@ public class SalesController implements DataManager.DataChangeListener {
                 return 0;
             }
         }).sum();
-        totalAmountLabel.setText(String.format("TOTAL AMOUNT: UGX %,.2f", total));
+
+        if (totalAmountLabel != null) {
+            totalAmountLabel.setText(String.format("TOTAL: UGX %,.0f", total));
+        }
+        if (saveButton != null) {
+            saveButton.setText(String.format("Finalize Sale (UGX %,.0f)", total));
+        }
+    }
+
+    private void renderSaleItems() {
+        if (salesListContainer == null) return;
+        salesListContainer.getChildren().clear();
+
+        if (items.isEmpty()) {
+            VBox emptyBox = new VBox(6);
+            emptyBox.getStyleClass().add("empty-state-box");
+            Label title = new Label("Current Sale List is Empty");
+            title.getStyleClass().add("empty-state-title");
+            Label sub = new Label("Select a customer and item above, then click '+ Add to Sale List'.");
+            sub.getStyleClass().add("empty-state-sub");
+            emptyBox.getChildren().addAll(title, sub);
+            salesListContainer.getChildren().add(emptyBox);
+            return;
+        }
+
+        for (SaleItem item : items) {
+            salesListContainer.getChildren().add(createSaleItemRowCard(item));
+        }
+    }
+
+    private HBox createSaleItemRowCard(SaleItem item) {
+        HBox card = new HBox(12);
+        card.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        card.getStyleClass().add("sale-item-card");
+
+        // 1. Item Name
+        VBox nameBox = new VBox(2);
+        nameBox.setPrefWidth(200);
+        nameBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        Label nameLabel = new Label(item.getItems());
+        nameLabel.setStyle("-fx-font-weight: 800; -fx-text-fill: #0F172A; -fx-font-size: 13px;");
+        nameBox.getChildren().add(nameLabel);
+
+        // 2. Unit Price
+        VBox priceBox = new VBox();
+        priceBox.setPrefWidth(130);
+        priceBox.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+        Label priceLabel = new Label("UGX " + item.getPrice());
+        priceLabel.setStyle("-fx-font-size: 12px; -fx-font-weight: 600; -fx-text-fill: #475569;");
+        priceBox.getChildren().add(priceLabel);
+
+        // 3. Quantity / Unit Badge
+        VBox unitBox = new VBox();
+        unitBox.setPrefWidth(140);
+        unitBox.setAlignment(javafx.geometry.Pos.CENTER);
+        Label unitBadge = new Label(item.getUnit());
+        unitBadge.getStyleClass().addAll("badge", "badge-stock");
+        unitBox.getChildren().add(unitBadge);
+
+        // 4. Size
+        VBox sizeBox = new VBox();
+        sizeBox.setPrefWidth(100);
+        sizeBox.setAlignment(javafx.geometry.Pos.CENTER);
+        Label sizeLabel = new Label(item.getQty() == null ? "-" : item.getQty());
+        sizeLabel.setStyle("-fx-font-size: 11px; -fx-font-weight: 600; -fx-text-fill: #64748B;");
+        sizeBox.getChildren().add(sizeLabel);
+
+        // 5. Line Total Amount
+        VBox amountBox = new VBox();
+        javafx.scene.layout.HBox.setHgrow(amountBox, javafx.scene.layout.Priority.ALWAYS);
+        amountBox.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+        Label amountLabel = new Label("UGX " + item.getAmount());
+        amountLabel.setStyle("-fx-font-size: 13px; -fx-font-weight: 800; -fx-text-fill: #10B981;");
+        amountBox.getChildren().add(amountLabel);
+
+        // 6. Action (Delete Button)
+        VBox actionBox = new VBox();
+        actionBox.setPrefWidth(80);
+        actionBox.setAlignment(javafx.geometry.Pos.CENTER);
+
+        Button deleteBtn = new Button("Delete");
+        deleteBtn.getStyleClass().add("pill");
+        deleteBtn.setStyle("-fx-font-size: 11px; -fx-padding: 3 8; -fx-background-color: #EF4444; -fx-text-fill: white; -fx-font-weight: bold;");
+        deleteBtn.setOnAction(e -> {
+            items.remove(item);
+            updateTotal();
+        });
+        actionBox.getChildren().add(deleteBtn);
+
+        card.getChildren().addAll(nameBox, priceBox, unitBox, sizeBox, amountBox, actionBox);
+        return card;
     }
 
     private void showAlert(String message) {
@@ -946,6 +1095,134 @@ public class SalesController implements DataManager.DataChangeListener {
                 return true;
         }
         return false;
+    }
+
+    private double currentAvailablePieces = -1;
+
+    private void updateAvailableStockDisplay() {
+        if (availableStockBadge == null) return;
+
+        String selectedItem = itemsComboBox.getValue();
+        String selectedSize = qtyComboBox.getValue();
+
+        if (selectedItem == null || selectedItem.trim().isEmpty()) {
+            availableStockBadge.setText("-- Pcs");
+            setStockBadgeStyle("stock-badge-green", "stock-val-green");
+            currentAvailablePieces = -1;
+            validateStockLimit();
+            return;
+        }
+
+        String trimmedItem = selectedItem.trim();
+        String trimmedSize = selectedSize != null ? selectedSize.trim() : null;
+
+        ObservableList<com.meto.inventory.models.StockItem> stockList = dataManager.getDbHelper().getInStock();
+        com.meto.inventory.models.StockItem matchedItem = null;
+
+        for (com.meto.inventory.models.StockItem stock : stockList) {
+            if (stock.getItems() != null && stock.getItems().trim().equalsIgnoreCase(trimmedItem)) {
+                if (trimmedSize != null && !trimmedSize.isEmpty() && !"None".equalsIgnoreCase(trimmedSize)) {
+                    if (stock.getQty() != null && stock.getQty().trim().equalsIgnoreCase(trimmedSize)) {
+                        matchedItem = stock;
+                        break;
+                    }
+                } else {
+                    matchedItem = stock;
+                    break;
+                }
+            }
+        }
+
+        // Direct DB fallback if in-memory stock list search missed the item variant
+        if (matchedItem == null && trimmedSize != null && !trimmedSize.isEmpty() && !"None".equalsIgnoreCase(trimmedSize)) {
+            String availableStr = dataManager.getDbHelper().getAvailableStock(trimmedItem, trimmedSize);
+            String rawUnit = dataManager.getDbHelper().getRawStockUnit(trimmedItem, trimmedSize);
+            if (rawUnit != null && !rawUnit.trim().isEmpty()) {
+                matchedItem = new com.meto.inventory.models.StockItem(
+                        trimmedItem,
+                        trimmedSize,
+                        availableStr,
+                        "0.0",
+                        "0.0"
+                );
+                matchedItem.setBulkUnit(rawUnit);
+            }
+        }
+
+        if (matchedItem == null) {
+            availableStockBadge.setText("0 Pcs");
+            if (stockPackagingLabel != null) stockPackagingLabel.setText("Pkg: --");
+            setStockBadgeStyle("stock-badge-red", "stock-val-red");
+            currentAvailablePieces = 0;
+        } else {
+            String displayUnit = matchedItem.getUnit();
+            availableStockBadge.setText(displayUnit == null || displayUnit.trim().isEmpty() ? "0 Pcs" : displayUnit);
+
+            String pkgStr = matchedItem.getBulkUnit();
+            if (pkgStr == null || pkgStr.trim().isEmpty()) {
+                pkgStr = dataManager.getDbHelper().getRawStockUnit(matchedItem.getItems(), matchedItem.getQty());
+            }
+            if (stockPackagingLabel != null) {
+                stockPackagingLabel.setText("Packaging: " + com.meto.inventory.DatabaseHelper.cleanPackagingString(pkgStr));
+            }
+
+            currentAvailablePieces = dataManager.getDbHelper().extractNumericValue(displayUnit);
+            if (currentAvailablePieces <= 0) {
+                setStockBadgeStyle("stock-badge-red", "stock-val-red");
+            } else if (currentAvailablePieces < 5) {
+                setStockBadgeStyle("stock-badge-amber", "stock-val-amber");
+            } else {
+                setStockBadgeStyle("stock-badge-green", "stock-val-green");
+            }
+        }
+
+        validateStockLimit();
+    }
+
+    private void setStockBadgeStyle(String badgeStyle, String valStyle) {
+        if (stockBadgeBox != null) {
+            stockBadgeBox.getStyleClass().removeAll("stock-badge-green", "stock-badge-amber", "stock-badge-red");
+            stockBadgeBox.getStyleClass().add(badgeStyle);
+        }
+        if (availableStockBadge != null) {
+            availableStockBadge.getStyleClass().removeAll("stock-val-green", "stock-val-amber", "stock-val-red");
+            availableStockBadge.getStyleClass().add(valStyle);
+        }
+    }
+
+    private void validateStockLimit() {
+        if (unitField == null) return;
+
+        String typedUnitText = unitField.getText();
+        if (typedUnitText == null || typedUnitText.trim().isEmpty() || currentAvailablePieces < 0) {
+            if (stockWarningLabel != null) {
+                stockWarningLabel.setVisible(false);
+                stockWarningLabel.setManaged(false);
+            }
+            unitField.getStyleClass().remove("input-error-border");
+            return;
+        }
+
+        double requestedQty = dataManager.getDbHelper().extractNumericValue(typedUnitText);
+        if (requestedQty > 0 && currentAvailablePieces >= 0 && requestedQty > currentAvailablePieces) {
+            if (stockWarningLabel != null) {
+                stockWarningLabel.setText(String.format("⚠️ Requested quantity (%.0f) exceeds available stock (%.0f)!", requestedQty, currentAvailablePieces));
+                stockWarningLabel.setVisible(true);
+                stockWarningLabel.setManaged(true);
+            }
+            if (!unitField.getStyleClass().contains("input-error-border")) {
+                unitField.getStyleClass().add("input-error-border");
+            }
+            if (addButton != null) {
+                addButton.setDisable(true);
+            }
+        } else {
+            if (stockWarningLabel != null) {
+                stockWarningLabel.setVisible(false);
+                stockWarningLabel.setManaged(false);
+            }
+            unitField.getStyleClass().remove("input-error-border");
+        }
     }
 
     public void destroy() {

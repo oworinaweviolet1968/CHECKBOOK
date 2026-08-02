@@ -56,11 +56,18 @@ class _DeletedHistoryScreenState extends State<DeletedHistoryScreen> {
   void _applyFilters() {
     List<HistoryItem> temp = _allDeletedItems;
 
-    // 1. Search Filter
+    // 1. Search Filter (Supports multi-term OR search)
     if (_searchQuery.isNotEmpty) {
-      final q = _searchQuery.toLowerCase();
+      final terms = _searchQuery
+          .split(',')
+          .map((t) => t.trim().toLowerCase())
+          .where((t) => t.isNotEmpty)
+          .toList();
+
       temp = temp.where((i) {
-        return i.item.toLowerCase().contains(q) || i.customer.toLowerCase().contains(q);
+        final itemLower = i.item.toLowerCase();
+        final customerLower = i.customer.toLowerCase();
+        return terms.any((q) => itemLower.contains(q) || customerLower.contains(q));
       }).toList();
     }
 
@@ -152,7 +159,7 @@ class _DeletedHistoryScreenState extends State<DeletedHistoryScreen> {
                     height: 40,
                     width: 40,
                     decoration: BoxDecoration(
-                      color: _selectedDate != null ? AppColors.primaryGreen.withOpacity(0.1) : Colors.grey[100],
+                      color: _selectedDate != null ? AppColors.primaryGreen.withValues(alpha: 0.1) : Colors.grey[100],
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
                         color: _selectedDate != null ? AppColors.primaryGreen : Colors.grey.shade200,

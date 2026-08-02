@@ -7,13 +7,13 @@
 
 <AnchorPane xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="com.meto.inventory.controllers.NewStockController"
-            prefWidth="900" prefHeight="640"
+            prefWidth="920" prefHeight="660"
             stylesheets="@styles/style.css">
 
     <children>
         <ScrollPane fitToWidth="true" fitToHeight="true" style="-fx-background-color: transparent; -fx-background: transparent;" AnchorPane.topAnchor="0" AnchorPane.bottomAnchor="0" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0">
             <content>
-                <VBox spacing="30" alignment="TOP_CENTER">
+                <VBox spacing="20" alignment="TOP_CENTER">
                     <padding>
                         <Insets top="0" right="10" bottom="20" left="0"/>
                     </padding>
@@ -21,85 +21,103 @@
                         <!-- Title Section -->
                         <HBox alignment="CENTER_LEFT" spacing="20">
                             <VBox spacing="4" HBox.hgrow="ALWAYS">
-                                <Label text="New Stock Entry" style="-fx-font-size: 24px; -fx-font-weight: 800; -fx-text-fill: #111827;"/>
-                                <Label text="Add new items to your warehouse inventory" style="-fx-font-size: 13px; -fx-text-fill: #6B7280;"/>
+                                <Label text="New Stock Entry" style="-fx-font-size: 22px; -fx-font-weight: 900; -fx-text-fill: #0F172A;">
+                                    <graphic>
+                                        <Region styleClass="icon, icon-box" style="-fx-background-color: #0F172A;"/>
+                                    </graphic>
+                                </Label>
+                                <Label text="Add new stock shipments and item variants to your warehouse inventory" styleClass="header-subtitle" style="-fx-font-size: 11px;"/>
                             </VBox>
                         </HBox>
  
-                        <HBox spacing="24" VBox.vgrow="ALWAYS">
-                            <!-- Left: Form Card -->
-                            <VBox styleClass="card" spacing="24" prefWidth="450" maxWidth="500">
-                                <Label text="Stock Details" style="-fx-font-weight: 800; -fx-font-size: 16px;"/>
-                                
-                                <VBox spacing="16">
-                                    <!-- Supplier -->
-                                    <VBox spacing="6">
-                                        <Label text="Supplier Name" style="-fx-font-weight: 600; -fx-font-size: 12px;"/>
+                        <HBox spacing="20" VBox.vgrow="ALWAYS">
+                            <!-- Left: Form Cards Stack -->
+                            <VBox spacing="14" prefWidth="460" maxWidth="500">
+                                <!-- STEP 1: Supplier & Item Info Card -->
+                                <VBox styleClass="sales-step-card" spacing="12">
+                                    <HBox spacing="6" alignment="CENTER_LEFT">
+                                        <Label text="STEP 1" styleClass="sales-step-num"/>
+                                        <Label text="Supplier &amp; Item Info" styleClass="sales-step-title"/>
+                                    </HBox>
+                                    
+                                    <VBox spacing="4">
+                                        <Label text="Supplier Name" style="-fx-font-size: 11px; -fx-font-weight: 700; -fx-text-fill: #475569;"/>
                                         <ComboBox fx:id="supplierNameComboBox" editable="true" maxWidth="Infinity" promptText="e.g. Global Supplies Ltd"/>
-                                        <Label fx:id="supplierErrorLabel" text="* Required" visible="false" managed="false" style="-fx-text-fill: -fx-red; -fx-font-size: 11px;"/>
+                                        <Label fx:id="supplierErrorLabel" text="* Required" visible="false" managed="false" style="-fx-text-fill: #EF4444; -fx-font-size: 11px;"/>
                                     </VBox>
                                     
-                                    <!-- Item Selection -->
-                                    <HBox spacing="16">
-                                        <VBox spacing="6" HBox.hgrow="ALWAYS">
-                                            <Label text="Item Type" style="-fx-font-weight: 600; -fx-font-size: 12px;"/>
+                                    <HBox spacing="10">
+                                        <VBox spacing="4" HBox.hgrow="ALWAYS">
+                                            <Label text="Item Type" style="-fx-font-size: 11px; -fx-font-weight: 700; -fx-text-fill: #475569;"/>
                                             <ComboBox fx:id="itemsComboBox" editable="true" maxWidth="Infinity" promptText="Select Item"/>
-                                            <Label fx:id="itemErrorLabel" text="* Required" visible="false" managed="false" style="-fx-text-fill: -fx-red; -fx-font-size: 11px;"/>
+                                            <Label fx:id="itemErrorLabel" text="* Required" visible="false" managed="false" style="-fx-text-fill: #EF4444; -fx-font-size: 11px;"/>
                                         </VBox>
-                                        <VBox spacing="6" HBox.hgrow="ALWAYS">
-                                            <Label text="Item Size" style="-fx-font-weight: 600; -fx-font-size: 12px;"/>
-                                            <ComboBox fx:id="qtyComboBox" editable="true" maxWidth="Infinity" promptText="size (e.g. 50kg)"/>
-                                             <Label fx:id="qtyErrorLabel" text="* Required" visible="false" managed="false" style="-fx-text-fill: -fx-red; -fx-font-size: 11px;"/>
+                                        <VBox spacing="4" prefWidth="160">
+                                            <Label text="Item Size / Variant" style="-fx-font-size: 11px; -fx-font-weight: 700; -fx-text-fill: #475569;"/>
+                                            <ComboBox fx:id="qtyComboBox" editable="true" maxWidth="Infinity" promptText="e.g. 50kg, 30ml"/>
+                                            <Label fx:id="qtyErrorLabel" text="* Required" visible="false" managed="false" style="-fx-text-fill: #EF4444; -fx-font-size: 11px;"/>
                                         </VBox>
                                     </HBox>
                                     
-                                    <!-- Quick Size Buttons -->
-                                    <FlowPane fx:id="qtyButtonsBox" hgap="8" vgap="8" />
+                                    <!-- Quick Size Selection Buttons -->
+                                    <VBox spacing="4">
+                                        <Label text="Quick Size Selection" style="-fx-font-size: 10px; -fx-font-weight: 800; -fx-text-fill: #64748B;"/>
+                                        <FlowPane fx:id="qtyButtonsBox" hgap="6" vgap="6" />
+                                    </VBox>
+                                </VBox>
 
-                                    <!-- Price -->
-                                    <VBox spacing="6">
-                                        <Label text="Price (Per Unit)" style="-fx-font-weight: 600; -fx-font-size: 12px;"/>
-                                        <TextField fx:id="priceField" promptText="0.00" styleClass="text-field-modern"/>
-                                        <Label fx:id="priceErrorLabel" text="* Invalid Price" visible="false" managed="false" style="-fx-text-fill: -fx-red; -fx-font-size: 11px;"/>
+                                <!-- STEP 2: Pricing & Packaging Units Card -->
+                                <VBox styleClass="sales-step-card" spacing="12">
+                                    <HBox spacing="6" alignment="CENTER_LEFT">
+                                        <Label text="STEP 2" styleClass="sales-step-num"/>
+                                        <Label text="Pricing &amp; Packaging Units" styleClass="sales-step-title"/>
+                                    </HBox>
+
+                                    <HBox spacing="10">
+                                        <VBox spacing="4" HBox.hgrow="ALWAYS">
+                                            <Label text="Price (Per Unit UGX)" style="-fx-font-size: 11px; -fx-font-weight: 700; -fx-text-fill: #475569;"/>
+                                            <TextField fx:id="priceField" promptText="0.00" styleClass="text-field-modern"/>
+                                            <Label fx:id="priceErrorLabel" text="* Invalid Price" visible="false" managed="false" style="-fx-text-fill: #EF4444; -fx-font-size: 11px;"/>
+                                        </VBox>
+
+                                        <VBox spacing="4" HBox.hgrow="ALWAYS">
+                                            <Label text="Quantity (Units)" style="-fx-font-size: 11px; -fx-font-weight: 700; -fx-text-fill: #475569;"/>
+                                            <TextField fx:id="unitField" promptText="e.g., 100 boxes" styleClass="text-field-modern"/>
+                                            <Label fx:id="unitErrorLabel" text="* Required" visible="false" managed="false" style="-fx-text-fill: #EF4444; -fx-font-size: 11px;"/>
+                                        </VBox>
+                                    </HBox>
+                                    
+                                    <!-- Quick Unit Ratio Buttons -->
+                                    <VBox spacing="4">
+                                        <Label text="Quick Packaging Ratio" style="-fx-font-size: 10px; -fx-font-weight: 800; -fx-text-fill: #64748B;"/>
+                                        <FlowPane fx:id="unitButtonsBox" hgap="6" vgap="6" />
                                     </VBox>
 
-                                    <!-- Quantity (Units) -->
-                                    <VBox spacing="6">
-                                        <Label text="Quantity (Units)" style="-fx-font-weight: 600; -fx-font-size: 12px;"/>
-                                        <TextField fx:id="unitField" promptText="e.g., 100 boxes" styleClass="text-field-modern"/>
-                                        <Label fx:id="unitErrorLabel" text="* Required" visible="false" managed="false" style="-fx-text-fill: -fx-red; -fx-font-size: 11px;"/>
-                                    </VBox>
-                                    
-                                    <!-- Quick Unit Buttons -->
-                                    <FlowPane fx:id="unitButtonsBox" hgap="8" vgap="8" />
-                                    
-                                    <Region VBox.vgrow="ALWAYS" />
-                                    
-                                    <HBox spacing="12" alignment="CENTER_RIGHT">
-                                        <Button fx:id="clearButton" text="Clear" onAction="#onClear" styleClass="pill" style="-fx-background-color: #F9FAFB; -fx-border-color: #E5E7EB;"/>
-                                        <Button fx:id="addButton" text="+ Add to List" style="-fx-background-color: #111827; -fx-text-fill: white; -fx-background-radius: 8; -fx-padding: 8 20; -fx-font-weight: 700;"/>
+                                    <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-padding: 6 0 0 0;">
+                                        <Button fx:id="clearButton" text="Clear Form" onAction="#onClear" styleClass="pill" style="-fx-background-color: #F8FAFC; -fx-border-color: #CBD5E1; -fx-padding: 6 14;"/>
+                                        <Button fx:id="addButton" text="+ Add to Entry List" styleClass="btn-primary" style="-fx-font-size: 13px; -fx-padding: 8 20;"/>
                                     </HBox>
                                 </VBox>
                             </VBox>
 
                             <!-- Right: Table Card -->
-                            <VBox styleClass="card" HBox.hgrow="ALWAYS" spacing="16">
+                            <VBox styleClass="card" HBox.hgrow="ALWAYS" spacing="14" style="-fx-padding: 14;">
                                 <HBox alignment="CENTER_LEFT" spacing="10">
                                     <VBox spacing="2">
-                                        <Label text="Entry Preview" style="-fx-font-weight: 800; -fx-font-size: 14px;"/>
-                                        <Label fx:id="previewSublabel" text="0 items pending" style="-fx-font-size: 11px; -fx-text-fill: #9CA3AF;"/>
+                                        <Label text="Entry Preview" style="-fx-font-weight: 900; -fx-font-size: 14px; -fx-text-fill: #0F172A;"/>
+                                        <Label fx:id="previewSublabel" text="0 items pending" style="-fx-font-size: 11px; -fx-text-fill: #64748B;"/>
                                     </VBox>
                                     <Region HBox.hgrow="ALWAYS"/>
-                                    <Button fx:id="saveButton" text="Save Stock" styleClass="btn-green" style="-fx-background-radius: 8; -fx-padding: 8 20;"/>
+                                    <Button fx:id="saveButton" text="Save Stock" styleClass="btn-green" style="-fx-background-radius: 6; -fx-padding: 8 22; -fx-font-weight: 900;"/>
                                 </HBox>
                                 
                                 <TableView fx:id="newStockTable" VBox.vgrow="ALWAYS">
                                     <columns>
-                                        <TableColumn fx:id="previewItemCol" text="Item" prefWidth="200"/>
+                                        <TableColumn fx:id="previewItemCol" text="Item" prefWidth="180"/>
                                         <TableColumn text="Price" prefWidth="100">
                                             <cellValueFactory><PropertyValueFactory property="price"/></cellValueFactory>
                                         </TableColumn>
-                                        <TableColumn fx:id="previewTotalCol" text="Total" prefWidth="100">
+                                        <TableColumn fx:id="previewTotalCol" text="Total" prefWidth="110">
                                             <cellValueFactory><PropertyValueFactory property="amount"/></cellValueFactory>
                                         </TableColumn>
                                         <TableColumn text="Unit" prefWidth="80">
@@ -112,8 +130,8 @@
                                     </columnResizePolicy>
                                 </TableView>
                                 
-                                <HBox alignment="CENTER_RIGHT" style="-fx-background-color: #F9FAFB; -fx-padding: 16; -fx-background-radius: 8;">
-                                    <Label fx:id="totalAmountLabel" text="Total Amount: UGX 0.00" style="-fx-font-size: 18px; -fx-font-weight: 800; -fx-text-fill: #111827;"/>
+                                <HBox alignment="CENTER_RIGHT" styleClass="checkout-bar">
+                                    <Label fx:id="totalAmountLabel" text="Total Amount: UGX 0.00" style="-fx-font-size: 16px; -fx-font-weight: 900; -fx-text-fill: #10B981;"/>
                                 </HBox>
                             </VBox>
                         </HBox>

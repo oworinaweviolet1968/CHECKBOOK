@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -8,9 +9,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import 'screens/dashboard_screen.dart';
-import 'screens/new_stock_screen.dart';
 import 'screens/process_sale_screen.dart';
 import 'screens/history_screen.dart';
+import 'screens/account_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/database_helper.dart';
 import 'services/supabase_service.dart';
@@ -63,130 +64,141 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 const supabaseUrl = 'https://jhucvkqwenhyiveqsmtf.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpodWN2a3F3ZW5oeWl2ZXFzbXRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NzI5MjIsImV4cCI6MjA4NTU0ODkyMn0.yXju47Ly5ak8Gm4D0OI42O89qTsc0nYtkmAb7dGFCC8';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  }
-  
-  if (Platform.isAndroid || Platform.isIOS) {
-    try {
-      await Firebase.initializeApp();
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-      await FirebaseMessaging.instance.requestPermission(
-        alert: true,
-        announcement: false,
-        badge: true,
-        carPlay: false,
-        criticalAlert: false,
-        provisional: false,
-        sound: true,
-      );
+void main() {
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
 
-      // Local notifications setup for foreground messages
-      const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
-      const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
-      await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+    FlutterError.onError = (FlutterErrorDetails details) {
+      debugPrint('FlutterError: ${details.exception}');
+    };
 
-      const AndroidNotificationChannel channel = AndroidNotificationChannel(
-        'high_importance_channel', 
-        'High Importance Notifications', 
-        description: 'This channel is used for important notifications.', 
-        importance: Importance.max,
-      );
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    }
+    
+    if (Platform.isAndroid || Platform.isIOS) {
+      try {
+        await Firebase.initializeApp();
+        FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+        await FirebaseMessaging.instance.requestPermission(
+          alert: true,
+          announcement: false,
+          badge: true,
+          carPlay: false,
+          criticalAlert: false,
+          provisional: false,
+          sound: true,
+        );
 
-      await flutterLocalNotificationsPlugin
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-          ?.createNotificationChannel(channel);
+        // Local notifications setup for foreground messages
+        const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
+        const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+        await flutterLocalNotificationsPlugin.initialize(initializationSettings);
 
-      await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+        const AndroidNotificationChannel channel = AndroidNotificationChannel(
+          'high_importance_channel', 
+          'High Importance Notifications', 
+          description: 'This channel is used for important notifications.', 
+          importance: Importance.max,
+        );
 
-      FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-        RemoteNotification? notification = message.notification;
-        String? title = notification?.title ?? message.data['title'];
-        String? body = notification?.body ?? message.data['message'] ?? message.data['body'];
+        await flutterLocalNotificationsPlugin
+            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+            ?.createNotificationChannel(channel);
 
-        String fullMessage = '';
-        if (body != null && body.isNotEmpty) {
-          fullMessage = body;
-        } else if (title != null && title.isNotEmpty) {
-          fullMessage = title;
-        }
+        await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
 
-        if (fullMessage.isNotEmpty) {
-          await DatabaseHelper.instance.addNotification(fullMessage, 'Desktop', title: title);
-        }
-      });
+        FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+          RemoteNotification? notification = message.notification;
+          String? title = notification?.title ?? message.data['title'];
+          String? body = notification?.body ?? message.data['message'] ?? message.data['body'];
 
-      FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
-        String? title = message.notification?.title ?? message.data['title'];
-        String? body = message.notification?.body ?? message.data['message'] ?? message.data['body'];
-        String fullMessage = body ?? title ?? '';
-        if (fullMessage.isNotEmpty) {
-          await DatabaseHelper.instance.addNotification(fullMessage, 'Desktop', title: title);
-        }
-      });
+          String fullMessage = '';
+          if (body != null && body.isNotEmpty) {
+            fullMessage = body;
+          } else if (title != null && title.isNotEmpty) {
+            fullMessage = title;
+          }
 
-      FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) async {
-        if (message != null) {
+          if (fullMessage.isNotEmpty) {
+            await DatabaseHelper.instance.addNotification(fullMessage, 'Desktop', title: title);
+          }
+        });
+
+        FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) async {
           String? title = message.notification?.title ?? message.data['title'];
           String? body = message.notification?.body ?? message.data['message'] ?? message.data['body'];
           String fullMessage = body ?? title ?? '';
           if (fullMessage.isNotEmpty) {
             await DatabaseHelper.instance.addNotification(fullMessage, 'Desktop', title: title);
           }
-        }
-      });
+        });
 
-      await FirebaseMessaging.instance.subscribeToTopic('desktop_actions');
-      await FirebaseMessaging.instance.subscribeToTopic('app_updates');
-    } catch (e) {
-      debugPrint("Firebase init error: $e");
+        FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) async {
+          if (message != null) {
+            String? title = message.notification?.title ?? message.data['title'];
+            String? body = message.notification?.body ?? message.data['message'] ?? message.data['body'];
+            String fullMessage = body ?? title ?? '';
+            if (fullMessage.isNotEmpty) {
+              await DatabaseHelper.instance.addNotification(fullMessage, 'Desktop', title: title);
+            }
+          }
+        });
+
+        await FirebaseMessaging.instance.subscribeToTopic('desktop_actions');
+        await FirebaseMessaging.instance.subscribeToTopic('app_updates');
+      } catch (e) {
+        debugPrint("Firebase init error: $e");
+      }
     }
-  }
-  
-  await Supabase.initialize(
-    url: supabaseUrl,
-    anonKey: supabaseKey,
-    authOptions: const FlutterAuthClientOptions(
-      authFlowType: AuthFlowType.pkce,
-    ),
-  );
+    
+    await Supabase.initialize(
+      url: supabaseUrl,
+      anonKey: supabaseKey,
+      authOptions: const FlutterAuthClientOptions(
+        authFlowType: AuthFlowType.pkce,
+      ),
+    );
 
-  // Early DB and Service initialization if session exists
-  final currentSession = Supabase.instance.client.auth.currentSession;
-  if (currentSession != null) {
-    final userId = currentSession.user.id;
-    debugPrint('Startup: Existing session found for $userId');
+    // Early DB and Service initialization if session exists
+    final currentSession = Supabase.instance.client.auth.currentSession;
+    if (currentSession != null) {
+      final userId = currentSession.user.id;
+      debugPrint('Startup: Existing session found for $userId');
 
-    // Refresh the session FIRST to get a fresh JWT before any Realtime connections
-    try {
-      await Supabase.instance.client.auth.refreshSession();
-      debugPrint('Startup: Session refreshed successfully');
-    } catch (e) {
-      debugPrint('Startup: Session refresh failed: $e');
+      bool sessionValid = false;
+      try {
+        await Supabase.instance.client.auth.refreshSession();
+        debugPrint('Startup: Session refreshed successfully');
+        sessionValid = true;
+      } on AuthApiException catch (e) {
+        debugPrint('Startup: AuthApiException during session refresh (${e.code}): ${e.message}');
+        debugPrint('Startup: Clearing stale local session due to invalid refresh token.');
+        try {
+          await Supabase.instance.client.auth.signOut();
+        } catch (_) {}
+      } catch (e) {
+        debugPrint('Startup: Session refresh failed: $e');
+        try {
+          await Supabase.instance.client.auth.signOut();
+        } catch (_) {}
+      }
+
+      if (sessionValid && Supabase.instance.client.auth.currentSession != null) {
+        await DatabaseHelper.instance.switchDatabase(userId);
+        await SupasService.instance.downloadReceiptSettings();
+        await PasscodeService.instance.init();
+
+        // Pre-refresh metadata
+        unawaited(SupasService.instance.refreshUserMetadata());
+      }
     }
 
-    await DatabaseHelper.instance.switchDatabase(userId);
-    await SupasService.instance.downloadReceiptSettings();
-    await PasscodeService.instance.init();
-
-    // Pre-refresh metadata
-    unawaited(SupasService.instance.refreshUserMetadata());
-  }
-
-  // Catch any leaked async exceptions from third-party libraries
-  // (e.g. Supabase Realtime websocket errors with expired JWT)
-  FlutterError.onError = (FlutterErrorDetails details) {
-    debugPrint('FlutterError: ${details.exception}');
-  };
-  runZonedGuarded(() {
     runApp(const MyApp());
   }, (error, stackTrace) {
     debugPrint('Uncaught async error (caught by zone): $error');
@@ -205,7 +217,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: AppColors.primaryGreen),
         scaffoldBackgroundColor: AppColors.background,
         useMaterial3: true,
-        fontFamily: 'Roboto',
+        textTheme: GoogleFonts.outfitTextTheme(Theme.of(context).textTheme),
       ),
       home: _getInitialScreen(),
     );
@@ -250,9 +262,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _screens = [
       DashboardScreen(key: _dashboardKey),
-      NewStockScreen(),
       ProcessSaleScreen(),
       HistoryScreen(),
+      AccountScreen(),
     ];
     _initDatabase();
     _listenForLoginRequests();
@@ -469,11 +481,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 label: 'In Stock',
               ),
               BottomNavigationBarItem(
-                icon: Icon(Icons.add_box_outlined),
-                activeIcon: Icon(Icons.add_box),
-                label: 'New Stock',
-              ),
-              BottomNavigationBarItem(
                 icon: Icon(Icons.shopping_cart_outlined),
                 activeIcon: Icon(Icons.shopping_cart),
                 label: 'Sales',
@@ -482,17 +489,22 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 icon: Icon(Icons.history),
                 label: 'History',
               ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.person_outline),
+                activeIcon: Icon(Icons.person),
+                label: 'Account',
+              ),
             ],
             currentIndex: safeIndex,
             selectedItemColor: AppColors.primaryGreen,
-            unselectedItemColor: AppColors.textSecondary,
+            unselectedItemColor: const Color(0xFF94A3B8),
             showUnselectedLabels: true,
             type: BottomNavigationBarType.fixed,
             onTap: _onItemTapped,
             backgroundColor: Colors.white,
             elevation: 8,
-            selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-            unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12),
+            selectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 12),
+            unselectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w500, fontSize: 12),
           ),
         );
       },

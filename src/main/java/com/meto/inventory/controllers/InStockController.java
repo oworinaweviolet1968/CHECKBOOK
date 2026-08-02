@@ -19,6 +19,8 @@ public class InStockController implements DataManager.DataChangeListener {
     @FXML
     private TableView<HistoryItem> dailySalesTable;
     @FXML
+    private VBox dailySalesListContainer;
+    @FXML
     private TableColumn<HistoryItem, String> salesItemCol, salesQtyCol, salesCustomerCol, salesAmountCol;
     @FXML
     private Button refreshBtn, addItemBtn, viewAllBtn;
@@ -122,7 +124,7 @@ public class InStockController implements DataManager.DataChangeListener {
                     setGraphic(null);
                     setText(null);
                 } else {
-                    Label label = new Label(item);
+                    Label label = new Label(com.meto.inventory.DatabaseHelper.cleanPackagingString(item));
                     label.getStyleClass().add("size-pill");
                     setGraphic(label);
                     setAlignment(javafx.geometry.Pos.CENTER_LEFT);
@@ -140,21 +142,26 @@ public class InStockController implements DataManager.DataChangeListener {
                     setGraphic(null);
                     setText(null);
                 } else {
-                    javafx.scene.layout.HBox box = new javafx.scene.layout.HBox(4);
+                    javafx.scene.layout.HBox box = new javafx.scene.layout.HBox(6);
                     box.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-                    if (item.contains("(")) {
-                        int idx = item.indexOf("(");
-                        String mainStr = item.substring(0, idx).trim();
-                        String subStr = item.substring(idx).trim();
-                        Label mainL = new Label(mainStr);
-                        mainL.setStyle("-fx-font-weight: bold; -fx-text-fill: -fx-text-main;");
-                        Label subL = new Label(subStr);
-                        subL.setStyle("-fx-text-fill: -fx-text-muted;");
-                        box.getChildren().addAll(mainL, subL);
-                    } else {
-                        Label mainL = new Label(item);
-                        mainL.setStyle("-fx-font-weight: bold; -fx-text-fill: -fx-text-main;");
-                        box.getChildren().add(mainL);
+
+                    String mainText = item != null ? item.trim() : "";
+                    Label mainL = new Label(mainText);
+                    mainL.setStyle("-fx-font-weight: 800; -fx-text-fill: #0F172A; -fx-font-size: 12px;");
+                    box.getChildren().add(mainL);
+
+                    if (getTableRow() != null && getTableRow().getItem() != null) {
+                        StockItem stockItem = getTableRow().getItem();
+                        String rawBulk = stockItem.getBulkUnit();
+                        if (rawBulk == null || rawBulk.isEmpty()) {
+                            rawBulk = dataManager.getDbHelper().getRawStockUnit(stockItem.getItems(), stockItem.getQty());
+                        }
+                        String cleanPkg = com.meto.inventory.DatabaseHelper.cleanPackagingString(rawBulk);
+                        if (cleanPkg != null && !cleanPkg.isEmpty() && !"Standard".equalsIgnoreCase(cleanPkg)) {
+                            Label pkgBadge = new Label(cleanPkg);
+                            pkgBadge.getStyleClass().add("dash-pkg-badge");
+                            box.getChildren().add(pkgBadge);
+                        }
                     }
                     setGraphic(box);
                     setAlignment(javafx.geometry.Pos.CENTER_LEFT);
@@ -193,91 +200,21 @@ public class InStockController implements DataManager.DataChangeListener {
     }
 
     private void setupDailySalesTable() {
-        salesItemCol.setCellValueFactory(data -> data.getValue().itemProperty());
-        salesItemCol.setCellFactory(col -> new TableCell<HistoryItem, String>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null || getTableRow() == null || getTableRow().getItem() == null) {
-                    setGraphic(null);
-                    setText(null);
-                } else {
-                    HistoryItem hi = getTableRow().getItem();
-                    VBox box = new VBox(2);
-                    
-                    javafx.scene.layout.HBox nameBox = new javafx.scene.layout.HBox(6);
-                    nameBox.setAlignment(javafx.geometry.Pos.BOTTOM_LEFT);
-                    
-                    Label nameLabel = new Label(item);
-                    nameLabel.getStyleClass().add("bold-label");
-                    
-                    Label sizeLabel = new Label(hi.getQty() != null ? hi.getQty() : "");
-                    sizeLabel.setStyle("-fx-text-fill: -fx-text-muted; -fx-font-size: 11px;");
-                    
-                    nameBox.getChildren().addAll(nameLabel, sizeLabel);
-
-                    Label timeLabel = new Label(hi.getDate()); // For now use date, ideally extract time
-                    timeLabel.getStyleClass().add("sub-detail");
-
-                    box.getChildren().addAll(nameBox, timeLabel);
-                    box.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-                    setGraphic(box);
-                    setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-                }
-            }
-        });
-
-        salesQtyCol.setCellValueFactory(data -> data.getValue().unitProperty()); // Use unit property for the sales quantity column (e.g. 2 pcs)
-        salesQtyCol.setCellFactory(col -> new TableCell<HistoryItem, String>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setGraphic(null);
-                    setText(null);
-                } else {
-                    Label label = new Label(item);
-                    label.setStyle("-fx-font-weight: 800; -fx-text-fill: -fx-text-main;");
-                    setGraphic(label);
-                    setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-                }
-            }
-        });
-        salesCustomerCol.setCellValueFactory(data -> data.getValue().nameProperty());
-        salesCustomerCol.setCellFactory(col -> new TableCell<HistoryItem, String>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null) {
-                    setText(null);
-                } else {
-                    setText(item);
-                    setStyle("-fx-text-fill: -fx-text-muted;"); // Match mocked lightness for customer
-                    setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-                }
-            }
-        });
-
-        salesAmountCol.setCellValueFactory(data -> data.getValue().amountProperty());
-        salesAmountCol.setCellFactory(col -> new TableCell<HistoryItem, String>() {
-            @Override
-            protected void updateItem(String item, boolean empty) {
-                super.updateItem(item, empty);
-                if (empty || item == null || getTableRow() == null || getTableRow().getItem() == null) {
-                    setGraphic(null);
-                    setText(null);
-                } else {
-                    HistoryItem hi = getTableRow().getItem();
-                    Label label = new Label("UGX " + item);
-                    label.getStyleClass().add("amount-vibrant");
-                    if (hi.isIsDebt()) {
-                        label.setStyle("-fx-text-fill: red; -fx-font-weight: bold;");
-                    }
-                    setGraphic(label);
-                    setAlignment(javafx.geometry.Pos.CENTER_LEFT);
-                }
-            }
-        });
+        if (dailySalesTable != null && salesItemCol != null) {
+            dailySalesTable.setItems(dataManager.getDbHelper().getTodaysSales());
+        }
+        if (salesItemCol != null) {
+            salesItemCol.setCellValueFactory(data -> data.getValue().itemProperty());
+        }
+        if (salesQtyCol != null) {
+            salesQtyCol.setCellValueFactory(data -> data.getValue().unitProperty());
+        }
+        if (salesCustomerCol != null) {
+            salesCustomerCol.setCellValueFactory(data -> data.getValue().nameProperty());
+        }
+        if (salesAmountCol != null) {
+            salesAmountCol.setCellValueFactory(data -> data.getValue().amountProperty());
+        }
     }
 
     @Override
@@ -306,7 +243,10 @@ public class InStockController implements DataManager.DataChangeListener {
     private void loadDailySales() {
         ObservableList<HistoryItem> todaySales = dataManager.getDbHelper().getTodaysSales();
         System.out.println("DASHBOARD: loadDailySales count = " + todaySales.size());
-        dailySalesTable.setItems(todaySales);
+        if (dailySalesTable != null) {
+            dailySalesTable.setItems(todaySales);
+        }
+        renderDailySalesList(todaySales);
 
         transactionCountLabel.setText(String.valueOf(todaySales.size()));
 
@@ -333,6 +273,77 @@ public class InStockController implements DataManager.DataChangeListener {
             dailyDebtLabel.setText(String.format("Debt: UGX %,.0f", totalDebt));
         }
         salesSublabel.setText(todaySales.size() + " transactions • UGX " + String.format("%,.0f", totalRevenue));
+    }
+
+    private void renderDailySalesList(ObservableList<HistoryItem> todaySales) {
+        if (dailySalesListContainer == null) return;
+        dailySalesListContainer.getChildren().clear();
+
+        if (todaySales == null || todaySales.isEmpty()) {
+            VBox emptyBox = new VBox(6);
+            emptyBox.setStyle("-fx-padding: 20; -fx-alignment: center;");
+            Label title = new Label("No Sales Recorded Today");
+            title.setStyle("-fx-font-weight: 800; -fx-font-size: 13px; -fx-text-fill: #64748B;");
+            Label sub = new Label("Completed transactions will appear here in real-time.");
+            sub.setStyle("-fx-font-size: 11px; -fx-text-fill: #94A3B8;");
+            emptyBox.getChildren().addAll(title, sub);
+            dailySalesListContainer.getChildren().add(emptyBox);
+            return;
+        }
+
+        for (HistoryItem item : todaySales) {
+            dailySalesListContainer.getChildren().add(createDailySaleCard(item));
+        }
+    }
+
+    private javafx.scene.layout.HBox createDailySaleCard(HistoryItem item) {
+        javafx.scene.layout.HBox card = new javafx.scene.layout.HBox(10);
+        card.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        card.getStyleClass().add("dashboard-sale-card");
+
+        // Left info block
+        VBox leftBox = new VBox(2);
+        javafx.scene.layout.HBox.setHgrow(leftBox, javafx.scene.layout.Priority.ALWAYS);
+
+        // Customer name + Debt indicator
+        javafx.scene.layout.HBox topRow = new javafx.scene.layout.HBox(6);
+        topRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        Label custLabel = new Label(item.getName() == null || item.getName().isEmpty() ? "Walk-in Customer" : item.getName());
+        custLabel.setStyle("-fx-font-weight: 800; -fx-text-fill: #0F172A; -fx-font-size: 12px;");
+        topRow.getChildren().add(custLabel);
+
+        if (item.isIsDebt()) {
+            Label debtBadge = new Label("DEBT");
+            debtBadge.setStyle("-fx-background-color: #FEF2F2; -fx-text-fill: #DC2626; -fx-font-size: 9px; -fx-font-weight: 900; -fx-padding: 1 6; -fx-background-radius: 4; -fx-border-color: #FCA5A5; -fx-border-radius: 4;");
+            topRow.getChildren().add(debtBadge);
+        }
+
+        // Item details: Item Name + Size badge + Unit
+        javafx.scene.layout.HBox subRow = new javafx.scene.layout.HBox(6);
+        subRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        Label itemLabel = new Label(item.getItem());
+        itemLabel.setStyle("-fx-font-size: 11px; -fx-text-fill: #475569; -fx-font-weight: 600;");
+
+        Label qtyBadge = new Label(item.getUnit() == null ? "" : item.getUnit());
+        qtyBadge.getStyleClass().addAll("badge", "badge-stock");
+        qtyBadge.setStyle("-fx-font-size: 10px; -fx-padding: 1 5;");
+
+        subRow.getChildren().addAll(itemLabel, qtyBadge);
+        leftBox.getChildren().addAll(topRow, subRow);
+
+        // Right amount block
+        VBox rightBox = new VBox();
+        rightBox.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+        Label amountLabel = new Label("UGX " + item.getAmount());
+        if (item.isIsDebt()) {
+            amountLabel.setStyle("-fx-font-weight: 900; -fx-font-size: 13px; -fx-text-fill: #DC2626;");
+        } else {
+            amountLabel.setStyle("-fx-font-weight: 900; -fx-font-size: 13px; -fx-text-fill: #10B981;");
+        }
+        rightBox.getChildren().add(amountLabel);
+
+        card.getChildren().addAll(leftBox, rightBox);
+        return card;
     }
 
     public void destroy() {

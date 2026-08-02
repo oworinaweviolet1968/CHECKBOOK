@@ -149,19 +149,17 @@ public class DataManager {
                             .sendDesktopActionNotification("Desktop App Online", "Desktop app accessed the internet and is now online.");
                         
                         javafx.application.Platform.runLater(() -> {
-                            org.controlsfx.control.Notifications.create()
-                                .title("🟢 Connection Restored")
-                                .text("Desktop app is back online. Cloud sync will resume.")
-                                .position(javafx.geometry.Pos.TOP_RIGHT)
-                                .showInformation();
+                            com.meto.inventory.utils.ToastService.showSuccess(
+                                "Connection Restored",
+                                "Desktop app is back online. Cloud sync will resume."
+                            );
                         });
                     } else if (wasOnline != null) {
                         javafx.application.Platform.runLater(() -> {
-                            org.controlsfx.control.Notifications.create()
-                                .title("🔴 Connection Lost")
-                                .text("Desktop app is offline. Changes will sync when reconnected.")
-                                .position(javafx.geometry.Pos.TOP_RIGHT)
-                                .showWarning();
+                            com.meto.inventory.utils.ToastService.showWarning(
+                                "Connection Lost",
+                                "Desktop app is offline. Changes will sync when reconnected."
+                            );
                         });
                     }
                 }
@@ -214,11 +212,10 @@ public class DataManager {
         for (DatabaseHelper.NotificationItem notif : notifs) {
             if (!notif.isRead() && "Mobile".equals(notif.getSource())) {
                 javafx.application.Platform.runLater(() -> {
-                    org.controlsfx.control.Notifications.create()
-                        .title("Mobile App Input")
-                        .text(notif.getMessage())
-                        .position(javafx.geometry.Pos.TOP_RIGHT)
-                        .showInformation();
+                    com.meto.inventory.utils.ToastService.showInfo(
+                        "Mobile App Input",
+                        notif.getMessage()
+                    );
                 });
                 dbHelper.markNotificationAsRead(notif.getId());
                 // Notify UI to refresh Notifications view

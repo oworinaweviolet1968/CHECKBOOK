@@ -8,61 +8,105 @@
             fx:controller="com.meto.inventory.controllers.HistoryController"
             stylesheets="@styles/style.css">
 
-    <VBox spacing="30" AnchorPane.topAnchor="0" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0" AnchorPane.bottomAnchor="0">
+    <VBox spacing="12" AnchorPane.topAnchor="0" AnchorPane.leftAnchor="0" AnchorPane.rightAnchor="0" AnchorPane.bottomAnchor="0">
         <padding>
-            <Insets top="0" right="10" bottom="20" left="0"/>
+            <Insets top="0" right="10" bottom="10" left="0"/>
         </padding>
 
-        <!-- Header -->
-        <HBox alignment="CENTER_LEFT" spacing="20">
-            <VBox spacing="4" HBox.hgrow="ALWAYS">
-                <Label text="Transaction History" styleClass="header-title" style="-fx-font-size: 24px;"/>
-                <Label text="View and filter all previous inventory movements and sales" styleClass="header-subtitle" style="-fx-padding: 0;"/>
+        <!-- Header Row with Integrated Mini Stat Chips -->
+        <HBox alignment="CENTER_LEFT" spacing="16">
+            <VBox spacing="2">
+                <Label text="Transaction History" styleClass="h1" style="-fx-font-size: 20px;"/>
+                <Label text="View and audit inventory movements &amp; sales records" styleClass="text-muted" style="-fx-font-size: 11px;"/>
             </VBox>
+
+            <Region HBox.hgrow="ALWAYS"/>
+
+            <!-- Compact Mini Metrics Chips -->
+            <HBox spacing="8" alignment="CENTER_RIGHT">
+                <HBox spacing="4" alignment="CENTER" styleClass="mini-metric-chip">
+                    <Label text="Total:" styleClass="mini-metric-label"/>
+                    <Label fx:id="totalRecordsLabel" text="0" styleClass="mini-metric-val"/>
+                </HBox>
+
+                <HBox spacing="4" alignment="CENTER" styleClass="mini-metric-chip, mini-metric-green">
+                    <Label text="Sales:" styleClass="mini-metric-label"/>
+                    <Label fx:id="salesVolumeLabel" text="UGX 0" styleClass="mini-metric-val-green"/>
+                </HBox>
+
+                <HBox spacing="4" alignment="CENTER" styleClass="mini-metric-chip, mini-metric-blue">
+                    <Label text="Stock-In:" styleClass="mini-metric-label"/>
+                    <Label fx:id="stockCountLabel" text="0" styleClass="mini-metric-val-blue"/>
+                </HBox>
+
+                <HBox spacing="4" alignment="CENTER" styleClass="mini-metric-chip, mini-metric-red">
+                    <Label text="Debts:" styleClass="mini-metric-label"/>
+                    <Label fx:id="unpaidDebtsLabel" text="0" styleClass="mini-metric-val-red"/>
+                </HBox>
+            </HBox>
+
+            <Button fx:id="refreshBtn" text="Refresh" styleClass="btn-secondary" style="-fx-padding: 4 10; -fx-font-size: 11px;">
+                <graphic>
+                    <Region styleClass="icon, icon-clock" style="-fx-scale-x: 0.7; -fx-scale-y: 0.7;"/>
+                </graphic>
+            </Button>
         </HBox>
 
-        <!-- Filters Card -->
-        <VBox styleClass="card" spacing="16">
-            <HBox spacing="20" alignment="CENTER_LEFT">
-                <HBox alignment="CENTER_LEFT" HBox.hgrow="ALWAYS" style="-fx-background-color: transparent; -fx-padding: 8 16; -fx-background-radius: 8; -fx-border-color: -fx-color-border; -fx-border-radius: 8;">
-                    <Region styleClass="icon, icon-box" style="-fx-scale-x: 0.7; -fx-scale-y: 0.7; -fx-background-color: #9CA3AF;"/>
-                    <TextField fx:id="searchField" promptText="Search item or customer..." style="-fx-background-color: transparent; -fx-border-color: transparent; -fx-padding: 0 10;" HBox.hgrow="ALWAYS"/>
-                </HBox>
-                
-                <HBox spacing="10" alignment="CENTER_LEFT">
-                    <Label text="Date:" style="-fx-font-size: 12px; -fx-font-weight: 700; -fx-text-fill: #374151;"/>
-                    <DatePicker fx:id="datePicker" prefWidth="150" promptText="Filter by date"/>
-                    <Button fx:id="clearDateBtn" text="Clear" styleClass="pill"/>
+        <!-- Compact Single-Row Filter Card -->
+        <VBox styleClass="card" style="-fx-padding: 10 14;">
+            <HBox spacing="12" alignment="CENTER_LEFT">
+                <!-- Search Input -->
+                <HBox alignment="CENTER_LEFT" HBox.hgrow="ALWAYS" styleClass="search-box-container" style="-fx-padding: 4 8;">
+                    <Region styleClass="icon, icon-box" style="-fx-scale-x: 0.65; -fx-scale-y: 0.65;"/>
+                    <TextField fx:id="searchField" promptText="Search item, customer, supplier..." style="-fx-background-color: transparent; -fx-border-color: transparent; -fx-padding: 0 6; -fx-font-size: 13px;" HBox.hgrow="ALWAYS"/>
                 </HBox>
 
-                <HBox spacing="10" alignment="CENTER_LEFT">
-                    <Label text="Period:" style="-fx-font-size: 12px; -fx-font-weight: 700; -fx-text-fill: #374151;"/>
-                    <ComboBox fx:id="periodFilterCombo" prefWidth="120" promptText="All Periods"/>
+                <!-- Category Pills Bar -->
+                <HBox spacing="6" alignment="CENTER_LEFT">
+                    <Button fx:id="btnFilterAll" text="All" styleClass="pill-quick-selected"/>
+                    <Button fx:id="btnFilterStock" text="Stock In" styleClass="pill-quick"/>
+                    <Button fx:id="btnFilterRetail" text="Retail" styleClass="pill-quick"/>
+                    <Button fx:id="btnFilterWholesale" text="Wholesale" styleClass="pill-quick"/>
+                    <Button fx:id="btnFilterDebts" text="Debts" styleClass="pill-quick"/>
                 </HBox>
 
-                <HBox spacing="10" alignment="CENTER_LEFT">
-                    <Label text="Type:" style="-fx-font-size: 12px; -fx-font-weight: 700; -fx-text-fill: #374151;"/>
-                    <ComboBox fx:id="historyFilterCombo" prefWidth="120" promptText="All Transactions"/>
+                <!-- Period Filter -->
+                <ComboBox fx:id="periodFilterCombo" prefWidth="110" promptText="All Periods" style="-fx-padding: 4 8; -fx-font-size: 12px;"/>
+
+                <!-- Date Picker -->
+                <HBox spacing="4" alignment="CENTER_LEFT">
+                    <DatePicker fx:id="datePicker" prefWidth="130" promptText="Select date" style="-fx-font-size: 12px;"/>
+                    <Button fx:id="clearDateBtn" text="Clear" styleClass="pill" style="-fx-padding: 4 8; -fx-font-size: 11px;"/>
                 </HBox>
+
+                <!-- Hidden fallback dropdown for backwards compatibility if referenced -->
+                <ComboBox fx:id="historyFilterCombo" visible="false" managed="false"/>
             </HBox>
         </VBox>
 
-        <!-- History Table Card -->
-        <VBox styleClass="card" VBox.vgrow="ALWAYS" spacing="16">
-            <TableView fx:id="historyTable" VBox.vgrow="ALWAYS">
-                <columns>
-                    <TableColumn fx:id="nameCol" text="Customer/Supplier" prefWidth="150"/>
-                    <TableColumn fx:id="itemCol" text="Item Details" prefWidth="350"/>
-                    <TableColumn fx:id="typeCol" text="Type" prefWidth="100"/>
-                    <TableColumn fx:id="periodCol" text="Period" prefWidth="110"/>
-                    <TableColumn fx:id="amountCol" text="Total Amount" prefWidth="140"/>
-                    <TableColumn fx:id="dateCol" text="Date" prefWidth="120"/>
-                    <TableColumn fx:id="actionsCol" text="Actions" prefWidth="100"/>
-                </columns>
-                <columnResizePolicy>
-                    <TableView fx:constant="CONSTRAINED_RESIZE_POLICY"/>
-                </columnResizePolicy>
-            </TableView>
+        <!-- Main History Card List Container (Expands to fill window) -->
+        <VBox styleClass="card" VBox.vgrow="ALWAYS" style="-fx-padding: 0;">
+            <!-- Sticky Column Header Bar -->
+            <HBox alignment="CENTER_LEFT" styleClass="history-header-bar" spacing="12">
+                <Label text="CUSTOMER / SUPPLIER" prefWidth="170" styleClass="history-header-label"/>
+                <Label text="ITEM DETAILS" HBox.hgrow="ALWAYS" maxWidth="Infinity" styleClass="history-header-label"/>
+                <Label text="TYPE" prefWidth="95" alignment="CENTER" styleClass="history-header-label"/>
+                <Label text="PERIOD" prefWidth="85" alignment="CENTER" styleClass="history-header-label"/>
+                <Label text="TOTAL AMOUNT" prefWidth="130" alignment="CENTER_RIGHT" styleClass="history-header-label"/>
+                <Label text="DATE" prefWidth="110" alignment="CENTER_RIGHT" styleClass="history-header-label"/>
+                <Label text="ACTIONS" prefWidth="80" alignment="CENTER" styleClass="history-header-label"/>
+            </HBox>
+
+            <!-- Scrollable Transaction Row Cards Container -->
+            <ScrollPane fx:id="historyScrollPane" fitToWidth="true" styleClass="history-scroll-pane" VBox.vgrow="ALWAYS">
+                <content>
+                    <VBox fx:id="historyListContainer" styleClass="history-list-container" spacing="8">
+                        <padding>
+                            <Insets top="8" right="12" bottom="12" left="12"/>
+                        </padding>
+                    </VBox>
+                </content>
+            </ScrollPane>
         </VBox>
     </VBox>
 </AnchorPane>

@@ -183,7 +183,15 @@ class _NewStockScreenState extends State<NewStockScreen> {
         backgroundColor: surfaceColor,
         elevation: 0,
         centerTitle: false,
-        automaticallyImplyLeading: false,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          onPressed: () {
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            }
+          },
+          tooltip: 'Back to Home',
+        ),
         title: Row(
           children: [
             Container(
@@ -269,7 +277,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
                        borderRadius: BorderRadius.circular(12),
                        border: Border.all(color: borderColor),
                        boxShadow: [
-                         BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))
+                         BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))
                        ]
                      ),
                      child: Column(
@@ -297,7 +305,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: border),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2))
+          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2))
         ]
       ),
       child: Column(
@@ -527,7 +535,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           decoration: BoxDecoration(
               border: Border(bottom: BorderSide(color: border)),
-              color: const Color(0xFFF8FAFC).withOpacity(0.5),
+              color: const Color(0xFFF8FAFC).withValues(alpha: 0.5),
           ),
           child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -542,9 +550,9 @@ class _NewStockScreenState extends State<NewStockScreen> {
                   Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                       decoration: BoxDecoration(
-                          color: AppColors.primaryGreen.withOpacity(0.1),
+                          color: AppColors.primaryGreen.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppColors.primaryGreen.withOpacity(0.2)),
+                          border: Border.all(color: AppColors.primaryGreen.withValues(alpha: 0.2)),
                       ),
                       child: Text("${_items.length} ITEMS", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primaryGreen)),
                   )
@@ -560,7 +568,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.inventory_2_outlined, size: 40, color: Colors.grey.withOpacity(0.5)),
+                  Icon(Icons.inventory_2_outlined, size: 40, color: Colors.grey.withValues(alpha: 0.5)),
                   const SizedBox(height: 8),
                   const Text("No items added yet", style: TextStyle(color: Colors.grey)),
                 ],
@@ -599,7 +607,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
                              child: Container(
                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                                  decoration: BoxDecoration(
-                                     color: Colors.blue.withOpacity(0.1),
+                                     color: Colors.blue.withValues(alpha: 0.1),
                                      borderRadius: BorderRadius.circular(4),
                                  ),
                                  child: Text(item.unit, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue)),
@@ -638,7 +646,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
          Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC).withOpacity(0.8),
+                color: const Color(0xFFF8FAFC).withValues(alpha: 0.8),
                 border: Border(bottom: BorderSide(color: border)),
             ),
             child: Row(
@@ -690,6 +698,16 @@ class _NewStockScreenState extends State<NewStockScreen> {
                          ),
                          child: const Text("Save Stock", style: TextStyle(fontWeight: FontWeight.w600)),
                      ),
+                 ),
+                 const SizedBox(height: 8),
+                 TextButton.icon(
+                   onPressed: () {
+                     if (Navigator.canPop(context)) {
+                       Navigator.pop(context);
+                     }
+                   },
+                   icon: const Icon(Icons.arrow_back, size: 16, color: Colors.grey),
+                   label: const Text("Cancel / Back to In Stock", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
                  ),
              ],
          ),
@@ -781,9 +799,9 @@ class _NewStockScreenState extends State<NewStockScreen> {
           child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                  color: color.withOpacity(0.1), 
+                  color: color.withValues(alpha: 0.1), 
                   borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: color.withOpacity(0.2)),
+                  border: Border.all(color: color.withValues(alpha: 0.2)),
               ),
               child: Text(
                   label, 
@@ -818,7 +836,7 @@ class _NewStockScreenState extends State<NewStockScreen> {
        return Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+              color: color.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(4)
           ),
           child: Row(

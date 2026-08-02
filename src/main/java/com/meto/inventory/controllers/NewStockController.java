@@ -212,10 +212,33 @@ public class NewStockController implements DataManager.DataChangeListener {
                         long val = Long.parseLong(clean);
                         String formatted = String.format("%,d", val);
 
-                        // To avoid cursor jumping or infinite loop, only apply if change is different
                         if (!change.getControlNewText().equals(formatted)) {
+                            int oldCaret = change.getControlCaretPosition();
+                            String oldText = change.getControlText();
+                            int digitsBeforeCaret = 0;
+                            for (int i = 0; i < Math.min(oldCaret, oldText.length()); i++) {
+                                if (Character.isDigit(oldText.charAt(i))) {
+                                    digitsBeforeCaret++;
+                                }
+                            }
+                            String addedDigits = change.getText().replaceAll("[^0-9]", "");
+                            digitsBeforeCaret += addedDigits.length();
+
+                            int newCaret = 0;
+                            int digitCount = 0;
+                            for (int i = 0; i < formatted.length(); i++) {
+                                if (digitCount < digitsBeforeCaret) {
+                                    if (Character.isDigit(formatted.charAt(i))) {
+                                        digitCount++;
+                                    }
+                                    newCaret = i + 1;
+                                }
+                            }
+
                             change.setText(formatted);
                             change.setRange(0, change.getControlText().length());
+                            change.setCaretPosition(newCaret);
+                            change.setAnchor(newCaret);
                         }
                     }
                 } catch (Exception e) {

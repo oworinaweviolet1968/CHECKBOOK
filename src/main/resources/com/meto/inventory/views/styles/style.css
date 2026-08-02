@@ -2,49 +2,36 @@
 /* =========================================
    1. GLOBAL VARIABLES & RESET
    ========================================= */
-* {
+.root {
     -fx-primary: #10B981;
-    /* Emerald 500 */
     -fx-primary-dark: #059669;
-    /* Emerald 600 */
     -fx-secondary: #3B82F6;
-    /* Blue 500 */
     -fx-bg-body: #F9FAFB;
-    /* Gray 50 - Lighter background */
     -fx-bg-surface: #FFFFFF;
-    /* White */
     -fx-text-main: #111827;
-    /* Gray 900 */
     -fx-text-muted: #6B7280;
-    /* Gray 500 */
     -fx-color-border: #F3F4F6;
-    /* Gray 100 - Subtler border */
     -fx-red: #EF4444;
-    /* Red 500 */
     -fx-orange: #F59E0B;
-    /* Amber 500 */
     -fx-primary-light: #D1FAE5;
-    /* Emerald 100 */
     -fx-font-base: "Inter", "Segoe UI", sans-serif;
+
+    -fx-background-color: -fx-bg-body;
+    -fx-font-family: -fx-font-base;
+    -fx-font-size: 14px;
 }
 
 .root.dark {
     -fx-bg-body: #111827;
-    /* Gray 900 */
     -fx-bg-surface: #1F2937;
-    /* Gray 800 */
     -fx-text-main: #F9FAFB;
-    /* Gray 50 */
     -fx-text-muted: #9CA3AF;
-    /* Gray 400 */
     -fx-color-border: #374151;
-    /* Gray 700 */
 }
 
-.root {
-    -fx-background-color: -fx-bg-body;
-    -fx-font-family: -fx-font-base;
-    -fx-font-size: 14px;
+/* ControlsFX Notification Popup Override Fix */
+.notification-bar, .notification-bar > .pane, .notification-bar > .container {
+    -fx-background-color: transparent !important;
 }
 
 /* =========================================
@@ -586,38 +573,413 @@ Label.header-title {
     /* Use AtlantaFX light primary if available, or just a light emerald */
 }
 
-/* History Row Coloring */
-.history-row-new-stock {
-    -fx-background-color: #ecfdf5 !important;
-    /* Emerald 50 */
+/* =========================================
+   11. SCROLLPANE & TRANSACTION CARD LIST STYLES
+   ========================================= */
+.history-header-bar {
+    -fx-background-color: #F8FAFC;
+    -fx-border-color: #E2E8F0;
+    -fx-border-width: 0 0 1.5 0;
+    -fx-padding: 10 14;
+    -fx-background-radius: 8 8 0 0;
 }
 
-.history-row-new-stock:odd {
-    -fx-background-color: #f0fdf4 !important;
+.history-header-label {
+    -fx-font-size: 11px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #64748B;
 }
 
-.history-row-retail {
-    -fx-background-color: #f5f3ff !important;
-    /* Violet 50 */
+.history-scroll-pane {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+    -fx-border-color: transparent;
 }
 
-.history-row-retail:odd {
-    -fx-background-color: #faf5ff !important;
+.history-scroll-pane > .viewport {
+    -fx-background-color: transparent;
 }
 
-.history-row-wholesale {
-    -fx-background-color: #fff1f2 !important;
-    /* Rose 50 or light red */
+.history-list-container {
+    -fx-background-color: transparent;
+    -fx-padding: 6 0;
 }
 
-.history-row-wholesale:odd {
-    -fx-background-color: #fff5f5 !important;
+/* Individual Transaction Row Card */
+.history-row-card {
+    -fx-background-color: white;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-border-color: #E2E8F0;
+    -fx-border-width: 1;
+    -fx-padding: 8 12;
+    -fx-transition: -fx-background-color 0.15s;
 }
 
-.history-row-debt {
-    -fx-background-color: #fffafa !important;
-    -fx-border-color: #fee2e2 !important;
+.history-row-card:hover {
+    -fx-background-color: #F8FAFC;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.03), 6, 0, 0, 1);
 }
+
+.card-accent-stock {
+    -fx-border-color: #E2E8F0 #E2E8F0 #E2E8F0 #10B981 !important;
+    -fx-border-width: 1 1 1 4 !important;
+}
+
+.card-accent-retail {
+    -fx-border-color: #E2E8F0 #E2E8F0 #E2E8F0 #8B5CF6 !important;
+    -fx-border-width: 1 1 1 4 !important;
+}
+
+.card-accent-wholesale {
+    -fx-border-color: #E2E8F0 #E2E8F0 #E2E8F0 #EC4899 !important;
+    -fx-border-width: 1 1 1 4 !important;
+}
+
+.card-accent-debt {
+    -fx-background-color: #FEF2F2 !important;
+    -fx-border-color: #FCA5A5 #FCA5A5 #FCA5A5 #EF4444 !important;
+    -fx-border-width: 1 1 1 4 !important;
+}
+
+/* =========================================
+   12. ADHD-FRIENDLY SETTLE DEBT DIALOG STYLES
+   ========================================= */
+.settle-dialog-pane {
+    -fx-background-color: white;
+    -fx-padding: 20;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.1), 15, 0, 0, 4);
+}
+
+.settle-summary-card {
+    -fx-background-color: #F8FAFC;
+    -fx-background-radius: 8;
+    -fx-border-color: #E2E8F0;
+    -fx-border-radius: 8;
+    -fx-padding: 12;
+}
+
+.settle-focal-banner {
+    -fx-background-color: #FEF2F2;
+    -fx-background-radius: 8;
+    -fx-border-color: #FCA5A5;
+    -fx-border-radius: 8;
+    -fx-border-width: 1.5;
+    -fx-padding: 12 16;
+}
+
+.settle-focal-title {
+    -fx-font-size: 11px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #991B1B;
+}
+
+.settle-focal-val {
+    -fx-font-size: 24px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #DC2626;
+}
+
+.btn-confirm-payment {
+    -fx-background-color: #10B981 !important;
+    -fx-text-fill: white !important;
+    -fx-font-weight: bold !important;
+    -fx-padding: 8 20 !important;
+    -fx-background-radius: 6 !important;
+    -fx-cursor: hand;
+}
+
+.btn-confirm-payment:hover {
+    -fx-background-color: #059669 !important;
+}
+
+.badge-settled {
+    -fx-background-color: #ECFDF5;
+    -fx-text-fill: #047857;
+    -fx-border-color: #A7F3D0;
+}
+
+.badge-partial {
+    -fx-background-color: #FFFBEB;
+    -fx-text-fill: #B45309;
+    -fx-border-color: #FDE68A;
+}
+
+/* =========================================
+   13. ADHD-FRIENDLY SALES SECTION STYLES
+   ========================================= */
+.sales-step-card {
+    -fx-background-color: #F8FAFC;
+    -fx-background-radius: 8;
+    -fx-border-color: #E2E8F0;
+    -fx-border-radius: 8;
+    -fx-padding: 12;
+}
+
+.sales-step-num {
+    -fx-font-size: 10px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #2563EB;
+    -fx-background-color: #EFF6FF;
+    -fx-padding: 2 8;
+    -fx-background-radius: 10;
+}
+
+.sales-step-title {
+    -fx-font-size: 12px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #0F172A;
+}
+
+.stock-badge-green {
+    -fx-background-color: #ECFDF5;
+    -fx-border-color: #A7F3D0;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-border-width: 1.5;
+    -fx-padding: 8 12;
+}
+
+.stock-badge-amber {
+    -fx-background-color: #FFFBEB;
+    -fx-border-color: #FDE68A;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-border-width: 1.5;
+    -fx-padding: 8 12;
+}
+
+.stock-badge-red {
+    -fx-background-color: #FEF2F2;
+    -fx-border-color: #FCA5A5;
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-border-width: 1.5;
+    -fx-padding: 8 12;
+}
+
+.stock-val-green {
+    -fx-font-size: 20px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #059669;
+}
+
+.stock-val-amber {
+    -fx-font-size: 20px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #D97706;
+}
+
+.stock-val-red {
+    -fx-font-size: 20px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #DC2626;
+}
+
+.stock-warning-banner {
+    -fx-background-color: #FEF2F2;
+    -fx-border-color: #FCA5A5;
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-padding: 6 10;
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #DC2626;
+}
+
+.input-error-border {
+    -fx-border-color: #EF4444 !important;
+    -fx-border-width: 2 !important;
+}
+
+.stock-pkg-label {
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #475569;
+    -fx-background-color: rgba(255,255,255,0.7);
+    -fx-background-radius: 4;
+    -fx-padding: 2 6;
+}
+
+.sale-item-card {
+    -fx-background-color: white;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-border-color: #E2E8F0;
+    -fx-border-width: 1;
+    -fx-padding: 8 12;
+}
+
+.sale-item-card:hover {
+    -fx-background-color: #F8FAFC;
+}
+
+.dash-pkg-badge {
+    -fx-background-color: #F1F5F9;
+    -fx-text-fill: #475569;
+    -fx-font-size: 10px;
+    -fx-font-weight: 800;
+    -fx-padding: 2 6;
+    -fx-background-radius: 4;
+    -fx-border-color: #CBD5E1;
+    -fx-border-radius: 4;
+}
+
+.dashboard-sale-card {
+    -fx-background-color: white;
+    -fx-background-radius: 6;
+    -fx-border-radius: 6;
+    -fx-border-color: #E2E8F0;
+    -fx-border-width: 1;
+    -fx-padding: 8 12;
+}
+
+.dashboard-sale-card:hover {
+    -fx-background-color: #F8FAFC;
+}
+
+.checkout-bar {
+    -fx-background-color: #F8FAFC;
+    -fx-background-radius: 8;
+    -fx-border-color: #E2E8F0;
+    -fx-border-radius: 8;
+    -fx-padding: 10 16;
+}
+
+.debt-toggle-box {
+    -fx-background-color: #FEF2F2;
+    -fx-border-color: #FCA5A5;
+    -fx-border-radius: 20;
+    -fx-background-radius: 20;
+    -fx-padding: 4 14;
+}
+
+.btn-finalize-sale {
+    -fx-background-color: #10B981 !important;
+    -fx-text-fill: white !important;
+    -fx-font-weight: 900 !important;
+    -fx-font-size: 13px !important;
+    -fx-padding: 8 24 !important;
+    -fx-background-radius: 6 !important;
+    -fx-cursor: hand;
+}
+
+.btn-finalize-sale:hover {
+    -fx-background-color: #059669 !important;
+}
+
+
+
+
+
+
+
+
+
+/* Mini Metric Chips (Compact Header Stats) */
+.mini-metric-chip {
+    -fx-background-color: #F3F4F6;
+    -fx-background-radius: 20;
+    -fx-padding: 4 12;
+    -fx-border-color: #E5E7EB;
+    -fx-border-radius: 20;
+    -fx-border-width: 1;
+}
+
+.mini-metric-green {
+    -fx-background-color: #ECFDF5;
+    -fx-border-color: #A7F3D0;
+}
+
+.mini-metric-blue {
+    -fx-background-color: #EFF6FF;
+    -fx-border-color: #BFDBFE;
+}
+
+.mini-metric-red {
+    -fx-background-color: #FEF2F2;
+    -fx-border-color: #FECACA;
+}
+
+.mini-metric-label {
+    -fx-font-size: 11px;
+    -fx-text-fill: #6B7280;
+    -fx-font-weight: 600;
+}
+
+.mini-metric-val {
+    -fx-font-size: 12px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #111827;
+}
+
+.mini-metric-val-green {
+    -fx-font-size: 12px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #059669;
+}
+
+.mini-metric-val-blue {
+    -fx-font-size: 12px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #2563EB;
+}
+
+.mini-metric-val-red {
+    -fx-font-size: 12px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #DC2626;
+}
+
+/* Compact, high readability item line card components */
+.item-card-container {
+    -fx-spacing: 2;
+    -fx-padding: 1 0;
+}
+
+.item-line-box {
+    -fx-background-color: #F8FAFC;
+    -fx-background-radius: 4;
+    -fx-border-color: #E2E8F0;
+    -fx-border-radius: 4;
+    -fx-border-width: 1;
+    -fx-padding: 2 6;
+}
+
+.item-line-box:hover {
+    -fx-background-color: #F1F5F9;
+    -fx-border-color: #CBD5E1;
+}
+
+
+.item-qty-badge {
+    -fx-background-color: #E2E8F0;
+    -fx-text-fill: #334155;
+    -fx-font-weight: 800;
+    -fx-font-size: 11px;
+    -fx-padding: 2 7;
+    -fx-background-radius: 4;
+}
+
+.item-name-bold {
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #0F172A;
+}
+
+.item-price-muted {
+    -fx-font-size: 11px;
+    -fx-text-fill: #64748B;
+}
+
+.item-subtotal-bold {
+    -fx-font-size: 12px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #059669;
+}
+
+
 
 /* Hides the empty table rows */
 .table-row-cell:empty {
@@ -655,15 +1017,49 @@ Label.header-title {
 
 /* Style the buttons inside the alert */
 .dialog-pane .button {
-    -fx-background-color: -fx-primary;
-    -fx-text-fill: white;
+    -fx-background-color: #F1F5F9;
+    -fx-text-fill: #475569;
     -fx-font-weight: bold;
     -fx-background-radius: 6;
+    -fx-padding: 8 18;
+    -fx-border-color: #CBD5E1;
+    -fx-border-radius: 6;
     -fx-cursor: hand;
 }
 
 .dialog-pane .button:hover {
-    -fx-background-color: -fx-primary-dark;
+    -fx-background-color: #E2E8F0;
+}
+
+.btn-dialog-ok {
+    -fx-background-color: #10B981 !important;
+    -fx-text-fill: white !important;
+    -fx-font-weight: 900 !important;
+    -fx-font-size: 13px !important;
+    -fx-padding: 8 22 !important;
+    -fx-background-radius: 6 !important;
+    -fx-border-color: transparent !important;
+    -fx-cursor: hand;
+}
+
+.btn-dialog-ok:hover {
+    -fx-background-color: #059669 !important;
+}
+
+.btn-dialog-cancel {
+    -fx-background-color: #F1F5F9 !important;
+    -fx-text-fill: #475569 !important;
+    -fx-font-weight: 700 !important;
+    -fx-font-size: 13px !important;
+    -fx-padding: 8 18 !important;
+    -fx-border-color: #CBD5E1 !important;
+    -fx-border-radius: 6 !important;
+    -fx-background-radius: 6 !important;
+    -fx-cursor: hand;
+}
+
+.btn-dialog-cancel:hover {
+    -fx-background-color: #E2E8F0 !important;
 }
 
 /* =========================================
@@ -803,4 +1199,309 @@ Label.header-title {
     -fx-background-color: #F59E0B;
     -fx-effect: none;
 }
+
+/* =========================================
+   10. HISTORY REDESIGN STYLES
+   ========================================= */
+.search-box-container {
+    -fx-background-color: -fx-bg-surface;
+    -fx-padding: 6 12;
+    -fx-background-radius: 8;
+    -fx-border-color: -fx-color-border;
+    -fx-border-radius: 8;
+}
+
+.search-box-container:focused-within {
+    -fx-border-color: -fx-primary;
+    -fx-effect: dropshadow(gaussian, rgba(16, 185, 129, 0.15), 6, 0, 0, 0);
+}
+
+.filter-label {
+    -fx-font-size: 12px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #374151;
+}
+
+.btn-print {
+    -fx-background-color: #10B981;
+    -fx-text-fill: white;
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+    -fx-padding: 4 12;
+    -fx-background-radius: 20;
+    -fx-cursor: hand;
+}
+
+.btn-print:hover {
+    -fx-background-color: #059669;
+    -fx-effect: dropshadow(gaussian, rgba(16, 185, 129, 0.3), 4, 0, 0, 1);
+}
+
+.card-value-blue {
+    -fx-font-size: 24px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #3B82F6;
+}
+
+.card-value-purple {
+    -fx-font-size: 24px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #8B5CF6;
+}
+
+.card-value-amber {
+    -fx-font-size: 24px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #F59E0B;
+}
+
+.badge-period-today {
+    -fx-background-color: #DCFCE7;
+    -fx-text-fill: #15803D;
+    -fx-font-weight: bold;
+    -fx-background-radius: 4;
+    -fx-padding: 2 6;
+    -fx-font-size: 11px;
+}
+
+.badge-period-yesterday {
+    -fx-background-color: #FFEDD5;
+    -fx-text-fill: #C2410C;
+    -fx-font-weight: bold;
+    -fx-background-radius: 4;
+    -fx-padding: 2 6;
+    -fx-font-size: 11px;
+}
+
+.badge-period-earlier {
+    -fx-background-color: #F3F4F6;
+    -fx-text-fill: #4B5563;
+    -fx-background-radius: 4;
+    -fx-padding: 2 6;
+    -fx-font-size: 11px;
+}
+
+.history-item-text {
+    -fx-font-size: 12px;
+    -fx-fill: #374151;
+}
+
+/* Empty State Container */
+.empty-state-box {
+    -fx-padding: 40 20;
+    -fx-alignment: CENTER;
+}
+
+.empty-state-title {
+    -fx-font-size: 16px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #374151;
+}
+
+.empty-state-sub {
+    -fx-font-size: 13px;
+    -fx-text-fill: #9CA3AF;
+}
+
+/* =========================================
+   9. MODERN TOAST NOTIFICATIONS & BANNER ALERTS
+   ========================================= */
+.modern-toast-card {
+    -fx-background-color: #FFFFFF;
+    -fx-background-radius: 12px;
+    -fx-border-radius: 12px 0 0 12px;
+    -fx-effect: dropshadow(gaussian, rgba(15, 23, 42, 0.12), 16, 0, 0, 4);
+}
+
+.root.dark .modern-toast-card {
+    -fx-background-color: #1E2937;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.35), 18, 0, 0, 4);
+}
+
+.toast-accent-success {
+    -fx-border-color: transparent transparent transparent #10B981;
+    -fx-border-width: 0 0 0 4px;
+}
+
+.toast-accent-warning {
+    -fx-border-color: transparent transparent transparent #F59E0B;
+    -fx-border-width: 0 0 0 4px;
+}
+
+.toast-accent-error {
+    -fx-border-color: transparent transparent transparent #EF4444;
+    -fx-border-width: 0 0 0 4px;
+}
+
+.toast-accent-info {
+    -fx-border-color: transparent transparent transparent #3B82F6;
+    -fx-border-width: 0 0 0 4px;
+}
+
+.toast-title {
+    -fx-font-size: 13px !important;
+    -fx-font-weight: 800 !important;
+    -fx-text-fill: #0F172A !important;
+}
+
+.root.dark .toast-title {
+    -fx-text-fill: #F8FAFC !important;
+}
+
+.toast-description {
+    -fx-font-size: 12px !important;
+    -fx-text-fill: #475569 !important;
+}
+
+.root.dark .toast-description {
+    -fx-text-fill: #94A3B8 !important;
+}
+
+.toast-close-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: #94A3B8;
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-cursor: hand;
+}
+
+.toast-close-btn:hover {
+    -fx-background-color: #F1F5F9;
+    -fx-text-fill: #0F172A;
+}
+
+/* Modern Dialog Pane Styling for DialogHelper */
+.dialog-pane.modern-alert {
+    -fx-background-color: #FFFFFF;
+    -fx-background-radius: 12px;
+    -fx-border-radius: 12px;
+    -fx-border-color: #E2E8F0;
+    -fx-border-width: 1px;
+    -fx-effect: dropshadow(gaussian, rgba(15, 23, 42, 0.15), 20, 0, 0, 6);
+}
+
+.dialog-pane.modern-alert-success {
+    -fx-border-color: transparent transparent transparent #10B981;
+    -fx-border-width: 0 0 0 4px;
+}
+
+.dialog-pane.modern-alert-warning {
+    -fx-border-color: transparent transparent transparent #F59E0B;
+    -fx-border-width: 0 0 0 4px;
+}
+
+.dialog-pane.modern-alert-error {
+    -fx-border-color: transparent transparent transparent #EF4444;
+    -fx-border-width: 0 0 0 4px;
+}
+
+/* =========================================
+   10. AUDIT TRAIL & ACTIVITY LOG CARDS
+   ========================================= */
+.audit-log-card {
+    -fx-background-color: #FFFFFF;
+    -fx-background-radius: 10px;
+    -fx-border-radius: 10px 0 0 10px;
+    -fx-padding: 14px 16px;
+    -fx-spacing: 8px;
+    -fx-effect: dropshadow(gaussian, rgba(15, 23, 42, 0.04), 8, 0, 0, 2);
+}
+
+.root.dark .audit-log-card {
+    -fx-background-color: #1E2937;
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.25), 10, 0, 0, 2);
+}
+
+.audit-card-stock {
+    -fx-border-color: transparent transparent transparent #10B981;
+    -fx-border-width: 0 0 0 4px;
+}
+
+.audit-card-sale {
+    -fx-border-color: transparent transparent transparent #3B82F6;
+    -fx-border-width: 0 0 0 4px;
+}
+
+.audit-card-debt {
+    -fx-border-color: transparent transparent transparent #F59E0B;
+    -fx-border-width: 0 0 0 4px;
+}
+
+.audit-card-system {
+    -fx-border-color: transparent transparent transparent #8B5CF6;
+    -fx-border-width: 0 0 0 4px;
+}
+
+.audit-card-other {
+    -fx-border-color: transparent transparent transparent #64748B;
+    -fx-border-width: 0 0 0 4px;
+}
+
+.audit-badge {
+    -fx-font-size: 10px;
+    -fx-font-weight: 900;
+    -fx-padding: 3px 8px;
+    -fx-background-radius: 6px;
+}
+
+.audit-badge-stock {
+    -fx-background-color: #D1FAE5;
+    -fx-text-fill: #065F46;
+}
+
+.audit-badge-sale {
+    -fx-background-color: #DBEAFE;
+    -fx-text-fill: #1E40AF;
+}
+
+.audit-badge-debt {
+    -fx-background-color: #FEF3C7;
+    -fx-text-fill: #92400E;
+}
+
+.audit-badge-system {
+    -fx-background-color: #EDE9FE;
+    -fx-text-fill: #5B21B6;
+}
+
+.audit-badge-other {
+    -fx-background-color: #F1F5F9;
+    -fx-text-fill: #334155;
+}
+
+.audit-badge-source {
+    -fx-font-size: 10px;
+    -fx-font-weight: 700;
+    -fx-padding: 2px 7px;
+    -fx-background-color: #F1F5F9;
+    -fx-text-fill: #475569;
+    -fx-background-radius: 4px;
+}
+
+.root.dark .audit-badge-source {
+    -fx-background-color: #374151;
+    -fx-text-fill: #9CA3AF;
+}
+
+.audit-headline {
+    -fx-font-size: 13px !important;
+    -fx-font-weight: 800 !important;
+    -fx-text-fill: #0F172A !important;
+}
+
+.root.dark .audit-headline {
+    -fx-text-fill: #F8FAFC !important;
+}
+
+.audit-timestamp {
+    -fx-font-size: 11px !important;
+    -fx-text-fill: #64748B !important;
+}
+
+.root.dark .audit-timestamp {
+    -fx-text-fill: #9CA3AF !important;
+}
+
+
+
 

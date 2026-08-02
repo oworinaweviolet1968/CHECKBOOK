@@ -535,12 +535,30 @@ public class DatabaseHelper {
         return count * getUnitMultiplier(unitCount, size, unitCount);
     }
 
+    public static String sanitizeInput(String input) {
+        if (input == null) return "";
+        return input.replaceAll("[<>'\";]|--", "").trim();
+    }
+
+    public static String cleanPackagingString(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return "Standard";
+        String cleaned = raw.trim();
+        if (cleaned.toLowerCase().matches("^[0-9.]+\\s+[a-zA-Z]+.*")) {
+            cleaned = cleaned.replaceAll("^[0-9.]+\\s+", "").trim();
+        }
+        return cleaned.isEmpty() ? "Standard" : cleaned;
+    }
+
     private String formatStockForDisplay(double totalBase, String size, String bulkUnit) {
-        String sizeLower = size.toLowerCase().replaceAll("\\s+", "");
+        if (totalBase <= 0) return "0 pcs";
+
+        String cleanSize = cleanPackagingString(size);
+        String cleanUnit = cleanPackagingString(bulkUnit);
+        String sizeLower = cleanSize.toLowerCase().replaceAll("\\s+", "");
 
         // --- WEIGHT-BASED (Sacks / kg) ---
         if (sizeLower.contains("kg")) {
-            double kgPerSack = extractNumericValue(size);
+            double kgPerSack = extractNumericValue(cleanSize);
             if (kgPerSack >= 10.0) {
                 int sacks = (int) (totalBase / kgPerSack);
                 double remainingKg = totalBase % kgPerSack;
@@ -553,7 +571,7 @@ public class DatabaseHelper {
         }
 
         // --- PIECE-BASED: Highest unit → Doz → pcs ---
-        double multiplier = getUnitMultiplier(bulkUnit, size, bulkUnit);
+        double multiplier = getUnitMultiplier(cleanUnit, cleanSize, cleanUnit);
 
         // If multiplier is 1, just show pcs
         if (multiplier <= 1.0) {
@@ -567,9 +585,9 @@ public class DatabaseHelper {
         else if (multiplier == 12.0)
             friendlyName = "Doz";
         else if (sizeLower.contains("crate"))
-            friendlyName = "Crs";
+            friendlyName = "Crates";
         else if (sizeLower.contains("carton"))
-            friendlyName = "Cts";
+            friendlyName = "Cartons";
         else if (sizeLower.contains("pack"))
             friendlyName = "Pks";
         else if (sizeLower.contains("bundle"))
@@ -770,22 +788,41 @@ public class DatabaseHelper {
             while (rs.next()) {
                 double totalPieces = rs.getDouble("available_pieces");
                 double costPerPiece = rs.getDouble("price");
-                String itemSize = rs.getString("quantity");
+                String rawQuantity = rs.getString("quantity");
+                String itemSize = rawQuantity != null ? rawQuantity.trim() : "";
                 String bulkUnit = rs.getString("unit");
 
-                stockList.add(new StockItem(
+                StockItem sItem = new StockItem(
                         rs.getString("item"),
                         itemSize,
                         formatStockForDisplay(totalPieces, itemSize, bulkUnit),
                         String.format("%,.2f", costPerPiece),
                         String.format("%,.2f", totalPieces * costPerPiece),
                         rs.getString("supplier"),
-                        rs.getString("date")));
+                        rs.getString("date"));
+                sItem.setBulkUnit(bulkUnit);
+                stockList.add(sItem);
             }
         } catch (SQLException e) {
             e.printStackTrace();
         }
         return stockList;
+    }
+
+    public String getRawStockUnit(String itemName, String size) {
+        if (itemName == null || size == null) return "";
+        try (PreparedStatement pstmt = connection
+                .prepareStatement("SELECT unit FROM stock WHERE item = ? AND quantity = ? LIMIT 1")) {
+            pstmt.setString(1, itemName);
+            pstmt.setString(2, size);
+            ResultSet rs = pstmt.executeQuery();
+            if (rs.next()) {
+                return rs.getString("unit");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return "";
     }
 
     public boolean hasEnoughStock(String itemName, String size, String soldUnit) {
@@ -1815,7 +1852,8 @@ public class DatabaseHelper {
     }
 
     public void cleanupZombieStock() {
-        String sql = "SELECT id, item, quantity, sync_id FROM stock WHERE (available_pieces <= 0 OR NOT EXISTS (SELECT 1 FROM sales WHERE sales.item = stock.item AND sales.quantity = stock.quantity AND sales.type = 'NEW STOCK')) AND (is_edited = 0 OR is_edited IS NULL)";
+        // Find all stock entries that have available_pieces <= 0 AND have no sales history entry
+        String sql = "SELECT id, item, quantity, sync_id FROM stock WHERE available_pieces <= 0 AND NOT EXISTS (SELECT 1 FROM sales WHERE sales.item = stock.item COLLATE NOCASE AND sales.quantity = stock.quantity COLLATE NOCASE) AND (is_edited = 0 OR is_edited IS NULL)";
         try (Statement stmt = connection.createStatement();
                 ResultSet rs = stmt.executeQuery(sql)) {
             List<Map<String, String>> zombies = new ArrayList<>();

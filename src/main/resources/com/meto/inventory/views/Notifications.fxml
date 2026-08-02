@@ -4,26 +4,27 @@
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
 
-<VBox spacing="20" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.meto.inventory.controllers.NotificationsController" styleClass="main-container">
+<VBox spacing="18" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.meto.inventory.controllers.NotificationsController" styleClass="main-container">
     <padding>
-        <Insets top="20" right="20" bottom="20" left="20"/>
+        <Insets top="20" right="24" bottom="24" left="24"/>
     </padding>
 
     <!-- Header Section -->
     <HBox alignment="CENTER_LEFT" spacing="15">
-        <Button fx:id="backBtn" text="Back" styleClass="btn-secondary">
+        <Button fx:id="backBtn" text="Back" styleClass="btn-secondary" style="-fx-cursor: hand;">
             <graphic>
                 <Region styleClass="icon, icon-logout" style="-fx-scale-x: -1; -fx-scale-y: 1;"/>
             </graphic>
         </Button>
-        <VBox>
-            <Label text="Audit Trail &amp; Activity Log" styleClass="h1"/>
-            <Label text="Track all user actions, sales, stock changes, and system auto-restorations" styleClass="text-muted"/>
+        <VBox spacing="2">
+            <Label text="Audit Trail &amp; Activity Log" styleClass="h1" style="-fx-font-size: 22px; -fx-font-weight: 800; -fx-text-fill: #0F172A;"/>
+            <Label text="Track all user actions, sales, stock changes, and system auto-restorations" styleClass="text-muted" style="-fx-font-size: 12px; -fx-text-fill: #64748B;"/>
         </VBox>
         <Region HBox.hgrow="ALWAYS"/>
     </HBox>
 
-    <VBox VBox.vgrow="ALWAYS" styleClass="card" style="-fx-padding: 10;">
-        <ListView fx:id="notificationsList" VBox.vgrow="ALWAYS" styleClass="edge-to-edge"/>
+    <!-- Audit List Container -->
+    <VBox VBox.vgrow="ALWAYS" styleClass="card" style="-fx-padding: 12; -fx-background-color: #F8FAFC; -fx-border-color: #E2E8F0; -fx-border-radius: 12; -fx-background-radius: 12;">
+        <ListView fx:id="notificationsList" VBox.vgrow="ALWAYS" styleClass="edge-to-edge" style="-fx-background-color: transparent; -fx-control-inner-background: transparent;"/>
     </VBox>
 </VBox>

@@ -83,9 +83,16 @@ class _DebtHistoryScreenState extends State<DebtHistoryScreen> with SingleTicker
 
   void _applyFilters() {
     setState(() {
+      final terms = _searchQuery
+          .split(',')
+          .map((t) => t.trim().toLowerCase())
+          .where((t) => t.isNotEmpty)
+          .toList();
+
       _filteredDebts = _allDebts.where((d) {
-        final matchesSearch = d.customer.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-                            d.item.toLowerCase().contains(_searchQuery.toLowerCase());
+        final matchesSearch = terms.isEmpty || terms.any((q) =>
+            d.customer.toLowerCase().contains(q) ||
+            d.item.toLowerCase().contains(q));
         
         if (_tabController.index == 0) {
           return matchesSearch && !d.isPaid;

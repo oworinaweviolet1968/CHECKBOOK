@@ -12,6 +12,7 @@ public class StockItem {
     private final StringProperty amount = new SimpleStringProperty();
     private final StringProperty supplier = new SimpleStringProperty();
     private final StringProperty date = new SimpleStringProperty();
+    private final StringProperty bulkUnit = new SimpleStringProperty();
 
     public StockItem() {
     }
@@ -140,5 +141,17 @@ public class StockItem {
                 return "UGX 0";
             }
         }, qtyProperty(), priceProperty()); // <--- This tells JavaFX to watch these two fields
+    }
+
+    public String getBulkUnit() {
+        return bulkUnit.get();
+    }
+
+    public void setBulkUnit(String bulkUnit) {
+        this.bulkUnit.set(bulkUnit);
+    }
+
+    public StringProperty bulkUnitProperty() {
+        return bulkUnit;
     }
 }

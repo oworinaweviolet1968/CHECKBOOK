@@ -10,6 +10,7 @@ import '../services/passcode_service.dart';
 import '../screens/deleted_history_screen.dart';
 import '../screens/price_update_screen.dart';
 import '../screens/debt_history_screen.dart';
+import '../screens/new_stock_screen.dart';
 import '../services/database_helper.dart';
 import '../services/shorebird_service.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -428,10 +429,12 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: Navigator.canPop(context)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -588,6 +591,17 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
             ),
             const SizedBox(height: 16),
             // Buttons Section
+            _buildPrimaryActionCard(
+              title: 'Add New Stock',
+              subtitle: 'Register new inventory items and batches',
+              icon: Icons.add_box_rounded,
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const NewStockScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
             _buildActionCard(
               title: 'Price Update / Repricing',
               icon: Icons.edit_note_rounded,
@@ -602,16 +616,94 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
               onTap: _showReceiptInfoDialog,
             ),
             const SizedBox(height: 16),
+            const SizedBox(height: 24),
+            // Security & Privacy Header
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'SECURITY & PRIVACY',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
             _buildActionCard(
-              title: 'Create passcode',
+              title: 'App / Metrics Passcode',
+              subtitle: PasscodeService.instance.hasPasscode ? 'Passcode Enabled' : 'Not Configured',
               icon: Icons.lock_outline,
               iconColor: AppColors.primaryGreen,
-              onTap: () {
-                Navigator.of(context).push(
+              onTap: () async {
+                await Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const PasscodeSetupScreen()),
+                );
+                if (mounted) setState(() {});
+              },
+            ),
+            const SizedBox(height: 16),
+            ValueListenableBuilder<bool>(
+              valueListenable: PasscodeService.instance.isBiometricsEnabled,
+              builder: (context, isEnabled, _) {
+                return _buildSwitchCard(
+                  title: 'Biometric Authentication',
+                  subtitle: 'Use Fingerprint / Face ID to unlock metrics',
+                  icon: Icons.fingerprint,
+                  value: isEnabled,
+                  onChanged: (val) async {
+                    if (val && !PasscodeService.instance.hasPasscode) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Please set a passcode first before enabling biometrics'),
+                          backgroundColor: Colors.orange,
+                        ),
+                      );
+                      return;
+                    }
+                    await PasscodeService.instance.toggleBiometrics(val);
+                  },
                 );
               },
             ),
+            const SizedBox(height: 16),
+            ValueListenableBuilder<bool>(
+              valueListenable: PasscodeService.instance.lockOnLaunch,
+              builder: (context, isLockOnBoot, _) {
+                return _buildSwitchCard(
+                  title: 'Lock Metrics on Boot',
+                  subtitle: 'Default financial metrics to locked on launch',
+                  icon: Icons.security,
+                  value: isLockOnBoot,
+                  onChanged: (val) => PasscodeService.instance.toggleLockOnLaunch(val),
+                );
+              },
+            ),
+            if (PasscodeService.instance.hasPasscode) ...[
+              const SizedBox(height: 16),
+              ValueListenableBuilder<bool>(
+                valueListenable: PasscodeService.instance.isLocked,
+                builder: (context, isLocked, _) {
+                  if (isLocked) return const SizedBox.shrink();
+                  return _buildActionCard(
+                    title: 'Lock Financial Metrics Now',
+                    icon: Icons.lock,
+                    iconColor: Colors.orange.shade800,
+                    onTap: () {
+                      PasscodeService.instance.lock();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Financial metrics locked!'),
+                          backgroundColor: AppColors.primaryGreen,
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ],
             const SizedBox(height: 16),
             _buildDebtActionCard(),
             const SizedBox(height: 16),
@@ -737,8 +829,73 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
     );
   }
 
+  Widget _buildPrimaryActionCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.primaryGreen.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.primaryGreen.withValues(alpha: 0.3), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primaryGreen.withValues(alpha: 0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.primaryGreen,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.primaryGreen),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildActionCard({
     required String title,
+    String? subtitle,
     required IconData icon,
     required Color iconColor,
     Color? textColor,
@@ -772,17 +929,96 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
             ),
             const SizedBox(width: 16),
             Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: textColor ?? AppColors.textPrimary,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: textColor ?? AppColors.textPrimary,
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSwitchCard({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primaryGreen.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: AppColors.primaryGreen),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            activeThumbColor: AppColors.primaryGreen,
+            onChanged: onChanged,
+          ),
+        ],
       ),
     );
   }

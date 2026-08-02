@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../utils/colors.dart';
 import '../widgets/stat_card.dart';
 import '../widgets/stock_tile_redesigned.dart';
 import '../widgets/sale_tile_redesigned.dart';
 import '../widgets/common_app_bar_actions.dart';
-import '../screens/login_screen.dart';
 import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
 import '../services/passcode_service.dart';
@@ -108,11 +107,11 @@ class DashboardScreenState extends State<DashboardScreen> {
                      child: ValueListenableBuilder<bool>(
                        valueListenable: PasscodeService.instance.isLocked,
                        builder: (context, isLocked, child) {
-                         if (isLocked) {
-                           return _buildLockedPlaceholder();
-                         }
-                         
-                         return LayoutBuilder(
+                         return AnimatedCrossFade(
+                           duration: const Duration(milliseconds: 300),
+                           crossFadeState: isLocked ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+                           firstChild: _buildLockedPlaceholder(),
+                           secondChild: LayoutBuilder(
                              builder: (context, constraints) {
                                  bool isWide = constraints.maxWidth > 800;
                                  
@@ -186,6 +185,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                                      );
                                  }
                              }
+                           ),
                          );
                        },
                      ),
@@ -319,15 +319,16 @@ class DashboardScreenState extends State<DashboardScreen> {
                                      double unitPrice = price * multiplier;
                                      
                                      String displayAvail = DatabaseHelper.instance.formatStockForDisplay(
-                                         avail, 
+                                 avail, 
                                          item['unit'] ?? "pcs", 
                                          size
                                      );
 
                                      return StockTileRedesigned(
                                          itemName: item['item'], 
-                                         itemSize: "Size: $size", 
-                                         price: "UGX ${_formatter.format(unitPrice)} / ${item['unit'] ?? 'pc'}", 
+                                         itemSize: size, 
+                                         price: _formatter.format(unitPrice),
+                                         packagingUnit: item['unit'] ?? 'pcs', 
                                          quantity: displayAvail,
                                          isLowStock: isLow,
                                          isEdited: (item['is_edited'] as int? ?? 0) == 1,
@@ -470,91 +471,68 @@ class DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildLockedPlaceholder() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 40),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: Colors.grey.shade100, shape: BoxShape.circle),
-            child: Icon(Icons.visibility_off_outlined, color: Colors.grey.shade400, size: 32),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Passcode required',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Metrics are hidden for security',
-            style: TextStyle(color: Colors.grey, fontSize: 13),
-          ),
-          const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: _showPasscodeDialog,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryGreen,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              elevation: 0,
+    return InkWell(
+      onTap: () => PasscodeService.instance.authenticate(context),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 36, horizontal: 24),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.primaryGreen.withValues(alpha: 0.15)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
             ),
-            child: const Text('Unlock View', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showPasscodeDialog() {
-    final controller = TextEditingController();
-    String? errorMessage;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => AlertDialog(
-          title: const Text('Enter Passcode'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: controller,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                obscureText: true,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 24, letterSpacing: 10),
-                decoration: const InputDecoration(border: OutlineInputBorder(), counterText: ""),
-                onChanged: (_) {
-                  if (errorMessage != null) setModalState(() => errorMessage = null);
-                },
+          ],
+        ),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.primaryGreen.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
               ),
-              if (errorMessage != null) ...[
-                const SizedBox(height: 8),
-                Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-            TextButton(
-              onPressed: () async {
-                bool success = await PasscodeService.instance.verifyPasscode(controller.text);
-                if (mounted) {
-                  if (success) {
-                    Navigator.pop(context);
-                  } else {
-                    setModalState(() => errorMessage = "Incorrect Passcode!");
-                  }
-                }
-              },
-              child: const Text('Unlock'),
+              child: const Icon(Icons.lock_outline, color: AppColors.primaryGreen, size: 36),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Metrics Locked',
+              style: GoogleFonts.outfit(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF000000),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Tap to unlock.',
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                fontWeight: FontWeight.normal,
+                color: const Color(0xFF666666),
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () => PasscodeService.instance.authenticate(context),
+              icon: const Icon(Icons.fingerprint, size: 20),
+              label: Text(
+                'Unlock Metrics',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primaryGreen,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
+              ),
             ),
           ],
         ),

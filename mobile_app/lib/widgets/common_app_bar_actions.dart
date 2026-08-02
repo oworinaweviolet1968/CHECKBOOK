@@ -1,7 +1,6 @@
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import '../utils/colors.dart';
-import '../screens/account_screen.dart';
 import '../services/passcode_service.dart';
 import '../screens/notifications_screen.dart';
 import '../services/supabase_service.dart';
@@ -114,25 +113,6 @@ class _StandardAppBarActionsState extends State<StandardAppBarActions> {
           },
         ),
         const SizedBox(width: 8),
-        GestureDetector(
-          onTap: () async {
-            await Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const AccountScreen()),
-            );
-            if (widget.onRefresh != null) widget.onRefresh!();
-          },
-          child: Container(
-            margin: const EdgeInsets.only(right: 16),
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: AppColors.primaryGreen.withValues(alpha: 0.2),
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.primaryGreen.withValues(alpha: 0.3)),
-            ),
-            child: const Icon(Icons.person, size: 20, color: AppColors.primaryGreen),
-          ),
-        ),
       ],
     );
   }

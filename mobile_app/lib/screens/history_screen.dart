@@ -13,7 +13,8 @@ import '../utils/colors.dart';
 class HistoryScreen extends StatefulWidget {
   final int initialTab;
   final String? highlightQuery;
-  const HistoryScreen({super.key, this.initialTab = 0, this.highlightQuery});
+  final String? highlightReceiptId;
+  const HistoryScreen({super.key, this.initialTab = 0, this.highlightQuery, this.highlightReceiptId});
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -21,6 +22,7 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final GlobalKey _targetItemKey = GlobalKey();
   
   // Data
   List<HistoryItem> _allItems = [];
@@ -92,8 +94,6 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
 
   Future<void> _loadHistory({bool showLoading = true}) async {
       if (showLoading) setState(() => _isLoading = true);
-      // Fetch ALL filtered items from DB initially? Or just fetch everything and filter locally?
-      // "ALL" fetches everything.
       final items = await DatabaseHelper.instance.getHistory("ALL");
       if (mounted) {
           setState(() {
@@ -101,6 +101,19 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
               _applyFilters();
               _isLoading = false;
           });
+
+          if (widget.highlightReceiptId != null && widget.highlightReceiptId!.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (_targetItemKey.currentContext != null) {
+                Scrollable.ensureVisible(
+                  _targetItemKey.currentContext!,
+                  duration: const Duration(milliseconds: 600),
+                  curve: Curves.easeInOut,
+                  alignment: 0.2,
+                );
+              }
+            });
+          }
       }
   }
 
@@ -116,18 +129,23 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
           temp = temp.where((i) => i.isDebt && !i.isPaid).toList();
       }
 
-      // 2. Search Filter
+      // 2. Search Filter (Supports multi-term OR search)
       if (_searchQuery.isNotEmpty) {
-          final q = _searchQuery.toLowerCase();
+          final terms = _searchQuery
+              .split(',')
+              .map((t) => t.trim().toLowerCase())
+              .where((t) => t.isNotEmpty)
+              .toList();
+
           temp = temp.where((i) {
-             return i.item.toLowerCase().contains(q) || 
-                    i.customer.toLowerCase().contains(q);
+             final itemLower = i.item.toLowerCase();
+             final customerLower = i.customer.toLowerCase();
+             return terms.any((q) => itemLower.contains(q) || customerLower.contains(q));
           }).toList();
       }
 
       // 3. Date Filter
       if (_selectedDate != null) {
-          // item.date is String YYYY-MM-DD
           String filterDate = _selectedDate!.toIso8601String().split('T')[0];
           temp = temp.where((i) => i.date == filterDate).toList();
       }
@@ -255,7 +273,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
                                      height: 40,
                                      width: 40,
                                      decoration: BoxDecoration(
-                                         color: _selectedDate != null ? AppColors.primaryGreen.withOpacity(0.1) : Colors.white,
+                                         color: _selectedDate != null ? AppColors.primaryGreen.withValues(alpha: 0.1) : Colors.white,
                                          borderRadius: BorderRadius.circular(8),
                                          border: Border.all(
                                              color: _selectedDate != null ? AppColors.primaryGreen : Colors.grey.shade300
@@ -379,9 +397,9 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
       margin: const EdgeInsets.only(top: 8, bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.08),
+        color: Colors.grey.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.withOpacity(0.15)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.15)),
       ),
       child: Row(
         children: [
@@ -399,7 +417,7 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.15),
+              color: iconColor.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
@@ -604,11 +622,22 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
           displayAmount = remainingVal;
       }
 
-      final bool isHighlighted = _searchQuery.isNotEmpty &&
-          (item.customer.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-           item.item.toLowerCase().contains(_searchQuery.toLowerCase()));
+      final bool isTargetReceipt = widget.highlightReceiptId != null &&
+          widget.highlightReceiptId!.isNotEmpty &&
+          item.receiptId == widget.highlightReceiptId;
+
+      final bool isSearchMatch = _searchQuery.isNotEmpty &&
+          _searchQuery.split(',').any((t) {
+            final term = t.trim().toLowerCase();
+            return term.isNotEmpty &&
+                (item.customer.toLowerCase().contains(term) ||
+                 item.item.toLowerCase().contains(term));
+          });
+
+      final bool isHighlighted = isTargetReceipt || isSearchMatch;
 
       return Container(
+          key: isTargetReceipt ? _targetItemKey : null,
           decoration: BoxDecoration(
               color: isHighlighted ? AppColors.primaryGreen.withValues(alpha: 0.08) : Colors.white,
               borderRadius: BorderRadius.circular(16),

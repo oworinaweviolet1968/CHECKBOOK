@@ -12,8 +12,41 @@ enum NotificationTargetType { debt, sale, stock, deleted, price, none, general }
 class NotificationRouteInfo {
   final NotificationTargetType type;
   final String query;
+  final String? targetId;
 
-  NotificationRouteInfo({required this.type, required this.query});
+  NotificationRouteInfo({required this.type, required this.query, this.targetId});
+
+  factory NotificationRouteInfo.fromMetadata(String? targetType, String? targetId, String message) {
+    if (targetType != null && targetType.isNotEmpty) {
+      final type = _mapTargetType(targetType);
+      final fallbackQuery = _extractFallbackQuery(type, message);
+      return NotificationRouteInfo(type: type, query: fallbackQuery, targetId: targetId);
+    }
+    return NotificationRouteInfo.parse(message);
+  }
+
+  static NotificationTargetType _mapTargetType(String targetType) {
+    switch (targetType) {
+      case 'sale':
+        return NotificationTargetType.sale;
+      case 'debt':
+      case 'payment':
+        return NotificationTargetType.debt;
+      case 'stock':
+        return NotificationTargetType.stock;
+      case 'deleted':
+        return NotificationTargetType.deleted;
+      case 'price':
+        return NotificationTargetType.price;
+      default:
+        return NotificationTargetType.general;
+    }
+  }
+
+  static String _extractFallbackQuery(NotificationTargetType type, String message) {
+    final route = NotificationRouteInfo.parse(message);
+    return route.query;
+  }
 
   factory NotificationRouteInfo.parse(String message) {
     final lower = message.toLowerCase();
@@ -24,7 +57,7 @@ class NotificationRouteInfo {
       type = NotificationTargetType.none;
     } else if (lower.startsWith('new stock:')) {
       type = NotificationTargetType.stock;
-      String itemPart = message.substring(10).trim(); // Skip 'NEW STOCK:'
+      String itemPart = message.substring(10).trim();
       final idx = itemPart.toLowerCase().lastIndexOf('has been stocked');
       if (idx != -1) {
         query = itemPart.substring(0, idx).trim();
@@ -35,7 +68,7 @@ class NotificationRouteInfo {
       type = NotificationTargetType.stock;
       final fromIdx = lower.lastIndexOf(' from ');
       if (fromIdx != -1) {
-        String itemPart = message.substring(6, fromIdx).trim(); // Skip 'Added '
+        String itemPart = message.substring(6, fromIdx).trim();
         if (itemPart.toLowerCase() == 'stock') {
           query = message.substring(fromIdx + 6).trim();
         } else {
@@ -62,12 +95,12 @@ class NotificationRouteInfo {
       type = NotificationTargetType.sale;
       final colonIdx = message.indexOf(':');
       if (colonIdx != -1) {
-        String itemPart = message.substring(colonIdx + 1).trim();
-        final parenIdx = itemPart.indexOf('(');
-        if (parenIdx != -1) {
-          query = itemPart.substring(0, parenIdx).trim();
+        String customerPart = message.substring(18, colonIdx).trim();
+        String itemsPart = message.substring(colonIdx + 1).trim();
+        if (customerPart.toLowerCase() == 'walk-in customer' || customerPart.isEmpty) {
+          query = itemsPart.split(',').first.trim();
         } else {
-          query = itemPart;
+          query = customerPart;
         }
       } else {
         query = message.substring(18).trim();
@@ -76,7 +109,13 @@ class NotificationRouteInfo {
       type = NotificationTargetType.sale;
       final colonIdx = message.indexOf(':');
       if (colonIdx != -1) {
-        query = message.substring(colonIdx + 1).trim();
+        String customerPart = message.substring(14, colonIdx).trim();
+        String itemsPart = message.substring(colonIdx + 1).trim();
+        if (customerPart.toLowerCase() == 'walk-in customer' || customerPart.isEmpty) {
+          query = itemsPart.split(',').first.trim();
+        } else {
+          query = customerPart;
+        }
       } else {
         query = message.substring(14).trim();
       }
@@ -84,7 +123,13 @@ class NotificationRouteInfo {
       type = NotificationTargetType.debt;
       final colonIdx = message.indexOf(':');
       if (colonIdx != -1) {
-        query = message.substring(colonIdx + 1).trim();
+        String customerPart = message.substring(18, colonIdx).trim();
+        String itemsPart = message.substring(colonIdx + 1).trim();
+        if (customerPart.toLowerCase() == 'walk-in customer' || customerPart.isEmpty) {
+          query = itemsPart.split(',').first.trim();
+        } else {
+          query = customerPart;
+        }
       } else {
         query = message.substring(18).trim();
       }
@@ -136,7 +181,6 @@ class NotificationsScreen extends StatefulWidget {
 class _NotificationsScreenState extends State<NotificationsScreen> {
   List<Map<String, dynamic>> _notifications = [];
   bool _isLoading = true;
-  // Ordered map: section header → list of notifications in that section
   final List<MapEntry<String, List<Map<String, dynamic>>>> _sections = [];
 
   @override
@@ -147,7 +191,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   Future<void> _loadNotifications() async {
     final notifs = await DatabaseHelper.instance.getNotifications();
-    // Create a mutable copy – sqflite returns an unmodifiable list
     final mutableNotifs = List<Map<String, dynamic>>.of(notifs);
     mutableNotifs.sort((a, b) =>
         (b['created_at'] as String).compareTo(a['created_at'] as String));
@@ -171,7 +214,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       grouped[header]!.add(notif);
     }
 
-    // Preserve logical order: Today → Yesterday → Earlier
     const order = ['Today', 'Yesterday', 'Earlier'];
     setState(() {
       _notifications = mutableNotifs;
@@ -209,28 +251,56 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       await DatabaseHelper.instance.markNotificationAsRead(notif['id'] as int);
       _loadNotifications();
     }
-    final routeInfo = NotificationRouteInfo.parse(notif['message'].toString());
+    final routeInfo = NotificationRouteInfo.fromMetadata(
+      notif['target_type'] as String?,
+      notif['target_id'] as String?,
+      notif['message'].toString(),
+    );
     if (!mounted) return;
     switch (routeInfo.type) {
       case NotificationTargetType.none:
         break;
       case NotificationTargetType.debt:
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => DebtHistoryScreen(highlightQuery: routeInfo.query)));
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => DebtHistoryScreen(highlightQuery: routeInfo.query),
+        ));
         break;
       case NotificationTargetType.sale:
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => HistoryScreen(initialTab: 2, highlightQuery: routeInfo.query)));
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => HistoryScreen(
+            initialTab: 2,
+            highlightQuery: routeInfo.query,
+            highlightReceiptId: routeInfo.targetId,
+          ),
+        ));
         break;
       case NotificationTargetType.stock:
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => HistoryScreen(initialTab: 1, highlightQuery: routeInfo.query)));
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => HistoryScreen(
+            initialTab: 1,
+            highlightQuery: routeInfo.query,
+            highlightReceiptId: routeInfo.targetId,
+          ),
+        ));
         break;
       case NotificationTargetType.deleted:
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => DeletedHistoryScreen(highlightQuery: routeInfo.query)));
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => DeletedHistoryScreen(highlightQuery: routeInfo.query),
+        ));
         break;
       case NotificationTargetType.price:
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => PriceUpdateScreen(highlightQuery: routeInfo.query)));
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => PriceUpdateScreen(highlightQuery: routeInfo.query),
+        ));
         break;
       case NotificationTargetType.general:
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => HistoryScreen(initialTab: 0, highlightQuery: routeInfo.query)));
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => HistoryScreen(
+            initialTab: 0,
+            highlightQuery: routeInfo.query,
+            highlightReceiptId: routeInfo.targetId,
+          ),
+        ));
         break;
     }
   }
@@ -240,12 +310,44 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final canNavigate = routeInfo.type != NotificationTargetType.none;
     final created = DateTime.parse(notif['created_at'] as String);
     final formattedDate = DateFormat('MMM d, yyyy — HH:mm').format(created);
-    final message = notif['message'].toString();
+    String formatCurrencyInMessage(String input) {
+      final formatter = NumberFormat("#,###");
+
+      String formatted = input.replaceAllMapped(
+        RegExp(r'UGX\s*(\d+(?:\.\d+)?)', caseSensitive: false),
+        (match) {
+          final val = double.tryParse(match.group(1)!) ?? 0;
+          return "UGX ${formatter.format(val.round())}";
+        },
+      );
+
+      formatted = formatted.replaceAllMapped(
+        RegExp(r'Payment of\s+(\d+(?:\.\d+)?)', caseSensitive: false),
+        (match) {
+          final val = double.tryParse(match.group(1)!) ?? 0;
+          return "Payment of UGX ${formatter.format(val.round())}";
+        },
+      );
+
+      formatted = formatted.replaceAllMapped(
+        RegExp(r'(bought|amount|paid)\s+(\d+(?:\.\d+)?)', caseSensitive: false),
+        (match) {
+          final word = match.group(1)!;
+          final val = double.tryParse(match.group(2)!) ?? 0;
+          return "$word UGX ${formatter.format(val.round())}";
+        },
+      );
+
+      return formatted;
+    }
+
+    final rawMessage = notif['message'].toString();
+    final message = formatCurrencyInMessage(rawMessage);
 
     // Bold specific parts of the message (UGX amounts, online status, item names)
     List<TextSpan> buildMessageSpans(String text) {
       final spans = <TextSpan>[];
-      final regex = RegExp(r'(UGX\s+\d+|App is online\.|Connected to internet\.)', caseSensitive: false);
+      final regex = RegExp(r'(UGX\s+[\d,]+|App is online\.|Connected to internet\.)', caseSensitive: false);
       
       int start = 0;
       for (final match in regex.allMatches(text)) {
@@ -255,7 +357,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         
         final matchedText = match.group(0)!;
         Color color = AppColors.textPrimary;
-        if (matchedText.startsWith('UGX')) {
+        if (matchedText.toUpperCase().startsWith('UGX')) {
              color = AppColors.primaryGreen;
         }
 
@@ -377,12 +479,16 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           const SizedBox(height: 6),
                           Row(
                             children: [
-                              Text(
-                                '$formattedDate • ${notif['source']}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: isUnread ? AppColors.primaryGreen : AppColors.textSecondary,
-                                  fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
+                              Expanded(
+                                child: Text(
+                                  '$formattedDate • ${notif['source']}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isUnread ? AppColors.primaryGreen : AppColors.textSecondary,
+                                    fontWeight: isUnread ? FontWeight.w600 : FontWeight.normal,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                               if (isUnread) ...[
@@ -523,7 +629,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     borderRadius: BorderRadius.circular(8),
                                     boxShadow: [
                                         BoxShadow(
-                                            color: Colors.black.withOpacity(0.03),
+                                            color: Colors.black.withValues(alpha: 0.03),
                                             blurRadius: 10,
                                             offset: const Offset(0, 2),
                                         )

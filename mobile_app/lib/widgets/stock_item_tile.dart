@@ -7,11 +7,11 @@ class StockItemTile extends StatelessWidget {
   final String price; // e.g. "1,321"
 
   const StockItemTile({
-    Key? key,
+    super.key,
     required this.itemName,
     required this.quantity,
     required this.price,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +23,7 @@ class StockItemTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.03),
+            color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 5,
             offset: Offset(0, 2),
           ),

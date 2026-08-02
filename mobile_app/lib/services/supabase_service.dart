@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'database_helper.dart';
 import 'passcode_service.dart';
+import 'logger_service.dart';
 
 enum SyncStatus { idle, syncing, synced, error, offline }
 
@@ -62,7 +63,7 @@ class SupasService {
     try {
       if (userId == null) return;
       syncStatus.value = SyncStatus.syncing;
-      print('SYNC: Starting Delta Sync for user $userId');
+      AppLogger.info('SYNC: Starting Delta Sync for user $userId', tag: 'SupasService');
       
       await DatabaseHelper.instance.checkAutoResyncMigration();
 
@@ -70,7 +71,7 @@ class SupasService {
 
       // 1. PUSH local changes to Postgres
       final dirtyStock = await DatabaseHelper.instance.getDirtyStock();
-      print('SYNC: PUSHING dirty stock: ${dirtyStock.length} items');
+      AppLogger.info('SYNC: PUSHING dirty stock: ${dirtyStock.length} items', tag: 'SupasService');
       if (dirtyStock.isNotEmpty) {
           final nowIso = DateTime.now().toUtc().toIso8601String();
           final mapped = dirtyStock.map((e) => {...e, 'user_id': userId, 'updated_at': nowIso}).toList();
@@ -78,7 +79,7 @@ class SupasService {
       }
 
       final dirtySales = await DatabaseHelper.instance.getDirtySales();
-      print('SYNC: PUSHING dirty sales: ${dirtySales.length} items');
+      AppLogger.info('SYNC: PUSHING dirty sales: ${dirtySales.length} items', tag: 'SupasService');
       if (dirtySales.isNotEmpty) {
           final nowIso = DateTime.now().toUtc().toIso8601String();
           final mapped = dirtySales.map((e) => {...e, 'user_id': userId, 'updated_at': nowIso}).toList();
@@ -88,7 +89,7 @@ class SupasService {
       await DatabaseHelper.instance.cleanupZombieStock();
 
       final deletedStock = await DatabaseHelper.instance.getDirtyDeletedStock();
-      print('SYNC: PUSHING dirty deleted stock: ${deletedStock.length} items');
+      AppLogger.info('SYNC: PUSHING dirty deleted stock: ${deletedStock.length} items', tag: 'SupasService');
       if (deletedStock.isNotEmpty) {
           for (var item in deletedStock) {
             final String? syncId = item['sync_id']?.toString();
@@ -105,7 +106,7 @@ class SupasService {
       }
 
       final deletedHistory = await DatabaseHelper.instance.getDirtyDeletedHistory();
-      print('SYNC: PUSHING dirty deleted sales: ${deletedHistory.length} items');
+      AppLogger.info('SYNC: PUSHING dirty deleted sales: ${deletedHistory.length} items', tag: 'SupasService');
       if (deletedHistory.isNotEmpty) {
           for (var item in deletedHistory) {
             final String? syncId = item['sync_id']?.toString();
@@ -137,7 +138,7 @@ class SupasService {
       final localVersionTs = int.tryParse(localVersionStr ?? '0') ?? 0;
       final queryTs = localVersionTs > 300000 ? localVersionTs - 300000 : 0;
       final isoTs = DateTime.fromMillisecondsSinceEpoch(queryTs).toUtc().toIso8601String();
-      print('SYNC: PULLING remote changes since $isoTs (original TS: $localVersionTs)');
+      AppLogger.info('SYNC: PULLING remote changes since $isoTs (original TS: $localVersionTs)', tag: 'SupasService');
 
       // Pull stock
       var stockQuery = client.from('stock').select();
@@ -145,7 +146,7 @@ class SupasService {
           stockQuery = stockQuery.gt('updated_at', isoTs);
       }
       final cloudStock = await stockQuery;
-      print('SYNC: PULLED remote stock: ${cloudStock.length} items');
+      AppLogger.info('SYNC: PULLED remote stock: ${cloudStock.length} items', tag: 'SupasService');
       // Only accept cloud available_pieces on manual/first sync to correct drift.
       // During incremental sync, delta merge from sales handles stock adjustments.
       bool acceptPieces = isManual || localVersionTs == 0;
@@ -153,7 +154,7 @@ class SupasService {
 
       // Pull sales (Full Sync for sales to reconcile deletions across all devices)
       final cloudSales = await client.from('sales').select();
-      print('SYNC: PULLED remote sales: ${cloudSales.length} items');
+      AppLogger.info('SYNC: PULLED remote sales: ${cloudSales.length} items', tag: 'SupasService');
       await DatabaseHelper.instance.upsertCloudSales(cloudSales, false); // false = Full Sync
 
       // We do not have a deleted_stock/deleted_sales table on cloud so physical deletions are hard to pull incrementally.
@@ -175,9 +176,9 @@ class SupasService {
       // Pull receipt settings from cloud (in case saved from desktop/other device)
       await downloadReceiptSettings();
 
-      print('SYNC: Finished successfully!');
-    } catch (e) {
-      print('SYNC ERROR: $e');
+      AppLogger.info('SYNC: Finished successfully!', tag: 'SupasService');
+    } catch (e, stack) {
+      AppLogger.error('SYNC ERROR: $e', tag: 'SupasService', error: e, stackTrace: stack);
       syncStatus.value = SyncStatus.error;
     } finally {
       _isSyncing = false;
@@ -211,10 +212,10 @@ class SupasService {
         Uint8List.fromList(jsonBytes),
         fileOptions: const FileOptions(upsert: true, contentType: 'application/json'),
       );
-      print('SETTINGS UPLOAD: Success');
+      AppLogger.info('SETTINGS UPLOAD: Success', tag: 'SupasService');
       invalidateSettingsCache();
-    } catch (e) {
-      print('SETTINGS UPLOAD ERROR: $e');
+    } catch (e, stack) {
+      AppLogger.error('SETTINGS UPLOAD ERROR: $e', tag: 'SupasService', error: e, stackTrace: stack);
     }
   }
 
@@ -266,9 +267,9 @@ class SupasService {
       if (passcodeUpdated) {
         await PasscodeService.instance.init();
       }
-      print('SETTINGS DOWNLOAD: Applied receipt settings from cloud');
+      AppLogger.info('SETTINGS DOWNLOAD: Applied receipt settings from cloud', tag: 'SupasService');
     } catch (e) {
-      print('SETTINGS DOWNLOAD: No settings found or error: $e');
+      AppLogger.info('SETTINGS DOWNLOAD: No settings found or info: $e', tag: 'SupasService');
     }
   }
 
@@ -286,10 +287,10 @@ class SupasService {
         'monthly_cloud_backup': true,
         'backup_expiry': 0,
       });
-      print('SYNC: Created user metadata');
+      AppLogger.info('SYNC: Created user metadata', tag: 'SupasService');
       await refreshUserMetadata();
-    } catch (e) {
-       print('METADATA ERROR: $e');
+    } catch (e, stack) {
+       AppLogger.error('METADATA ERROR: $e', tag: 'SupasService', error: e, stackTrace: stack);
     }
   }
 
@@ -304,8 +305,8 @@ class SupasService {
         final meta = await client.from('users').select().eq('id', userId!).maybeSingle();
         userMetadata.value = meta;
         return meta;
-      } catch (e) {
-        print('REFRESH METADATA ERROR: $e');
+      } catch (e, stack) {
+        AppLogger.error('REFRESH METADATA ERROR: $e', tag: 'SupasService', error: e, stackTrace: stack);
         return null;
       }
   }
@@ -336,10 +337,10 @@ class SupasService {
               'last_backup_timestamp': 0,
           }).eq('id', userId!);
 
-          print('CLOUDWIPE: Cloud data successfully cleared.');
+          AppLogger.info('CLOUDWIPE: Cloud data successfully cleared.', tag: 'SupasService');
           syncStatus.value = SyncStatus.synced;
-      } catch (e) {
-          print('CLOUDWIPE ERROR: $e');
+      } catch (e, stack) {
+          AppLogger.error('CLOUDWIPE ERROR: $e', tag: 'SupasService', error: e, stackTrace: stack);
           syncStatus.value = SyncStatus.error;
       }
   }
@@ -415,14 +416,14 @@ class SupasService {
 
       // If cloud timestamp is newer than our local database version, another app uploaded
       if (cloudTs > localVersionTs) {
-        print('SYNC POLL: Remote change detected! Cloud=$cloudTs, Local=$localVersionTs');
+        AppLogger.info('SYNC POLL: Remote change detected! Cloud=$cloudTs, Local=$localVersionTs', tag: 'SupasService');
         await syncDatabase();
         return true;
       }
 
       return false;
-    } catch (e) {
-      print('SYNC POLL ERROR: $e');
+    } catch (e, stack) {
+      AppLogger.error('SYNC POLL ERROR: $e', tag: 'SupasService', error: e, stackTrace: stack);
       return false;
     }
   }
@@ -471,8 +472,8 @@ class SupasService {
       final newStatus = staleMs <= 30000 ? DesktopStatus.online : DesktopStatus.offline;
       desktopStatus.value = newStatus;
       return newStatus;
-    } catch (e) {
-      print('DESKTOP PRESENCE ERROR: $e');
+    } catch (e, stack) {
+      AppLogger.error('DESKTOP PRESENCE ERROR: $e', tag: 'SupasService', error: e, stackTrace: stack);
       // Don't change status on network error — keep last known value
       return desktopStatus.value;
     }
@@ -491,7 +492,7 @@ class SupasService {
   void initializeRealtime() {
     if (userId == null || _realtimeChannel != null) return;
 
-    print('REALTIME: Subscribing to Postgres changes...');
+    AppLogger.info('REALTIME: Subscribing to Postgres changes...', tag: 'SupasService');
     try {
       _realtimeChannel = client
           .channel('public:users')
@@ -499,18 +500,18 @@ class SupasService {
             event: PostgresChangeEvent.all,
             schema: 'public',
             callback: (payload) {
-               print('REALTIME EVENT: \${payload.eventType} on \${payload.table}');
+               AppLogger.info('REALTIME EVENT: ${payload.eventType} on ${payload.table}', tag: 'SupasService');
                syncDatabase();
             },
           )
           .subscribe((status, [error]) {
              if (status == RealtimeSubscribeStatus.closed || status == RealtimeSubscribeStatus.channelError) {
-                print('REALTIME STATUS: $status, ERROR: $error');
+                AppLogger.warning('REALTIME STATUS: $status, ERROR: $error', tag: 'SupasService');
                 _realtimeChannel = null;
              }
           });
-    } catch (e) {
-      print('REALTIME INIT ERROR: $e');
+    } catch (e, stack) {
+      AppLogger.error('REALTIME INIT ERROR: $e', tag: 'SupasService', error: e, stackTrace: stack);
       _realtimeChannel = null;
     }
   }

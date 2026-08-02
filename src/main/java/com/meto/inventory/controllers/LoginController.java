@@ -422,6 +422,14 @@ public class LoginController {
                 SupabaseService service = SupabaseService.getInstance();
                 requestId = service.createLoginRequest(email);
 
+                // Dispatch FCM notification to notify the mobile app
+                try {
+                    com.meto.inventory.services.NotificationService.getInstance().sendAppUpdateNotification(
+                        "Login Approval Request",
+                        "Desktop login request initiated for " + email
+                    );
+                } catch (Exception ignored) {}
+
                 long startTime = System.currentTimeMillis();
                 boolean approved = false;
                 String refreshToken = null;

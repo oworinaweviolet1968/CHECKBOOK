@@ -15,6 +15,7 @@ class HistoryItem {
   final bool isPaid;
   final bool isEdited;
   final String deviceSource;
+  final String? receiptId;
 
   HistoryItem({
     this.id,
@@ -33,5 +34,6 @@ class HistoryItem {
     this.isPaid = false,
     this.isEdited = false,
     this.deviceSource = "System",
+    this.receiptId,
   });
 }

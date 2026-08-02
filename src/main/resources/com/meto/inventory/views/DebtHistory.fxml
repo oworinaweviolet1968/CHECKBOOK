@@ -3,96 +3,126 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
-<?import javafx.scene.shape.Circle?>
 
-<VBox spacing="20" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.meto.inventory.controllers.DebtHistoryController" styleClass="main-container">
+<VBox spacing="16" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.meto.inventory.controllers.DebtHistoryController" styleClass="main-container" stylesheets="@styles/style.css">
     <padding>
-        <Insets top="20" right="20" bottom="20" left="20"/>
+        <Insets top="16" right="20" bottom="20" left="20"/>
     </padding>
 
     <!-- Header Section -->
     <HBox alignment="CENTER_LEFT" spacing="15">
-        <VBox>
-            <Label text="Debt Management" styleClass="h1"/>
-            <Label text="Monitor outstanding balances and settlement history" styleClass="text-muted"/>
+        <VBox spacing="2">
+            <Label text="Debt Management" styleClass="h1" style="-fx-font-size: 20px;"/>
+            <Label text="Monitor outstanding balances and settlement history" styleClass="text-muted" style="-fx-font-size: 11px;"/>
         </VBox>
         <Region HBox.hgrow="ALWAYS"/>
-        <Button fx:id="notificationsBtn" text="Audit" styleClass="btn-secondary" />
-        <Button fx:id="refreshBtn" text="Refresh Data" styleClass="btn-secondary">
+        <Button fx:id="notificationsBtn" text="Audit" styleClass="btn-secondary" style="-fx-padding: 4 10; -fx-font-size: 11px;"/>
+        <Button fx:id="refreshBtn" text="Refresh Data" styleClass="btn-secondary" style="-fx-padding: 4 10; -fx-font-size: 11px;">
             <graphic>
-                <Region styleClass="icon, icon-clock" style="-fx-scale-x: 0.8; -fx-scale-y: 0.8;"/>
+                <Region styleClass="icon, icon-clock" style="-fx-scale-x: 0.7; -fx-scale-y: 0.7;"/>
             </graphic>
         </Button>
     </HBox>
 
     <!-- Summary Cards -->
-    <HBox spacing="20">
-        <VBox spacing="5" styleClass="card, card-debt" HBox.hgrow="ALWAYS">
+    <HBox spacing="16">
+        <VBox spacing="5" styleClass="card, card-debt" HBox.hgrow="ALWAYS" style="-fx-padding: 12;">
             <Label text="Outstanding Debt" styleClass="card-label"/>
-            <Label fx:id="totalDebtLabel" text="UGX 0" styleClass="card-value-red"/>
+            <Label fx:id="totalDebtLabel" text="UGX 0" styleClass="card-value-red" style="-fx-font-size: 20px;"/>
             <Label text="Total balance yet to be collected" styleClass="card-sublabel"/>
         </VBox>
 
-        <VBox spacing="5" styleClass="card" HBox.hgrow="ALWAYS">
+        <VBox spacing="5" styleClass="card" HBox.hgrow="ALWAYS" style="-fx-padding: 12;">
             <Label text="Total Debtors" styleClass="card-label"/>
-            <Label fx:id="debtorCountLabel" text="0" styleClass="card-value"/>
+            <Label fx:id="debtorCountLabel" text="0" styleClass="card-value" style="-fx-font-size: 20px;"/>
             <Label text="Unique customers with active debt" styleClass="card-sublabel"/>
         </VBox>
 
-        <VBox spacing="5" styleClass="card, card-success" HBox.hgrow="ALWAYS">
+        <VBox spacing="5" styleClass="card, card-success" HBox.hgrow="ALWAYS" style="-fx-padding: 12;">
             <Label text="Collected Today" styleClass="card-label"/>
-            <Label fx:id="collectedTodayLabel" text="UGX 0" styleClass="card-value-green"/>
+            <Label fx:id="collectedTodayLabel" text="UGX 0" styleClass="card-value-green" style="-fx-font-size: 20px;"/>
             <Label text="Debt settlements recorded today" styleClass="card-sublabel"/>
         </VBox>
     </HBox>
 
-    <!-- Content Sections -->
-    <TabPane VBox.vgrow="ALWAYS" tabClosingPolicy="UNAVAILABLE" styleClass="card">
+    <!-- Main Tabs Section -->
+    <TabPane VBox.vgrow="ALWAYS" tabClosingPolicy="UNAVAILABLE" styleClass="card" style="-fx-padding: 0;">
         <tabs>
+            <!-- 1. Active Debts Tab -->
             <Tab text="Active Debts">
-                <VBox spacing="10" style="-fx-padding: 10;">
-                    <Label text="Unsettled Transactions" styleClass="h2"/>
-                    <TableView fx:id="unsettledTable" VBox.vgrow="ALWAYS">
-                        <columns>
-                            <TableColumn fx:id="customerCol" text="Customer" prefWidth="120" minWidth="100"/>
-                            <TableColumn fx:id="itemCol" text="Item" prefWidth="350" maxWidth="5000"/>
-                            <TableColumn fx:id="totalCol" text="Total" prefWidth="100" minWidth="80"/>
-                            <TableColumn fx:id="paidCol" text="Paid" prefWidth="100" minWidth="80"/>
-                            <TableColumn fx:id="remainingCol" text="Balance" prefWidth="100" minWidth="80"/>
-                            <TableColumn fx:id="dateCol" text="Sale Date" prefWidth="100" minWidth="80"/>
-                            <TableColumn fx:id="actionsCol" text="Actions" prefWidth="100" minWidth="80"/>
-                        </columns>
-                    </TableView>
-                </VBox>
-            </Tab>
-            
-            <Tab text="Payment History">
-                <VBox spacing="10" style="-fx-padding: 10;">
-                    <Label text="Recent Partial Payments" styleClass="h2"/>
-                    <TableView fx:id="paymentLogsTable" VBox.vgrow="ALWAYS">
-                        <columns>
-                            <TableColumn fx:id="logCustomerCol" text="Customer" prefWidth="200"/>
-                            <TableColumn fx:id="logAmountCol" text="Amount Paid" prefWidth="150"/>
-                            <TableColumn fx:id="logDateCol" text="Payment Date" prefWidth="150"/>
-                        </columns>
-                    </TableView>
+                <VBox spacing="0" VBox.vgrow="ALWAYS">
+                    <!-- Sticky Header Bar -->
+                    <HBox alignment="CENTER_LEFT" styleClass="history-header-bar" spacing="12">
+                        <Label text="CUSTOMER" prefWidth="160" styleClass="history-header-label"/>
+                        <Label text="ITEM DETAILS" HBox.hgrow="ALWAYS" maxWidth="Infinity" styleClass="history-header-label"/>
+                        <Label text="TOTAL" prefWidth="100" alignment="CENTER_RIGHT" styleClass="history-header-label"/>
+                        <Label text="PAID" prefWidth="100" alignment="CENTER_RIGHT" styleClass="history-header-label"/>
+                        <Label text="REMAINING BALANCE" prefWidth="130" alignment="CENTER_RIGHT" styleClass="history-header-label"/>
+                        <Label text="SALE DATE" prefWidth="100" alignment="CENTER_RIGHT" styleClass="history-header-label"/>
+                        <Label text="ACTIONS" prefWidth="90" alignment="CENTER" styleClass="history-header-label"/>
+                    </HBox>
+
+                    <!-- Scrollable Active Debts Card Container -->
+                    <ScrollPane fitToWidth="true" styleClass="history-scroll-pane" VBox.vgrow="ALWAYS">
+                        <content>
+                            <VBox fx:id="unsettledListContainer" styleClass="history-list-container" spacing="8">
+                                <padding>
+                                    <Insets top="8" right="12" bottom="12" left="12"/>
+                                </padding>
+                            </VBox>
+                        </content>
+                    </ScrollPane>
                 </VBox>
             </Tab>
 
+            <!-- 2. Payment History Tab -->
+            <Tab text="Payment History">
+                <VBox spacing="0" VBox.vgrow="ALWAYS">
+                    <!-- Sticky Header Bar -->
+                    <HBox alignment="CENTER_LEFT" styleClass="history-header-bar" spacing="12">
+                        <Label text="CUSTOMER NAME" prefWidth="220" styleClass="history-header-label"/>
+                        <Label text="AMOUNT PAID" prefWidth="180" alignment="CENTER_RIGHT" styleClass="history-header-label"/>
+                        <Label text="PAYMENT DATE" prefWidth="160" alignment="CENTER_RIGHT" styleClass="history-header-label"/>
+                        <Label text="STATUS" HBox.hgrow="ALWAYS" alignment="CENTER" styleClass="history-header-label"/>
+                    </HBox>
+
+                    <!-- Scrollable Payment Logs Card Container -->
+                    <ScrollPane fitToWidth="true" styleClass="history-scroll-pane" VBox.vgrow="ALWAYS">
+                        <content>
+                            <VBox fx:id="paymentLogsListContainer" styleClass="history-list-container" spacing="8">
+                                <padding>
+                                    <Insets top="8" right="12" bottom="12" left="12"/>
+                                </padding>
+                            </VBox>
+                        </content>
+                    </ScrollPane>
+                </VBox>
+            </Tab>
+
+            <!-- 3. Settled Debts Tab -->
             <Tab text="Settled Debts">
-                <VBox spacing="10" style="-fx-padding: 10;">
-                    <Label text="Recently Fully Paid Debts" styleClass="h2"/>
-                    <TableView fx:id="settledTable" VBox.vgrow="ALWAYS">
-                        <columns>
-                            <TableColumn fx:id="settledCustomerCol" text="Customer" prefWidth="150" minWidth="100"/>
-                            <TableColumn fx:id="settledItemCol" text="Item" prefWidth="350" maxWidth="5000"/>
-                            <TableColumn fx:id="settledAmountCol" text="Total Amount" prefWidth="150" minWidth="100"/>
-                            <TableColumn fx:id="settledDateCol" text="Completion Date" prefWidth="150" minWidth="100"/>
-                        </columns>
-                    </TableView>
+                <VBox spacing="0" VBox.vgrow="ALWAYS">
+                    <!-- Sticky Header Bar -->
+                    <HBox alignment="CENTER_LEFT" styleClass="history-header-bar" spacing="12">
+                        <Label text="CUSTOMER" prefWidth="170" styleClass="history-header-label"/>
+                        <Label text="ITEM DETAILS" HBox.hgrow="ALWAYS" maxWidth="Infinity" styleClass="history-header-label"/>
+                        <Label text="TOTAL AMOUNT" prefWidth="140" alignment="CENTER_RIGHT" styleClass="history-header-label"/>
+                        <Label text="COMPLETION DATE" prefWidth="120" alignment="CENTER_RIGHT" styleClass="history-header-label"/>
+                        <Label text="STATUS" prefWidth="110" alignment="CENTER" styleClass="history-header-label"/>
+                    </HBox>
+
+                    <!-- Scrollable Settled Debts Card Container -->
+                    <ScrollPane fitToWidth="true" styleClass="history-scroll-pane" VBox.vgrow="ALWAYS">
+                        <content>
+                            <VBox fx:id="settledListContainer" styleClass="history-list-container" spacing="8">
+                                <padding>
+                                    <Insets top="8" right="12" bottom="12" left="12"/>
+                                </padding>
+                            </VBox>
+                        </content>
+                    </ScrollPane>
                 </VBox>
             </Tab>
         </tabs>
     </TabPane>
-
 </VBox>

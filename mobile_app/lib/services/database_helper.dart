@@ -9,6 +9,7 @@ import '../main.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'powersync/write_queue.dart';
 import 'powersync/powersync_engine.dart';
+import 'logger_service.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -67,8 +68,8 @@ class DatabaseHelper {
       final path = await _getPreferencesPath();
       final file = File(path);
       await file.writeAsString(userId);
-    } catch (e) {
-      print('Error saving active user ID: $e');
+    } catch (e, stack) {
+      AppLogger.error('Error saving active user ID: $e', tag: 'DatabaseHelper', error: e, stackTrace: stack);
     }
   }
 
@@ -79,8 +80,8 @@ class DatabaseHelper {
       if (await file.exists()) {
         return (await file.readAsString()).trim();
       }
-    } catch (e) {
-      print('Error loading active user ID: $e');
+    } catch (e, stack) {
+      AppLogger.error('Error loading active user ID: $e', tag: 'DatabaseHelper', error: e, stackTrace: stack);
     }
     return null;
   }
@@ -119,7 +120,7 @@ class DatabaseHelper {
 
   Future<void> close() async {
     if (_database != null) {
-      print('DATABASE: Explicitly closing connection.');
+      AppLogger.info('DATABASE: Explicitly closing connection.', tag: 'DatabaseHelper');
       await _database!.close();
       _database = null;
     }
@@ -151,11 +152,11 @@ class DatabaseHelper {
     final db = await instance.database;
     final String sql;
     if (filter == "DEBTS") {
-      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount || ' (' || date || ')', '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, MAX(date) as date, is_debt, is_paid, is_edited, device_source FROM sales WHERE is_debt = 1 AND is_paid = 0 AND customer != 'Walk-in Customer' GROUP BY customer ORDER BY MAX(date) DESC, MAX(REPLACE(created_at, 'T', ' ')) DESC";
+      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount || ' (' || date || ')', '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, MAX(date) as date, is_debt, is_paid, is_edited, device_source, MIN(receipt_id) as receipt_id FROM sales WHERE is_debt = 1 AND is_paid = 0 AND customer != 'Walk-in Customer' GROUP BY customer ORDER BY MAX(date) DESC, MAX(REPLACE(created_at, 'T', ' ')) DESC";
     } else if (filter != "ALL") {
-      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales WHERE type = ? GROUP BY COALESCE(NULLIF(receipt_id, ''), CASE WHEN (created_at IS NOT NULL AND created_at != '') THEN (created_at || customer) ELSE id END) ORDER BY date DESC, REPLACE(created_at, 'T', ' ') DESC";
+      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source, MIN(receipt_id) as receipt_id FROM sales WHERE type = ? GROUP BY COALESCE(NULLIF(receipt_id, ''), CASE WHEN (created_at IS NOT NULL AND created_at != '') THEN (created_at || customer) ELSE id END) ORDER BY date DESC, REPLACE(created_at, 'T', ' ') DESC";
     } else {
-      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source FROM sales GROUP BY COALESCE(NULLIF(receipt_id, ''), CASE WHEN (created_at IS NOT NULL AND created_at != '') THEN (created_at || customer) ELSE id END) ORDER BY date DESC, REPLACE(created_at, 'T', ' ') DESC";
+      sql = "SELECT MIN(id) as id, customer, GROUP_CONCAT(quantity || ' ' || unit || ' ' || item || ' @ ' || price || ' = ' || amount, '\n') as item, type, SUM(amount) as amount, SUM(COALESCE(paid_amount, 0)) as paid_amount, SUM(amount - (cost_price * base_quantity)) as profit, date, is_debt, is_paid, is_edited, device_source, MIN(receipt_id) as receipt_id FROM sales GROUP BY COALESCE(NULLIF(receipt_id, ''), CASE WHEN (created_at IS NOT NULL AND created_at != '') THEN (created_at || customer) ELSE id END) ORDER BY date DESC, REPLACE(created_at, 'T', ' ') DESC";
     }
 
     final List<Map<String, dynamic>> result = await db.rawQuery(
@@ -181,6 +182,7 @@ class DatabaseHelper {
         isPaid: (rs['is_paid'] as int? ?? 0) == 1,
         isEdited: (rs['is_edited'] as int? ?? 0) == 1,
         deviceSource: rs['device_source'] as String? ?? "System",
+        receiptId: rs['receipt_id'] as String?,
       );
     }).toList().cast<HistoryItem>();
   }
@@ -435,6 +437,8 @@ class DatabaseHelper {
           await addCol("deleted_stock", "sync_id", "TEXT");
           await addCol("debt_payments", "sync_id", "TEXT");
           await addCol("notifications", "sync_id", "TEXT");
+          await addCol("notifications", "target_type", "TEXT");
+          await addCol("notifications", "target_id", "TEXT");
           
           // Backfill sync_id if null using standard dashed UUIDs
           final uuidGenSql = "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))";
@@ -938,7 +942,8 @@ class DatabaseHelper {
       if (oldPiecePrice != newPrice) {
         await addNotification(
           "Price updated for $itemName ($size): UGX ${oldUnitPrice.toStringAsFixed(0)} ➔ UGX ${newUnitPrice.toStringAsFixed(0)} per $unit",
-          "Mobile"
+          "Mobile",
+          targetType: 'price', targetId: itemName,
         );
       }
     } else {
@@ -1076,7 +1081,7 @@ class DatabaseHelper {
   }
 
   String formatStockForDisplay(double availablePieces, String unitLabel, String size) {
-      if (availablePieces <= 0) return "0 pcs";
+      if (availablePieces <= 0) return "0 Pcs";
 
       String sizeLower = size.toLowerCase();
 
@@ -1087,56 +1092,47 @@ class DatabaseHelper {
               int sacks = (availablePieces / kgPerSack).floor();
               double remainingKg = availablePieces % kgPerSack;
               if (sacks > 0 && remainingKg > 0.01) {
-                  return "$sacks Sacks / ${remainingKg.toStringAsFixed(1)} kg";
+                  return "$sacks ${sacks == 1 ? 'Sack' : 'Sacks'} / ${remainingKg.toStringAsFixed(1)} kg";
               }
-              if (sacks > 0) return "$sacks Sacks";
+              if (sacks > 0) return "$sacks ${sacks == 1 ? 'Sack' : 'Sacks'}";
               return "${remainingKg.toStringAsFixed(1)} kg";
           }
       }
 
-      // --- PIECE-BASED: Multi-tier cascading breakdown (Bulk → Doz → pcs) ---
+      // --- PIECE & BOX-BASED PLURALIZATION ---
       double multiplier = getUnitMultiplier(unitLabel, size, unitLabel);
 
       if (multiplier <= 1.0) {
           int total = availablePieces.round();
-          return "$total pcs";
+          return "$total ${total == 1 ? 'Pc' : 'Pcs'}";
       }
 
-      List<String> parts = [];
-      double remaining = availablePieces;
+      int fullBoxes = (availablePieces / multiplier).floor();
+      int loosePcs = (availablePieces % multiplier).round();
 
-      // Friendly name for the highest unit
-      String friendlyName;
-      String sizeLowerClean = size.toLowerCase().replaceAll(RegExp(r'\s+'), '');
-      
-      if (multiplier == 6.0) friendlyName = "Half Doz";
-      else if (multiplier == 12.0) friendlyName = "Doz";
-      else if (sizeLowerClean.contains("crate")) friendlyName = "Crates";
-      else if (sizeLowerClean.contains("carton")) friendlyName = "Cartons";
-      else if (sizeLowerClean.contains("pack")) friendlyName = "Pks";
-      else if (sizeLowerClean.contains("bundle")) friendlyName = "Bndls";
-      else friendlyName = "Bx"; 
-
-      int mainCount = (remaining / multiplier).floor();
-      int leftover = (remaining % multiplier).round();
-
-      if (mainCount > 0) {
-          parts.add("$mainCount $friendlyName");
+      String boxStr = "";
+      if (fullBoxes == 1) {
+          boxStr = "1 Box";
+      } else if (fullBoxes > 1) {
+          boxStr = "$fullBoxes Boxes";
       }
 
-      // Level 2: Dozens (only if highest unit > 12)
-      if (multiplier > 12.0 && leftover >= 12) {
-          int dozens = (leftover / 12).floor();
-          leftover = leftover % 12;
-          parts.add("$dozens Doz");
+      String pcsStr = "";
+      if (loosePcs == 1) {
+          pcsStr = "1 pc";
+      } else if (loosePcs > 1) {
+          pcsStr = "$loosePcs pcs";
       }
 
-      // Level 3: Remaining pcs
-      if (leftover > 0) {
-          parts.add("$leftover pcs");
+      if (boxStr.isNotEmpty && pcsStr.isNotEmpty) {
+          return "$boxStr / $pcsStr";
+      } else if (boxStr.isNotEmpty) {
+          return boxStr;
+      } else if (pcsStr.isNotEmpty) {
+          return pcsStr;
       }
 
-      return parts.isEmpty ? "0 pcs" : parts.join(" / ");
+      return "0 Pcs";
   }
 
   // --- SALES OPERATIONS ---
@@ -1233,7 +1229,7 @@ class DatabaseHelper {
           await db.rawUpdate('UPDATE sales SET is_paid = 1, is_edited = 1 WHERE customer = ? AND is_debt = 1 AND is_paid = 0', [customer]);
       }
       
-      await addNotification("Payment of $newPayment received for $customer", "Mobile");
+      await addNotification("Payment of $newPayment received for $customer", "Mobile", targetType: 'payment', targetId: customer);
   }
 
   Future<double> getLastRecordedPrice(String item, String size) async {
@@ -1366,7 +1362,7 @@ class DatabaseHelper {
       String actionLabel = type == 'NEW STOCK'
           ? 'Deleted stock entry: $itemName'
           : 'Deleted sale for $customer: $itemName (UGX ${amount.toStringAsFixed(0)})';
-      await addNotification(actionLabel, 'Mobile');
+      await addNotification(actionLabel, 'Mobile', targetType: 'deleted', targetId: itemName);
     }
 
     // 6. Clean up any remaining orphan stock
@@ -1448,19 +1444,16 @@ class DatabaseHelper {
 
   Future<void> cleanupZombieStock() async {
     final db = await instance.database;
-    // Find all stock entries that either:
-    // 1) Have available_pieces <= 0
-    // 2) OR have NO active 'NEW STOCK' history entry in sales table
+    // Find all stock entries that have available_pieces <= 0 AND have no sales history entry
     final zombies = await db.rawQuery('''
       SELECT id, sync_id, item, quantity 
       FROM stock 
-      WHERE (available_pieces <= 0 
-      OR NOT EXISTS (
+      WHERE available_pieces <= 0 
+      AND NOT EXISTS (
         SELECT 1 FROM sales 
-        WHERE sales.item = stock.item 
-        AND sales.quantity = stock.quantity 
-        AND sales.type = 'NEW STOCK'
-      ))
+        WHERE sales.item = stock.item COLLATE NOCASE
+        AND sales.quantity = stock.quantity COLLATE NOCASE
+      )
       AND (is_edited = 0 OR is_edited IS NULL)
     ''');
 
@@ -1606,7 +1599,7 @@ class DatabaseHelper {
     }
     await db.delete('deleted_stock', where: 'item = ? AND quantity = ?', whereArgs: [itemName, size]);
 
-    await addNotification('Restored transaction: $itemName ($size)', 'Mobile');
+    await addNotification('Restored transaction: $itemName ($size)', 'Mobile', targetType: 'sale', targetId: itemName);
   }
 
   // --- DATA HELPERS ---
@@ -1873,7 +1866,8 @@ class DatabaseHelper {
 
           await addNotification(
             "Price updated for $itemName ($size): UGX ${oldUnitPrice.toStringAsFixed(0)} ➔ UGX ${newUnitPrice.toStringAsFixed(0)} per $unit",
-            deviceSource
+            deviceSource,
+            targetType: 'price', targetId: itemName,
           );
         }
 
@@ -2040,9 +2034,10 @@ class DatabaseHelper {
 
         if (deviceSource == 'Desktop' && isRecent) {
           if (type == 'NEW STOCK') {
-            await addNotification("NEW STOCK: $item has been stocked", "Desktop", syncId: syncId);
+            await addNotification("NEW STOCK: $item has been stocked", "Desktop", syncId: syncId, targetType: 'stock', targetId: item);
           } else {
-            await addNotification("Sale recorded for $customer: $item (UGX ${amount.toStringAsFixed(0)})", "Desktop", syncId: syncId);
+            final saleReceiptId = obj['receipt_id'] as String? ?? '';
+            await addNotification("Sale recorded for $customer: $item (UGX ${amount.toStringAsFixed(0)})", "Desktop", syncId: syncId, targetType: 'sale', targetId: saleReceiptId.isNotEmpty ? saleReceiptId : item);
           }
         }
 
@@ -2064,7 +2059,7 @@ class DatabaseHelper {
         if (cloudPaidAmount > localPaidAmount) {
           double diff = cloudPaidAmount - localPaidAmount;
           if (deviceSource == 'Desktop' && isIncremental) {
-            await addNotification("Payment of UGX ${diff.toStringAsFixed(0)} received for $customer", "Desktop", syncId: syncId);
+            await addNotification("Payment of UGX ${diff.toStringAsFixed(0)} received for $customer", "Desktop", syncId: syncId, targetType: 'payment', targetId: customer);
           }
           if (localId != -1) {
             final uuidGenSql = "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))";
@@ -2120,7 +2115,7 @@ class DatabaseHelper {
       final existing = await db.rawQuery('SELECT item, quantity FROM stock WHERE sync_id = ?', [syncId]);
       if (existing.isNotEmpty) {
         String item = existing.first['item'] as String;
-        await addNotification('Deleted stock: $item', 'Desktop');
+        await addNotification('Deleted stock: $item', 'Desktop', targetType: 'deleted', targetId: item);
       }
     }
 
@@ -2132,7 +2127,7 @@ class DatabaseHelper {
         String customer = existing.first['customer'] as String;
         String item = existing.first['item'] as String;
         double amount = (existing.first['amount'] as num).toDouble();
-        await addNotification('Deleted sale for $customer: $item (UGX ${amount.toStringAsFixed(0)})', 'Desktop');
+        await addNotification('Deleted sale for $customer: $item (UGX ${amount.toStringAsFixed(0)})', 'Desktop', targetType: 'deleted', targetId: item);
       }
     }
 
@@ -2281,7 +2276,7 @@ class DatabaseHelper {
     }
   }
 
-  Future<void> addNotification(String message, String source, {String? title, String? syncId}) async {
+  Future<void> addNotification(String message, String source, {String? title, String? syncId, String? targetType, String? targetId}) async {
     try {
       final db = await instance.database;
       if (syncId != null && syncId.isNotEmpty) {
@@ -2304,8 +2299,8 @@ class DatabaseHelper {
 
       String finalSyncId = syncId ?? generateUUID();
       await db.rawInsert(
-        "INSERT INTO notifications (message, source, sync_id) VALUES (?, ?, ?)",
-        [message, source, finalSyncId]
+        "INSERT INTO notifications (message, source, sync_id, target_type, target_id) VALUES (?, ?, ?, ?, ?)",
+        [message, source, finalSyncId, targetType, targetId]
       );
       if (source == 'Desktop') {
         await showLocalNotification(title ?? "Desktop App Input", message);
@@ -2318,7 +2313,7 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getNotifications() async {
       try {
           final db = await instance.database;
-          return await db.rawQuery("SELECT id, message, source, created_at, is_read FROM notifications WHERE message NOT LIKE '%online%' AND message NOT LIKE '%offline%' AND message NOT LIKE '%internet%' ORDER BY created_at DESC");
+          return await db.rawQuery("SELECT id, message, source, created_at, is_read, target_type, target_id FROM notifications WHERE message NOT LIKE '%online%' AND message NOT LIKE '%offline%' AND message NOT LIKE '%internet%' ORDER BY created_at DESC");
       } catch (e) {
           print("Error fetching notifications: $e");
           return [];
