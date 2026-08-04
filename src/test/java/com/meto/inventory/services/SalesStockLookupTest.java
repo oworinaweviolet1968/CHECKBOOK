@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import java.io.File;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.Statement;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -24,9 +26,24 @@ public class SalesStockLookupTest {
         dbHelper.setDatabaseName(testDbName);
 
         Connection conn = dbHelper.getConnection();
+
+        // 1. Table Sanitation before seeding
+        try (Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate("DELETE FROM stock;");
+            try {
+                stmt.executeUpdate("DELETE FROM sales;");
+            } catch (Exception ignored) {}
+            try {
+                stmt.executeUpdate("DELETE FROM sqlite_sequence;");
+            } catch (Exception ignored) {}
+        }
+
+        // 2. Dynamic sync_id Generation
+        String syncId = UUID.randomUUID().toString();
+
         try (PreparedStatement stmt = conn.prepareStatement(
                 "INSERT INTO stock (sync_id, supplier, item, quantity, unit, price, available_pieces, date, is_edited) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)")) {
-            stmt.setString(1, "sync_dove_400ml");
+            stmt.setString(1, syncId);
             stmt.setString(2, "Unilever");
             stmt.setString(3, "dove restoring care body lotion");
             stmt.setString(4, "400ml");
@@ -40,6 +57,9 @@ public class SalesStockLookupTest {
 
     @AfterEach
     public void tearDown() {
+        if (dbHelper != null) {
+            dbHelper.close();
+        }
         File dbFile = new File(dbHelper.getCurrentDbName());
         if (dbFile.exists()) {
             dbFile.delete();
