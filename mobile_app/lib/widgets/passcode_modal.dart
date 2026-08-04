@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../services/passcode_service.dart';
 import '../utils/colors.dart';
+import 'passcode_dialog.dart';
 
 class PasscodeModal extends StatefulWidget {
   final bool canUseBiometrics;
@@ -14,19 +15,7 @@ class PasscodeModal extends StatefulWidget {
   });
 
   static Future<bool> show(BuildContext context) async {
-    final canBio = await PasscodeService.instance.canCheckBiometrics() &&
-        PasscodeService.instance.isBiometricsEnabled.value;
-
-    if (!context.mounted) return false;
-
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withValues(alpha: 0.4),
-      builder: (context) => PasscodeModal(canUseBiometrics: canBio),
-    );
-
-    return result ?? false;
+    return PasscodeDialog.show(context, reason: "Enter passcode to unlock metrics");
   }
 
   @override

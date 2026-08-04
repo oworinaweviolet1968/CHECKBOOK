@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
 import '../utils/colors.dart';
-import 'package:intl/intl.dart';
 
 class PriceUpdateScreen extends StatefulWidget {
   final String? highlightQuery;
@@ -61,6 +62,7 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
     });
   }
 
+  // Modern Security Verification & Edit Price Dialog
   void _showEditPriceDialog(Map<String, dynamic> item) {
     final String unitLabel = item['unit'] ?? "pcs";
     final String size = item['quantity'] ?? "";
@@ -69,67 +71,158 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
     final double currentUnitPrice = currentPiecePrice * multiplier;
 
     final priceController = TextEditingController(text: currentUnitPrice.toInt().toString());
-    
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(item['item'] ?? "Update Price", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            const SizedBox(height: 4),
-            Text('Editing price for: $unitLabel', style: const TextStyle(color: AppColors.primaryGreen, fontSize: 13, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: TextField(
-          controller: priceController,
-          keyboardType: const TextInputType.numberWithOptions(decimal: false),
-          autofocus: true,
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          decoration: InputDecoration(
-            labelText: 'Total Price for 1 $unitLabel (UGX)',
-            labelStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.normal),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            prefixText: 'UGX ',
-            floatingLabelBehavior: FloatingLabelBehavior.always,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final newUnitPrice = double.tryParse(priceController.text);
-              if (newUnitPrice != null) {
-                // Calculate new per-piece price
-                final newPiecePrice = newUnitPrice / (multiplier > 0 ? multiplier : 1);
-                await DatabaseHelper.instance.updateItemPrice(item['id'], newPiecePrice);
-                // Trigger background upload
-                SupasService.instance.uploadDatabase();
-                
-                if (mounted) {
-                  Navigator.pop(context);
-                  _loadStock();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Price updated successfully'),
-                      backgroundColor: AppColors.primaryGreen,
-                      behavior: SnackBarBehavior.floating,
+      builder: (dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Top centered security badge
+              Center(
+                child: Container(
+                  width: 52,
+                  height: 52,
+                  decoration: const BoxDecoration(
+                    color: AppColors.lightCyan,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.lock_outline_rounded,
+                    color: AppColors.primaryGreen,
+                    size: 26,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Center(
+                child: Text(
+                  "Security Verification",
+                  style: GoogleFonts.outfit(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Center(
+                child: Text(
+                  "${item['item'] ?? 'Update Price'} (${unitLabel.toUpperCase()})",
+                  style: GoogleFonts.outfit(
+                    color: AppColors.neutralMutedText,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: priceController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: false),
+                autofocus: true,
+                style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                decoration: InputDecoration(
+                  labelText: 'Price for 1 $unitLabel (UGX)',
+                  labelStyle: GoogleFonts.outfit(fontSize: 13, color: const Color(0xFF64748B)),
+                  prefixText: 'UGX ',
+                  prefixStyle: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primaryGreen),
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAFC),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.neutralBorder),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: const BorderSide(color: AppColors.primaryGreen, width: 2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: Text(
+                        'Cancel',
+                        style: GoogleFonts.outfit(color: const Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 15),
+                      ),
                     ),
-                  );
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primaryGreen,
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final newUnitPrice = double.tryParse(priceController.text);
+                        if (newUnitPrice != null) {
+                          final newPiecePrice = newUnitPrice / (multiplier > 0 ? multiplier : 1);
+                          await DatabaseHelper.instance.updateItemPrice(item['id'], newPiecePrice);
+                          SupasService.instance.uploadDatabase();
+
+                          if (context.mounted) {
+                            Navigator.pop(dialogContext);
+                            _loadStock();
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text('Price updated successfully', style: GoogleFonts.outfit()),
+                                backgroundColor: AppColors.primaryGreen,
+                                behavior: SnackBarBehavior.floating,
+                              ),
+                            );
+                          }
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primaryGreen,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: Text('Update Price', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Compact Multiplier Packaging Chip Widget
+  Widget _buildUnitChipWidget(String unitLabel) {
+    String text = unitLabel.toLowerCase();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.lightCyan,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFF00A389).withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.inventory_2_outlined, size: 13, color: Color(0xFF00A389)),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: GoogleFonts.outfit(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: const Color(0xFF00A389),
             ),
-            child: Text('Update Price', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
           ),
         ],
       ),
@@ -139,11 +232,11 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text(
+        title: Text(
           'Price Update / Repricing',
-          style: TextStyle(
+          style: GoogleFonts.outfit(
             color: AppColors.textPrimary,
             fontWeight: FontWeight.bold,
             fontSize: 18,
@@ -160,21 +253,26 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
             child: TextField(
               controller: _searchController,
               onChanged: _filterStock,
+              style: GoogleFonts.outfit(fontSize: 14, color: const Color(0xFF334155)),
               decoration: InputDecoration(
                 hintText: 'Search items or sizes...',
-                hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
-                prefixIcon: const Icon(Icons.search, color: AppColors.primaryGreen, size: 20),
+                hintStyle: GoogleFonts.outfit(color: const Color(0xFF94A3B8), fontSize: 14),
+                prefixIcon: const Icon(Icons.search, color: Color(0xFF94A3B8), size: 20),
                 filled: true,
-                fillColor: Colors.grey.shade50,
+                fillColor: const Color(0xFFF8FAFC),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: AppColors.neutralBorder),
                 ),
-                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: AppColors.neutralBorder),
+                ),
+                contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
               ),
             ),
           ),
@@ -186,17 +284,17 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey.shade200),
+                            Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey.shade300),
                             const SizedBox(height: 16),
                             Text(
                               _allStock.isEmpty ? 'No stock items found' : 'No items match your search',
-                              style: const TextStyle(color: Colors.grey, fontSize: 15),
+                              style: GoogleFonts.outfit(color: Colors.grey[500], fontSize: 15),
                             ),
                           ],
                         ),
                       )
                     : ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
                         itemCount: _filteredStock.length,
                         separatorBuilder: (context, index) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
@@ -218,121 +316,137 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
                               borderRadius: BorderRadius.circular(20),
                               boxShadow: [
                                 BoxShadow(
-                                  color: isHighlighted ? AppColors.primaryGreen.withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.04),
-                                  blurRadius: isHighlighted ? 12 : 10,
+                                  color: isHighlighted ? AppColors.primaryGreen.withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.03),
+                                  blurRadius: isHighlighted ? 12 : 8,
                                   offset: const Offset(0, 4),
                                 ),
                               ],
                               border: Border.all(
-                                color: isHighlighted ? AppColors.primaryGreen : Colors.grey.shade100,
+                                color: isHighlighted ? AppColors.primaryGreen : AppColors.neutralBorder,
                                 width: isHighlighted ? 2.5 : 1,
                               ),
                             ),
-                            child: Column(
-                              children: [
-                                if (isHighlighted)
-                                  Container(
-                                    margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                    alignment: Alignment.centerLeft,
-                                    decoration: BoxDecoration(
-                                      color: AppColors.primaryGreen,
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: const Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.star, color: Colors.white, size: 12),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          'HIGHLIGHTED ITEM',
-                                          style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ListTile(
-                                  contentPadding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
-                                  title: Row(
-                                children: [
-                                  Text(
-                                    item['item'] ?? "Unknown Item",
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15,
-                                      color: AppColors.textPrimary,
-                                      letterSpacing: -0.2,
-                                    ),
-                                  ),
-                                  if (true) ...[
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                      decoration: BoxDecoration(
-                                        color: (source.toLowerCase() == 'mobile' ? Colors.blue : Colors.grey).withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                        border: Border.all(color: (source.toLowerCase() == 'mobile' ? Colors.blue : Colors.grey).withValues(alpha: 0.2)),
-                                      ),
-                                      child: Text(
-                                        source.toUpperCase(),
-                                        style: TextStyle(
-                                          fontSize: 8,
-                                          fontWeight: FontWeight.bold,
-                                          color: (source.toLowerCase() == 'mobile' ? Colors.blue : Colors.grey),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              subtitle: Column(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const SizedBox(height: 6),
+                                  if (isHighlighted)
+                                    Container(
+                                      margin: const EdgeInsets.only(bottom: 10),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primaryGreen,
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.star, color: Colors.white, size: 12),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'HIGHLIGHTED ITEM',
+                                            style: GoogleFonts.outfit(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+
+                                  // Header Row: Item Name (left) & Device Badge (right)
                                   Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey.shade100,
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
+                                      Expanded(
                                         child: Text(
-                                          item['quantity'] ?? "-",
-                                          style: TextStyle(color: Colors.grey.shade700, fontSize: 11, fontWeight: FontWeight.w600),
+                                          itemName,
+                                          style: GoogleFonts.outfit(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 15,
+                                            color: AppColors.textPrimary,
+                                            letterSpacing: -0.2,
+                                          ),
                                         ),
                                       ),
                                       const SizedBox(width: 8),
-                                      Text(
-                                        'UGX ${_formatter.format(currentUnitPrice)} / $unitLabel',
-                                        style: const TextStyle(
-                                          color: AppColors.primaryGreen,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 14,
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: (source.toLowerCase() == 'mobile' ? const Color(0xFFEFF6FF) : const Color(0xFFF3F4F6)),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          source.toUpperCase(),
+                                          style: GoogleFonts.outfit(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: (source.toLowerCase() == 'mobile' ? const Color(0xFF1E40AF) : const Color(0xFF374151)),
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+
+                                  // Price & Packaging Row (left) & Edit Button (right)
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Expanded(
+                                        child: Wrap(
+                                          crossAxisAlignment: WrapCrossAlignment.center,
+                                          spacing: 8,
+                                          runSpacing: 6,
+                                          children: [
+                                            if (size.isNotEmpty)
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFFF1F5F9),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  size,
+                                                  style: GoogleFonts.outfit(color: const Color(0xFF475569), fontSize: 12, fontWeight: FontWeight.w600),
+                                                ),
+                                              ),
+                                            _buildUnitChipWidget(unitLabel),
+                                            FittedBox(
+                                              fit: BoxFit.scaleDown,
+                                              child: Text(
+                                                'UGX ${_formatter.format(currentUnitPrice)}',
+                                                style: GoogleFonts.outfit(
+                                                  color: AppColors.primaryGreen,
+                                                  fontWeight: FontWeight.w800,
+                                                  fontSize: 15,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      InkWell(
+                                        onTap: () => _showEditPriceDialog(item),
+                                        borderRadius: BorderRadius.circular(12),
+                                        child: Container(
+                                          padding: const EdgeInsets.all(10),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.lightCyan,
+                                            borderRadius: BorderRadius.circular(12),
+                                          ),
+                                          child: const Icon(Icons.edit_outlined, color: AppColors.primaryGreen, size: 20),
                                         ),
                                       ),
                                     ],
                                   ),
                                 ],
                               ),
-                              trailing: Material(
-                                color: AppColors.primaryGreen.withValues(alpha: 0.08),
-                                borderRadius: BorderRadius.circular(12),
-                                child: InkWell(
-                                  onTap: () => _showEditPriceDialog(item),
-                                  borderRadius: BorderRadius.circular(12),
-                                  child: const Padding(
-                                    padding: EdgeInsets.all(10),
-                                    child: Icon(Icons.edit_rounded, color: AppColors.primaryGreen, size: 20),
-                                  ),
-                                ),
-                              ),
                             ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
+                          );
+                        },
+                      ),
           ),
         ],
       ),

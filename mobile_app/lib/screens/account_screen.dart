@@ -1,6 +1,6 @@
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utils/colors.dart';
 import '../screens/login_screen.dart';
@@ -13,6 +13,8 @@ import '../screens/debt_history_screen.dart';
 import '../screens/new_stock_screen.dart';
 import '../services/database_helper.dart';
 import '../services/shorebird_service.dart';
+import '../widgets/passcode_dialog.dart';
+import '../widgets/receipt_settings_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class AccountScreen extends StatefulWidget {
@@ -64,7 +66,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
     super.dispose();
   }
 
-  void _handlePriceUpdateNavigation() {
+  void _handlePriceUpdateNavigation() async {
     if (!PasscodeService.instance.hasPasscode) {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => const PriceUpdateScreen()),
@@ -72,65 +74,16 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
       return;
     }
 
-    final controller = TextEditingController();
-    String? errorMessage;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text('Security Verification', style: TextStyle(fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Enter passcode to access repricing.', style: TextStyle(color: Colors.grey, fontSize: 13)),
-              const SizedBox(height: 20),
-              TextField(
-                controller: controller,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                obscureText: true,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 24, letterSpacing: 10, fontWeight: FontWeight.bold, color: AppColors.primaryGreen),
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                  counterText: "",
-                  hintText: "******",
-                  hintStyle: const TextStyle(letterSpacing: 0, color: Colors.grey),
-                ),
-                onChanged: (_) {
-                  if (errorMessage != null) setModalState(() => errorMessage = null);
-                },
-              ),
-              if (errorMessage != null) ...[
-                const SizedBox(height: 8),
-                Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
-            TextButton(
-              onPressed: () async {
-                bool success = await PasscodeService.instance.verifyPasscode(controller.text);
-                if (mounted) {
-                  if (success) {
-                    Navigator.pop(context);
-                    Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => const PriceUpdateScreen()),
-                    );
-                  } else {
-                    setModalState(() => errorMessage = "Incorrect Passcode!");
-                  }
-                }
-              },
-              child: const Text('Verify', style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
+    final bool verified = await PasscodeDialog.show(
+      context,
+      reason: "Enter passcode to access repricing.",
     );
+
+    if (verified && mounted) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const PriceUpdateScreen()),
+      );
+    }
   }
 
   void _logout() async {
@@ -148,13 +101,13 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
     if (_isBackingUp) return;
 
     setState(() => _isBackingUp = true);
-    
+
     try {
       await SupasService.instance.syncDatabase(isManual: true);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Backup successful!'),
+          SnackBar(
+            content: Text('Backup successful!', style: GoogleFonts.outfit()),
             backgroundColor: AppColors.primaryGreen,
           ),
         );
@@ -163,8 +116,8 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Backup failed: $e'),
-            backgroundColor: Colors.red,
+            content: Text('Backup failed: $e', style: GoogleFonts.outfit()),
+            backgroundColor: const Color(0xFFEF4444),
           ),
         );
       }
@@ -181,243 +134,9 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
     return DateFormat('dd-MMM-yyyy HH:mm').format(date);
   }
 
-  void _showReceiptInfoDialog() async {
-    final name = await DatabaseHelper.instance.getSetting("receipt_shop_name") ?? "";
-    final number = await DatabaseHelper.instance.getSetting("receipt_shop_number") ?? "";
-    final location = await DatabaseHelper.instance.getSetting("receipt_location") ?? "";
-    final phone = await DatabaseHelper.instance.getSetting("receipt_phone") ?? "";
-    final phone2 = await DatabaseHelper.instance.getSetting("receipt_phone2") ?? "";
-
-    if (!mounted) return;
-
-    final nameController = TextEditingController(text: name);
-    final numberController = TextEditingController(text: number);
-    final locationController = TextEditingController(text: location);
-    final phoneController = TextEditingController(text: phone);
-    final phone2Controller = TextEditingController(text: phone2);
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-        ),
-        child: Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                'Receipt Information',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Add info to display under CHECKBOOK APP on printed receipts',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(height: 24),
-              _buildModalTextField(
-                controller: nameController,
-                label: 'Shop / Company Name',
-                hint: 'e.g. Meto Electronics',
-                icon: Icons.store_rounded,
-                maxLength: 40,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9 .&()\-\/,]')),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _buildModalTextField(
-                controller: numberController,
-                label: 'Shop Number',
-                hint: 'e.g. Shop G15',
-                icon: Icons.tag_rounded,
-                maxLength: 20,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9 .#\-\/,]')),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _buildModalTextField(
-                controller: locationController,
-                label: 'Location / Address',
-                hint: 'e.g. Kampala, Uganda',
-                icon: Icons.location_on_rounded,
-                maxLength: 40,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9 .&()\-\/,]')),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _buildModalTextField(
-                controller: phoneController,
-                label: 'Phone Number / Contact',
-                hint: 'e.g. +256 701 234567',
-                icon: Icons.phone_rounded,
-                keyboardType: TextInputType.phone,
-                maxLength: 25,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9 +\-\/(),]')),
-                ],
-              ),
-              const SizedBox(height: 16),
-              _buildModalTextField(
-                controller: phone2Controller,
-                label: 'Phone Number / Contact 2nd (Optional)',
-                hint: 'e.g. +256 780 654321',
-                icon: Icons.phone_rounded,
-                keyboardType: TextInputType.phone,
-                maxLength: 25,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9 +\-\/(),]')),
-                ],
-              ),
-              const SizedBox(height: 28),
-              ElevatedButton(
-                onPressed: () async {
-                  try {
-                    await DatabaseHelper.instance.saveSetting("receipt_shop_name", nameController.text.trim());
-                    await DatabaseHelper.instance.saveSetting("receipt_shop_number", numberController.text.trim());
-                    await DatabaseHelper.instance.saveSetting("receipt_location", locationController.text.trim());
-                    await DatabaseHelper.instance.saveSetting("receipt_phone", phoneController.text.trim());
-                    await DatabaseHelper.instance.saveSetting("receipt_phone2", phone2Controller.text.trim());
-
-                    // Verify the save was successful by reading back
-                    final savedName = await DatabaseHelper.instance.getSetting("receipt_shop_name");
-                    print("RECEIPT SETTINGS SAVED: shop_name='$savedName', phone='${phoneController.text.trim()}', phone2='${phone2Controller.text.trim()}'");
-
-                    if (context.mounted) {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Receipt settings saved successfully!'),
-                          backgroundColor: AppColors.primaryGreen,
-                        ),
-                      );
-                    }
-                  } catch (e) {
-                    print("ERROR saving receipt settings: $e");
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Failed to save: $e'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                    return;
-                  }
-
-                  // Upload receipt settings to cloud for desktop sync
-                  await SupasService.instance.uploadReceiptSettings();
-                  _handleBackup();
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryGreen,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  elevation: 0,
-                ),
-                child: const Text(
-                  'Save receipt settings',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          ),
-        ),
-      ),
-    );
+  void _showReceiptInfoDialog() {
+    ReceiptSettingsSheet.show(context);
   }
-
-  Widget _buildModalTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required IconData icon,
-    TextInputType keyboardType = TextInputType.text,
-    List<TextInputFormatter>? inputFormatters,
-    int? maxLength,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: controller,
-          keyboardType: keyboardType,
-          maxLength: maxLength,
-          inputFormatters: inputFormatters,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
-          decoration: InputDecoration(
-            hintText: hint,
-            counterText: "",
-            hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-            prefixIcon: Icon(icon, color: AppColors.primaryGreen, size: 20),
-            filled: true,
-            fillColor: Colors.grey.shade50,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade200),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade200),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.primaryGreen, width: 1.5),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
 
   @override
   Widget build(BuildContext context) {
@@ -425,7 +144,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
     final initial = email.isNotEmpty ? email[0].toUpperCase() : 'U';
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -441,15 +160,15 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: AppColors.primaryGreen.withValues(alpha: 0.1),
+                color: AppColors.lightCyan,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Image.asset('assets/images/app_icon.png', width: 20, height: 20),
             ),
             const SizedBox(width: 12),
-            const Text(
+            Text(
               'Account',
-              style: TextStyle(
+              style: GoogleFonts.outfit(
                 color: AppColors.textPrimary,
                 fontWeight: FontWeight.bold,
                 fontSize: 18,
@@ -461,43 +180,43 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
         centerTitle: true,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         child: Column(
           children: [
-            const SizedBox(height: 20),
             _buildDebtSummaryCard(),
             const SizedBox(height: 20),
-            // Avatar
+
+            // Profile Avatar & Email Header
             Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: AppColors.primaryGreen.withValues(alpha: 0.1),
+              width: 96,
+              height: 96,
+              decoration: const BoxDecoration(
+                color: AppColors.lightCyan,
                 shape: BoxShape.circle,
               ),
               child: Center(
                 child: Text(
                   initial,
-                  style: const TextStyle(
-                    fontSize: 48,
+                  style: GoogleFonts.outfit(
+                    fontSize: 40,
                     fontWeight: FontWeight.bold,
                     color: AppColors.primaryGreen,
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 24),
-            // Username/Email
+            const SizedBox(height: 16),
             Text(
               email,
-              style: const TextStyle(
-                fontSize: 18,
+              style: GoogleFonts.outfit(
+                fontSize: 17,
                 fontWeight: FontWeight.bold,
                 color: AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 8),
-            // Subscription status
+
+            // Subscription status pill
             ValueListenableBuilder<Map<String, dynamic>?>(
               valueListenable: SupasService.instance.userMetadata,
               builder: (context, meta, child) {
@@ -505,9 +224,9 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                 final isBackupEnabled = meta?['monthly_cloud_backup'] as bool? ?? true;
                 final backupExpiry = meta?['backup_expiry'] as int? ?? 0;
                 final isBackupActive = isBackupEnabled && (backupExpiry == 0 || backupExpiry > now);
-                
+
                 final statusText = isBackupActive ? 'cloud subscription: active' : 'your backup subscription is done';
-                final statusColor = isBackupActive ? AppColors.primaryGreen : Colors.red;
+                final statusColor = isBackupActive ? AppColors.primaryGreen : const Color(0xFFEF4444);
 
                 return InkWell(
                   onTap: () async {
@@ -515,7 +234,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Could not open website'), backgroundColor: Colors.red),
+                          SnackBar(content: Text('Could not open website', style: GoogleFonts.outfit()), backgroundColor: const Color(0xFFEF4444)),
                         );
                       }
                     }
@@ -540,7 +259,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                         const SizedBox(width: 8),
                         Text(
                           statusText,
-                          style: TextStyle(
+                          style: GoogleFonts.outfit(
                             color: statusColor,
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
@@ -552,8 +271,9 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                 );
               },
             ),
-            const SizedBox(height: 40),
-            // Last Backed Up Section
+            const SizedBox(height: 24),
+
+            // Cloud Sync Info Cards
             ValueListenableBuilder<Map<String, dynamic>?>(
               valueListenable: SupasService.instance.userMetadata,
               builder: (context, meta, child) {
@@ -561,14 +281,14 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                 return _buildInfoCard(
                   title: 'LAST BACKED UP',
                   subtitle: _formatTimestamp(timestamp),
-                  icon: _isBackingUp ? Icons.sync : Icons.cloud_download,
+                  icon: _isBackingUp ? Icons.sync : Icons.cloud_download_rounded,
                   iconColor: AppColors.primaryGreen,
                   onTap: _handleBackup,
                   isLoading: _isBackingUp,
                 );
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             ValueListenableBuilder<DesktopStatus>(
               valueListenable: SupasService.instance.desktopStatus,
               builder: (context, status, child) {
@@ -581,7 +301,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                 return _buildInfoCard(
                   title: 'DESKTOP LAST ONLINE',
                   subtitle: subtitleText,
-                  icon: status == DesktopStatus.online ? Icons.desktop_windows : Icons.desktop_access_disabled,
+                  icon: status == DesktopStatus.online ? Icons.desktop_windows_rounded : Icons.desktop_access_disabled_rounded,
                   iconColor: color,
                   onTap: () async {
                     await SupasService.instance.checkDesktopPresence();
@@ -589,8 +309,9 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                 );
               },
             ),
-            const SizedBox(height: 16),
-            // Buttons Section
+            const SizedBox(height: 20),
+
+            // Add New Stock Primary Button
             _buildPrimaryActionCard(
               title: 'Add New Stock',
               subtitle: 'Register new inventory items and batches',
@@ -601,158 +322,333 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                 );
               },
             ),
-            const SizedBox(height: 16),
-            _buildActionCard(
-              title: 'Price Update / Repricing',
-              icon: Icons.edit_note_rounded,
-              iconColor: AppColors.primaryGreen,
-              onTap: _handlePriceUpdateNavigation,
-            ),
-            const SizedBox(height: 16),
-            _buildActionCard(
-              title: 'Receipt Print Information',
-              icon: Icons.receipt_long_rounded,
-              iconColor: AppColors.primaryGreen,
-              onTap: _showReceiptInfoDialog,
-            ),
-            const SizedBox(height: 16),
-            const SizedBox(height: 24),
-            // Security & Privacy Header
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'SECURITY & PRIVACY',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.grey,
-                  letterSpacing: 1.2,
-                ),
+
+            // SECTION 1: STORE CONFIGURATION
+            _buildSectionHeader('STORE CONFIGURATION'),
+            _buildSectionGroup([
+              _buildSettingsTile(
+                title: 'Price Update / Repricing',
+                subtitle: 'Manage item pricing and unit rates',
+                icon: Icons.edit_note_rounded,
+                onTap: _handlePriceUpdateNavigation,
               ),
-            ),
-            const SizedBox(height: 12),
-            _buildActionCard(
-              title: 'App / Metrics Passcode',
-              subtitle: PasscodeService.instance.hasPasscode ? 'Passcode Enabled' : 'Not Configured',
-              icon: Icons.lock_outline,
-              iconColor: AppColors.primaryGreen,
-              onTap: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const PasscodeSetupScreen()),
-                );
-                if (mounted) setState(() {});
-              },
-            ),
-            const SizedBox(height: 16),
-            ValueListenableBuilder<bool>(
-              valueListenable: PasscodeService.instance.isBiometricsEnabled,
-              builder: (context, isEnabled, _) {
-                return _buildSwitchCard(
-                  title: 'Biometric Authentication',
-                  subtitle: 'Use Fingerprint / Face ID to unlock metrics',
-                  icon: Icons.fingerprint,
-                  value: isEnabled,
-                  onChanged: (val) async {
-                    if (val && !PasscodeService.instance.hasPasscode) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Please set a passcode first before enabling biometrics'),
-                          backgroundColor: Colors.orange,
-                        ),
-                      );
-                      return;
-                    }
-                    await PasscodeService.instance.toggleBiometrics(val);
-                  },
-                );
-              },
-            ),
-            const SizedBox(height: 16),
-            ValueListenableBuilder<bool>(
-              valueListenable: PasscodeService.instance.lockOnLaunch,
-              builder: (context, isLockOnBoot, _) {
-                return _buildSwitchCard(
-                  title: 'Lock Metrics on Boot',
-                  subtitle: 'Default financial metrics to locked on launch',
-                  icon: Icons.security,
-                  value: isLockOnBoot,
-                  onChanged: (val) => PasscodeService.instance.toggleLockOnLaunch(val),
-                );
-              },
-            ),
-            if (PasscodeService.instance.hasPasscode) ...[
-              const SizedBox(height: 16),
+              _buildSettingsTile(
+                title: 'Receipt Print Information',
+                subtitle: 'Configure store details on printed receipts',
+                icon: Icons.receipt_long_rounded,
+                onTap: _showReceiptInfoDialog,
+              ),
+            ]),
+
+            // SECTION 2: FINANCE & OPERATIONS
+            _buildSectionHeader('FINANCE & OPERATIONS'),
+            _buildSectionGroup([
+              _buildSettingsTile(
+                title: 'Debt Management',
+                subtitle: 'View and settle customer debt records',
+                icon: Icons.account_balance_wallet_rounded,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const DebtHistoryScreen()),
+                  ).then((_) => _loadDebtData());
+                },
+              ),
+            ]),
+
+            // SECTION 3: SECURITY & PRIVACY
+            _buildSectionHeader('SECURITY & PRIVACY'),
+            _buildSectionGroup([
+              _buildSettingsTile(
+                title: 'App / Metrics Passcode',
+                subtitle: PasscodeService.instance.hasPasscode ? 'Passcode Enabled' : 'Not Configured',
+                icon: Icons.lock_outline_rounded,
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const PasscodeSetupScreen()),
+                  );
+                  if (mounted) setState(() {});
+                },
+              ),
               ValueListenableBuilder<bool>(
-                valueListenable: PasscodeService.instance.isLocked,
-                builder: (context, isLocked, _) {
-                  if (isLocked) return const SizedBox.shrink();
-                  return _buildActionCard(
-                    title: 'Lock Financial Metrics Now',
-                    icon: Icons.lock,
-                    iconColor: Colors.orange.shade800,
-                    onTap: () {
-                      PasscodeService.instance.lock();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Financial metrics locked!'),
-                          backgroundColor: AppColors.primaryGreen,
-                          duration: Duration(seconds: 2),
-                        ),
-                      );
+                valueListenable: PasscodeService.instance.isBiometricsEnabled,
+                builder: (context, isEnabled, _) {
+                  return _buildSwitchTile(
+                    title: 'Biometric Authentication',
+                    subtitle: 'Use Fingerprint / Face ID to unlock metrics',
+                    icon: Icons.fingerprint_rounded,
+                    value: isEnabled,
+                    onChanged: (val) async {
+                      if (val && !PasscodeService.instance.hasPasscode) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Please set a passcode first before enabling biometrics', style: GoogleFonts.outfit()),
+                            backgroundColor: Colors.orange,
+                          ),
+                        );
+                        return;
+                      }
+                      await PasscodeService.instance.toggleBiometrics(val);
                     },
                   );
                 },
               ),
-            ],
-            const SizedBox(height: 16),
-            _buildDebtActionCard(),
-            const SizedBox(height: 16),
-            _buildActionCard(
-              title: 'Delete History',
-              icon: Icons.delete_outline,
-              iconColor: Colors.red,
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const DeletedHistoryScreen()),
-                );
-              },
-            ),
-            const SizedBox(height: 16),
-            _buildActionCard(
-              title: 'Check for Updates',
-              icon: Icons.system_update_rounded,
-              iconColor: AppColors.primaryGreen,
-              onTap: () => ShorebirdService.instance.checkForUpdate(context, showNoUpdateToast: true),
-            ),
-            const SizedBox(height: 16),
-            _buildActionCard(
-              title: 'Customer support',
-              icon: Icons.headset_mic_outlined,
-              iconColor: AppColors.primaryGreen,
-              onTap: () {},
-            ),
-            const SizedBox(height: 16),
-            _buildActionCard(
-              title: 'Log out',
-              icon: Icons.logout,
-              iconColor: Colors.red,
-              textColor: Colors.red,
-              onTap: _logout,
-            ),
-            const SizedBox(height: 48),
-            // Version
-            const Text(
+              ValueListenableBuilder<bool>(
+                valueListenable: PasscodeService.instance.lockOnLaunch,
+                builder: (context, isLockOnBoot, _) {
+                  return _buildSwitchTile(
+                    title: 'Lock Metrics on Boot',
+                    subtitle: 'Default financial metrics to locked on launch',
+                    icon: Icons.shield_outlined,
+                    value: isLockOnBoot,
+                    onChanged: (val) => PasscodeService.instance.toggleLockOnLaunch(val),
+                  );
+                },
+              ),
+              if (PasscodeService.instance.hasPasscode) ...[
+                ValueListenableBuilder<bool>(
+                  valueListenable: PasscodeService.instance.isLocked,
+                  builder: (context, isLocked, _) {
+                    if (isLocked) return const SizedBox.shrink();
+                    return _buildSettingsTile(
+                      title: 'Lock Financial Metrics Now',
+                      subtitle: 'Immediately lock financial dashboards',
+                      icon: Icons.lock_rounded,
+                      iconBgColor: const Color(0xFFFFEDD5),
+                      iconColor: const Color(0xFFEA580C),
+                      onTap: () {
+                        PasscodeService.instance.lock();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Financial metrics locked!', style: GoogleFonts.outfit()),
+                            backgroundColor: AppColors.primaryGreen,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ],
+            ]),
+
+            // SECTION 4: SYSTEM & SUPPORT
+            _buildSectionHeader('SYSTEM & SUPPORT'),
+            _buildSectionGroup([
+              _buildSettingsTile(
+                title: 'Check for Updates',
+                subtitle: 'Search for live app updates',
+                icon: Icons.system_update_rounded,
+                onTap: () => ShorebirdService.instance.checkForUpdate(context, showNoUpdateToast: true),
+              ),
+              _buildSettingsTile(
+                title: 'Customer Support',
+                subtitle: 'Get help or contact support',
+                icon: Icons.support_agent_rounded,
+                onTap: () {},
+              ),
+              _buildSettingsTile(
+                title: 'Delete History',
+                subtitle: 'View deleted entries log',
+                icon: Icons.delete_forever_rounded,
+                iconBgColor: const Color(0xFFFEE2E2),
+                iconColor: const Color(0xFFEF4444),
+                textColor: const Color(0xFFEF4444),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const DeletedHistoryScreen()),
+                  );
+                },
+              ),
+              _buildSettingsTile(
+                title: 'Log out',
+                icon: Icons.logout_rounded,
+                iconBgColor: const Color(0xFFFEE2E2),
+                iconColor: const Color(0xFFEF4444),
+                textColor: const Color(0xFFEF4444),
+                trailing: const SizedBox.shrink(),
+                onTap: _logout,
+              ),
+            ]),
+
+            const SizedBox(height: 36),
+
+            // Footer Version Tag
+            Text(
               'VERSION 2.2.0+54',
-              style: TextStyle(
-                color: Colors.grey,
+              style: GoogleFonts.outfit(
+                color: const Color(0xFF94A3B8),
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1.2,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 4, bottom: 8, top: 24),
+        child: Text(
+          title,
+          style: GoogleFonts.outfit(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF64748B),
+            letterSpacing: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionGroup(List<Widget> children) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.neutralBorder),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: List.generate(children.length, (index) {
+          return Column(
+            children: [
+              children[index],
+              if (index < children.length - 1)
+                const Divider(height: 1, thickness: 0.6, color: Color(0xFFF1F5F9), indent: 64, endIndent: 16),
+            ],
+          );
+        }),
+      ),
+    );
+  }
+
+  Widget _buildSettingsTile({
+    required String title,
+    String? subtitle,
+    required IconData icon,
+    Color? iconBgColor,
+    Color? iconColor,
+    Color? textColor,
+    Widget? trailing,
+    required VoidCallback onTap,
+  }) {
+    final Color badgeBg = iconBgColor ?? AppColors.lightCyan;
+    final Color badgeIcon = iconColor ?? AppColors.primaryGreen;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: badgeBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: badgeIcon, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.outfit(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: textColor ?? const Color(0xFF0F172A),
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.outfit(
+                        fontSize: 12,
+                        fontWeight: FontWeight.normal,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            trailing ?? const Icon(Icons.chevron_right_rounded, size: 22, color: Color(0xFF94A3B8)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSwitchTile({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.lightCyan,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: AppColors.primaryGreen, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.outfit(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: GoogleFonts.outfit(
+                    fontSize: 12,
+                    fontWeight: FontWeight.normal,
+                    color: const Color(0xFF64748B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            activeThumbColor: AppColors.primaryGreen,
+            onChanged: onChanged,
+          ),
+        ],
       ),
     );
   }
@@ -773,9 +669,10 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.neutralBorder),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
+              color: Colors.black.withValues(alpha: 0.03),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -789,7 +686,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: GoogleFonts.outfit(
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                       color: AppColors.textPrimary,
@@ -798,9 +695,9 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: const TextStyle(
+                    style: GoogleFonts.outfit(
                       fontSize: 14,
-                      color: Colors.grey,
+                      color: const Color(0xFF64748B),
                     ),
                   ),
                 ],
@@ -869,7 +766,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
+                    style: GoogleFonts.outfit(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: AppColors.textPrimary,
@@ -878,9 +775,9 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                   const SizedBox(height: 2),
                   Text(
                     subtitle,
-                    style: TextStyle(
+                    style: GoogleFonts.outfit(
                       fontSize: 12,
-                      color: Colors.grey.shade600,
+                      color: const Color(0xFF64748B),
                     ),
                   ),
                 ],
@@ -893,314 +790,147 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
     );
   }
 
-  Widget _buildActionCard({
-    required String title,
-    String? subtitle,
-    required IconData icon,
-    required Color iconColor,
-    Color? textColor,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: textColor == Colors.red ? 0.05 : 0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: iconColor),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: textColor ?? AppColors.textPrimary,
-                    ),
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSwitchCard({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.primaryGreen.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: AppColors.primaryGreen),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: value,
-            activeThumbColor: AppColors.primaryGreen,
-            onChanged: onChanged,
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildDebtSummaryCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppColors.primaryGreen, Color(0xFF166534)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryGreen.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Total Unsettled Debt',
-                style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w500),
-              ),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.account_balance_wallet, color: Colors.white, size: 18),
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(20),
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const DebtHistoryScreen()),
+          ).then((_) => _loadDebtData());
+        },
+        borderRadius: BorderRadius.circular(20),
+        splashColor: Colors.white.withValues(alpha: 0.1),
+        highlightColor: Colors.white.withValues(alpha: 0.05),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.15),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'UGX ${NumberFormat("#,###").format(_totalDebt)}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1,
-              ),
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Keep track of pending customer payments',
-            style: TextStyle(color: Colors.white60, fontSize: 11),
-          ),
-          const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.payments_outlined, color: Colors.white70, size: 15),
-                    SizedBox(width: 6),
-                    Text(
-                      'Collected Debt Today',
-                      style: TextStyle(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  // Left Title
+                  Expanded(
+                    child: Text(
+                      'TOTAL OUTSTANDING DEBT',
+                      style: GoogleFonts.outfit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
                         color: Colors.white70,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.8,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Right Debtors Badge Button
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.people_outline, size: 14, color: Colors.white),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Debtors',
+                          style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                        const SizedBox(width: 2),
+                        const Icon(Icons.chevron_right_rounded, size: 14, color: Colors.white),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'UGX ${NumberFormat("#,###").format(_totalDebt)}',
+                  style: GoogleFonts.outfit(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Tap to view and settle customer debts',
+                style: GoogleFonts.outfit(color: Colors.white60, fontSize: 11),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.payments_outlined, color: Colors.white70, size: 15),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Collected Debt Today',
+                          style: GoogleFonts.outfit(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.center,
+                      child: Text(
+                        'UGX ${NumberFormat("#,###").format(_todaysCollectedDebt)}',
+                        style: GoogleFonts.outfit(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.center,
-                  child: Text(
-                    'UGX ${NumberFormat("#,###").format(_todaysCollectedDebt)}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDebtActionCard() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-        ],
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: AppColors.primaryGreen.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(Icons.history_edu, color: AppColors.primaryGreen),
-        ),
-        title: const Text('Debt Management', style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: const Text('View and settle customer debts', style: TextStyle(fontSize: 12)),
-        trailing: PopupMenuButton<int>(
-          icon: const Icon(Icons.more_vert, color: Colors.grey),
-          onSelected: (value) async {
-            if (value == 0) {
-              await Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const DebtHistoryScreen(initialIndex: 0)),
-              );
-              _loadDebtData();
-            } else if (value == 1) {
-              await Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const DebtHistoryScreen(initialIndex: 1)),
-              );
-              _loadDebtData();
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(
-              value: 0,
-              child: Row(
-                children: [
-                  Icon(Icons.pending_actions, size: 20, color: Colors.orange),
-                  SizedBox(width: 12),
-                  Text('Active Debts'),
-                ],
               ),
-            ),
-            const PopupMenuItem(
-              value: 1,
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle_outline, size: 20, color: AppColors.primaryGreen),
-                  SizedBox(width: 12),
-                  Text('Settled Debts'),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
-        onTap: () {
-           Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const DebtHistoryScreen()),
-            );
-        },
       ),
     );
   }
 }
-
