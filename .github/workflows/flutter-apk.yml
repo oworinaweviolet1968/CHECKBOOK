@@ -58,13 +58,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           repository: beckhamz777/cb
-          token: ${{ secrets.RELEASE_TOKEN }}
+          token: ${{ secrets.CROSS_REPO_PAT }}
           tag_name: v2.2
           name: Release v2.2
           draft: false
           prerelease: false
           files: |
             mobile_app/build/app/outputs/flutter-apk/CheckBook.apk
+          overwrite_files: true
 
       # 9. Register Release in Supabase app_releases table
       - name: Register Release in Supabase

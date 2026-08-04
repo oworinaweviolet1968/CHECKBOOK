@@ -1,0 +1,31 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          token: ${{ secrets.CROSS_REPO_PAT }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: beckhamz777/cb
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          tag_name: v2.2
+          name: Release v2.2
+          draft: false
+          prerelease: false
+          files: output/*.msi
+          overwrite_files: true
