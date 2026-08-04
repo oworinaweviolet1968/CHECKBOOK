@@ -56,11 +56,11 @@ jobs:
         working-directory: mobile_app
         run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/CheckBook.apk
 
-      # 8. Release to beckhamz777/cb repository
-      - name: Create Release in cb repository
+      # 8. Release to beckhamz777/cb repository (or current repo if CROSS_REPO_PAT is not set)
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          repository: beckhamz777/cb
+          repository: ${{ secrets.CROSS_REPO_PAT != '' && 'beckhamz777/cb' || github.repository }}
           token: ${{ secrets.CROSS_REPO_PAT || secrets.GITHUB_TOKEN }}
           tag_name: v2.2
           name: Release v2.2
