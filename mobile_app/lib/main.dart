@@ -178,18 +178,27 @@ void main() {
         sessionValid = true;
       } on AuthApiException catch (e) {
         debugPrint('Startup: AuthApiException during session refresh (${e.code}): ${e.message}');
-        debugPrint('Startup: Clearing stale local session due to invalid refresh token.');
-        try {
-          await Supabase.instance.client.auth.signOut();
-        } catch (_) {}
+        final msg = e.message.toLowerCase();
+        if (e.statusCode == '400' ||
+            e.code == 'invalid_grant' ||
+            msg.contains('invalid refresh token') ||
+            msg.contains('refresh_token_not_found') ||
+            msg.contains('already used')) {
+          debugPrint('Startup: Clearing stale local session due to explicitly invalid refresh token.');
+          try {
+            await Supabase.instance.client.auth.signOut();
+          } catch (_) {}
+          sessionValid = false;
+        } else {
+          debugPrint('Startup: Transient AuthApiException (${e.code}). Preserving session for offline/cached use.');
+          sessionValid = true;
+        }
       } catch (e) {
-        debugPrint('Startup: Session refresh failed: $e');
-        try {
-          await Supabase.instance.client.auth.signOut();
-        } catch (_) {}
+        debugPrint('Startup: Network or system error during session refresh: $e. Preserving session for offline use.');
+        sessionValid = true;
       }
 
-      if (sessionValid && Supabase.instance.client.auth.currentSession != null) {
+      if (sessionValid && (Supabase.instance.client.auth.currentSession != null || currentSession != null)) {
         await DatabaseHelper.instance.switchDatabase(userId);
         await SupasService.instance.downloadReceiptSettings();
         await PasscodeService.instance.init();

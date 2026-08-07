@@ -249,7 +249,11 @@ public class SupabaseService {
             return true;
         } else {
             System.err.println("signInWithRefreshToken failed: Status " + response.statusCode() + " - " + response.body());
-            clearSession();
+            String body = response.body().toLowerCase();
+            if (response.statusCode() == 400 && (body.contains("invalid_grant") || body.contains("invalid refresh token") || body.contains("refresh_token_not_found") || body.contains("already used"))) {
+                System.err.println("Refresh token explicitly invalid. Clearing local session.");
+                clearSession();
+            }
             return false;
         }
     }
@@ -284,6 +288,120 @@ public class SupabaseService {
         this.currentRefreshToken = null;
         this.currentUserId = null;
         clearSession();
+    }
+
+    public static class SessionConflictInfo {
+        public final String activeDeviceId;
+        public final String activeDeviceName;
+        public final String lastActive;
+
+        public SessionConflictInfo(String activeDeviceId, String activeDeviceName, String lastActive) {
+            this.activeDeviceId = activeDeviceId;
+            this.activeDeviceName = activeDeviceName;
+            this.lastActive = lastActive;
+        }
+    }
+
+    public SessionConflictInfo checkSessionConflict(String targetUserId, String category) {
+        if (currentAccessToken == null) return null;
+        try {
+            String currentDeviceId = com.meto.inventory.powersync.DeviceIdentity.getDeviceId();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(SUPABASE_URL + "/rest/v1/user_sessions?user_id=eq." + targetUserId + "&select=*"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
+                if (arr.size() > 0) {
+                    JsonObject obj = arr.get(0).getAsJsonObject();
+                    String slotKey = "desktop".equals(category) ? "active_desktop_device_id" : "active_mobile_device_id";
+                    String nameKey = "desktop".equals(category) ? "active_desktop_device_name" : "active_mobile_device_name";
+                    String timeKey = "desktop".equals(category) ? "active_desktop_last_active" : "active_mobile_last_active";
+
+                    if (obj.has(slotKey) && !obj.get(slotKey).isJsonNull()) {
+                        String activeId = obj.get(slotKey).getAsString();
+                        if (activeId != null && !activeId.isEmpty() && !activeId.equals(currentDeviceId)) {
+                            String activeName = obj.has(nameKey) && !obj.get(nameKey).isJsonNull() ? obj.get(nameKey).getAsString() : ("Another " + category + " Device");
+                            String lastActive = obj.has(timeKey) && !obj.get(timeKey).isJsonNull() ? obj.get(timeKey).getAsString() : "recently";
+                            return new SessionConflictInfo(activeId, activeName, lastActive);
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("checkSessionConflict error: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public void registerSession(String targetUserId, String category, boolean force) {
+        if (currentAccessToken == null) return;
+        try {
+            String currentDeviceId = com.meto.inventory.powersync.DeviceIdentity.getDeviceId();
+            String deviceName = "desktop".equals(category) ? "Desktop PC (" + System.getProperty("os.name") + ")" : "Mobile App";
+            String nowIso = java.time.Instant.now().toString();
+
+            JsonObject payload = new JsonObject();
+            payload.addProperty("user_id", targetUserId);
+            payload.addProperty("updated_at", nowIso);
+
+            if ("desktop".equals(category)) {
+                payload.addProperty("active_desktop_device_id", currentDeviceId);
+                payload.addProperty("active_desktop_device_name", deviceName);
+                payload.addProperty("active_desktop_last_active", nowIso);
+            } else {
+                payload.addProperty("active_mobile_device_id", currentDeviceId);
+                payload.addProperty("active_mobile_device_name", deviceName);
+                payload.addProperty("active_mobile_last_active", nowIso);
+            }
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(SUPABASE_URL + "/rest/v1/user_sessions"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Content-Type", "application/json")
+                    .header("Prefer", "resolution=merge-duplicates")
+                    .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            System.out.println("REGISTER SESSION (" + category + ") status: " + response.statusCode());
+        } catch (Exception e) {
+            System.err.println("registerSession error: " + e.getMessage());
+        }
+    }
+
+    public boolean verifyCurrentSessionValid() {
+        if (currentUserId == null || currentAccessToken == null) return true;
+        try {
+            String currentDeviceId = com.meto.inventory.powersync.DeviceIdentity.getDeviceId();
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(SUPABASE_URL + "/rest/v1/user_sessions?user_id=eq." + currentUserId + "&select=active_desktop_device_id"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
+                if (arr.size() > 0) {
+                    JsonObject obj = arr.get(0).getAsJsonObject();
+                    if (obj.has("active_desktop_device_id") && !obj.get("active_desktop_device_id").isJsonNull()) {
+                        String activeId = obj.get("active_desktop_device_id").getAsString();
+                        if (activeId != null && !activeId.isEmpty() && !activeId.equals(currentDeviceId)) {
+                            System.err.println("DESKTOP SESSION REVOKED by device " + activeId);
+                            return false;
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return true;
     }
 
     private void saveSession() {

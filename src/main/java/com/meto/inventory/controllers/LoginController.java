@@ -6,7 +6,10 @@ import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonBar;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ProgressIndicator;
@@ -146,6 +149,7 @@ public class LoginController {
 
                         final boolean finalOwnershipPaid = ownershipPaid;
                         final boolean finalBackupEnabled = backupEnabled;
+                        final String currentUid = service.getCurrentUserId();
 
                         Platform.runLater(() -> {
                             if (!finalOwnershipPaid) {
@@ -161,6 +165,32 @@ public class LoginController {
                             if (!finalBackupEnabled) {
                                 showBackupDisabledAlert(email);
                             }
+
+                            SupabaseService.SessionConflictInfo conflict = service.checkSessionConflict(currentUid,
+                                    "desktop");
+                            if (conflict != null) {
+                                Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                                alert.setTitle("Active Session Found");
+                                alert.setHeaderText("Logged in on another Desktop device");
+                                alert.setContentText("You are currently logged in on " + conflict.activeDeviceName
+                                        + ".\n\nWould you like to log out of that device and log in here?");
+
+                                ButtonType btnContinue = new ButtonType("Log Out Other Device & Continue",
+                                        ButtonBar.ButtonData.OK_DONE);
+                                ButtonType btnCancel = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
+                                alert.getButtonTypes().setAll(btnContinue, btnCancel);
+
+                                java.util.Optional<ButtonType> result = alert.showAndWait();
+                                if (!result.isPresent() || result.get() != btnContinue) {
+                                    service.logout();
+                                    setLoading(false);
+                                    statusLabel.setText("Login cancelled.");
+                                    statusLabel.setStyle("-fx-text-fill: red;");
+                                    return;
+                                }
+                            }
+
+                            service.registerSession(currentUid, "desktop", conflict != null);
 
                             statusLabel.setText("Login successful! Syncing data...");
                             statusLabel.setStyle("-fx-text-fill: green;");
@@ -370,7 +400,6 @@ public class LoginController {
         alert.showAndWait();
     }
 
-
     private void setLoading(boolean loading) {
         loginButton.setDisable(loading);
         emailField.setDisable(loading);
@@ -425,10 +454,10 @@ public class LoginController {
                 // Dispatch FCM notification to notify the mobile app
                 try {
                     com.meto.inventory.services.NotificationService.getInstance().sendAppUpdateNotification(
-                        "Login Approval Request",
-                        "Desktop login request initiated for " + email
-                    );
-                } catch (Exception ignored) {}
+                            "Login Approval Request",
+                            "Desktop login request initiated for " + email);
+                } catch (Exception ignored) {
+                }
 
                 long startTime = System.currentTimeMillis();
                 boolean approved = false;

@@ -5,6 +5,21 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'database_helper.dart';
 import 'passcode_service.dart';
 import 'logger_service.dart';
+import 'audit_service.dart';
+import 'notification_service.dart';
+import 'powersync/device_identity.dart';
+
+class SessionConflictInfo {
+  final String activeDeviceId;
+  final String activeDeviceName;
+  final String lastActive;
+
+  SessionConflictInfo({
+    required this.activeDeviceId,
+    required this.activeDeviceName,
+    required this.lastActive,
+  });
+}
 
 enum SyncStatus { idle, syncing, synced, error, offline }
 
@@ -54,6 +69,135 @@ class SupasService {
   // Get Current User ID
   String? get userId => client.auth.currentUser?.id;
 
+  final ValueNotifier<bool> sessionRevokedNotif = ValueNotifier(false);
+
+  /// Checks if an active session exists for the user on another device of the given category
+  Future<SessionConflictInfo?> checkSessionConflict(String targetUserId, {String category = 'mobile'}) async {
+    try {
+      final currentDeviceId = await DeviceIdentity.getDeviceId();
+      final res = await client
+          .from('user_sessions')
+          .select()
+          .eq('user_id', targetUserId)
+          .maybeSingle();
+
+      if (res != null) {
+        final String? activeId = category == 'mobile'
+            ? res['active_mobile_device_id']?.toString()
+            : res['active_desktop_device_id']?.toString();
+        final String? activeName = category == 'mobile'
+            ? res['active_mobile_device_name']?.toString()
+            : res['active_desktop_device_name']?.toString();
+        final String? lastActive = category == 'mobile'
+            ? res['active_mobile_last_active']?.toString()
+            : res['active_desktop_last_active']?.toString();
+
+        if (activeId != null && activeId.isNotEmpty && activeId != currentDeviceId) {
+          return SessionConflictInfo(
+            activeDeviceId: activeId,
+            activeDeviceName: activeName ?? (category == 'mobile' ? 'Another Mobile Device' : 'Another Desktop Device'),
+            lastActive: lastActive ?? 'recently',
+          );
+        }
+      }
+    } catch (e) {
+      AppLogger.warning('SESSION CONFLICT CHECK: Note $e', tag: 'SupasService');
+    }
+    return null;
+  }
+
+  /// Registers or force-switches the active session slot for the current device
+  Future<void> registerSession(String targetUserId, {String category = 'mobile', bool force = false}) async {
+    try {
+      final currentDeviceId = await DeviceIdentity.getDeviceId();
+      final deviceName = category == 'mobile' ? 'Mobile App (${Platform.operatingSystem})' : 'Desktop PC';
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+
+      final Map<String, dynamic> updateData = {
+        'user_id': targetUserId,
+        'updated_at': nowIso,
+      };
+
+      if (category == 'mobile') {
+        updateData['active_mobile_device_id'] = currentDeviceId;
+        updateData['active_mobile_device_name'] = deviceName;
+        updateData['active_mobile_last_active'] = nowIso;
+      } else {
+        updateData['active_desktop_device_id'] = currentDeviceId;
+        updateData['active_desktop_device_name'] = deviceName;
+        updateData['active_desktop_last_active'] = nowIso;
+      }
+
+      await client.from('user_sessions').upsert(updateData, onConflict: 'user_id');
+      AppLogger.info('SESSION: Registered $category session slot for device $currentDeviceId (force=$force)', tag: 'SupasService');
+
+      if (force) {
+        await AuditService.instance.logAction(
+          action: 'SECURITY_ALERT',
+          details: 'Session force-switched to current $category device ($currentDeviceId). Old session revoked.',
+        );
+      }
+    } catch (e) {
+      AppLogger.error('SESSION REGISTER ERROR: $e', tag: 'SupasService');
+    }
+  }
+
+  /// Verifies if the current device session is still active and valid in user_sessions
+  Future<bool> verifyCurrentSessionValid() async {
+    if (userId == null) return true;
+    try {
+      final currentDeviceId = await DeviceIdentity.getDeviceId();
+      final res = await client
+          .from('user_sessions')
+          .select('active_mobile_device_id')
+          .eq('user_id', userId!)
+          .maybeSingle();
+
+      if (res != null) {
+        final String? activeId = res['active_mobile_device_id']?.toString();
+        if (activeId != null && activeId.isNotEmpty && activeId != currentDeviceId) {
+          AppLogger.warning('SESSION REVOKED: Device $currentDeviceId superseded by $activeId', tag: 'SupasService');
+          return false;
+        }
+      }
+    } catch (_) {}
+    return true;
+  }
+
+  /// Executes an API call with automatic auth token refresh on 401 Unauthorized errors
+  Future<T> executeWithAuthRetry<T>(Future<T> Function() apiCall) async {
+    try {
+      return await apiCall();
+    } on AuthException catch (e) {
+      if (e.statusCode == '401' ||
+          e.message.toLowerCase().contains('jwt') ||
+          e.message.toLowerCase().contains('expired') ||
+          e.message.toLowerCase().contains('unauthorized')) {
+        try {
+          AppLogger.info('AUTH RETRY: Token expired or 401. Refreshing session...', tag: 'SupasService');
+          await client.auth.refreshSession();
+          return await apiCall();
+        } on AuthApiException catch (refreshError) {
+          final msg = refreshError.message.toLowerCase();
+          if (refreshError.statusCode == '400' ||
+              refreshError.code == 'invalid_grant' ||
+              msg.contains('invalid refresh token') ||
+              msg.contains('refresh_token_not_found')) {
+            AppLogger.error('AUTH RETRY: Refresh token explicitly invalid.', tag: 'SupasService', error: refreshError);
+            rethrow;
+          }
+          rethrow;
+        } catch (err) {
+          AppLogger.warning('AUTH RETRY: Session refresh failed due to network/system: $err', tag: 'SupasService');
+          rethrow;
+        }
+      }
+      rethrow;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   // Sync Logic (Mirroring Java syncOnLogin)
   bool _isSyncing = false;
 
@@ -62,6 +206,16 @@ class SupasService {
     _isSyncing = true;
     try {
       if (userId == null) return;
+
+      final sessionValid = await verifyCurrentSessionValid();
+      if (!sessionValid) {
+        AppLogger.warning('SYNC CANCELLED: Session ended on another mobile device.', tag: 'SupasService');
+        sessionRevokedNotif.value = true;
+        await signOut();
+        syncStatus.value = SyncStatus.error;
+        return;
+      }
+
       syncStatus.value = SyncStatus.syncing;
       AppLogger.info('SYNC: Starting Delta Sync for user $userId', tag: 'SupasService');
       
@@ -133,6 +287,10 @@ class SupasService {
 
       await DatabaseHelper.instance.clearDirtyFlags();
 
+      // PUSH pending audit logs and notifications to cloud
+      await AuditService.instance.syncPendingAuditLogs();
+      await NotificationService.instance.syncPendingNotifications();
+
       // 2. PULL remote changes from Postgres
       final localVersionStr = await DatabaseHelper.instance.getSetting('last_backup_timestamp');
       final localVersionTs = int.tryParse(localVersionStr ?? '0') ?? 0;
@@ -157,6 +315,24 @@ class SupasService {
       AppLogger.info('SYNC: PULLED remote sales: ${cloudSales.length} items', tag: 'SupasService');
       await DatabaseHelper.instance.upsertCloudSales(cloudSales, false); // false = Full Sync
 
+      // Pull cloud audit logs
+      try {
+        final cloudAuditLogs = await client.from('audit_logs').select().eq('user_id', userId!);
+        AppLogger.info('SYNC: PULLED remote audit logs: ${cloudAuditLogs.length} items', tag: 'SupasService');
+        await AuditService.instance.upsertCloudAuditLogs(List<Map<String, dynamic>>.from(cloudAuditLogs));
+      } catch (e) {
+        AppLogger.info('SYNC: Cloud audit logs pull note: $e', tag: 'SupasService');
+      }
+
+      // Pull cloud notifications
+      try {
+        final cloudNotifs = await client.from('notifications').select().eq('user_id', userId!);
+        AppLogger.info('SYNC: PULLED remote notifications: ${cloudNotifs.length} items', tag: 'SupasService');
+        await NotificationService.instance.upsertCloudNotifications(List<Map<String, dynamic>>.from(cloudNotifs));
+      } catch (e) {
+        AppLogger.info('SYNC: Cloud notifications pull note: $e', tag: 'SupasService');
+      }
+
       // We do not have a deleted_stock/deleted_sales table on cloud so physical deletions are hard to pull incrementally.
       // However, Realtime will push deletions instantly while online.
       
@@ -177,6 +353,12 @@ class SupasService {
       await downloadReceiptSettings();
 
       AppLogger.info('SYNC: Finished successfully!', tag: 'SupasService');
+    } on SocketException catch (e) {
+      AppLogger.warning('SYNC OFFLINE: Socket error during database sync: $e', tag: 'SupasService');
+      syncStatus.value = SyncStatus.offline;
+    } on AuthApiException catch (e) {
+      AppLogger.error('SYNC AUTH ERROR (${e.code}): ${e.message}', tag: 'SupasService');
+      syncStatus.value = SyncStatus.error;
     } catch (e, stack) {
       AppLogger.error('SYNC ERROR: $e', tag: 'SupasService', error: e, stackTrace: stack);
       syncStatus.value = SyncStatus.error;
@@ -495,7 +677,31 @@ class SupasService {
     AppLogger.info('REALTIME: Subscribing to Postgres changes...', tag: 'SupasService');
     try {
       _realtimeChannel = client
-          .channel('public:users')
+          .channel('public:user_data_$userId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'audit_logs',
+            filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId!),
+            callback: (payload) async {
+              AppLogger.info('REALTIME AUDIT EVENT: ${payload.eventType}', tag: 'SupasService');
+              if (payload.newRecord.isNotEmpty) {
+                await AuditService.instance.upsertCloudAuditLogs([payload.newRecord]);
+              }
+            },
+          )
+          .onPostgresChanges(
+            event: PostgresChangeEvent.all,
+            schema: 'public',
+            table: 'notifications',
+            filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId!),
+            callback: (payload) async {
+              AppLogger.info('REALTIME NOTIFICATION EVENT: ${payload.eventType}', tag: 'SupasService');
+              if (payload.newRecord.isNotEmpty) {
+                await NotificationService.instance.upsertCloudNotifications([payload.newRecord]);
+              }
+            },
+          )
           .onPostgresChanges(
             event: PostgresChangeEvent.all,
             schema: 'public',

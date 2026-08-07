@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
 import '../utils/colors.dart';
 import '../services/passcode_service.dart';
 import '../screens/notifications_screen.dart';
+import '../services/notification_service.dart';
 import '../services/supabase_service.dart';
 
 import '../services/database_helper.dart';
@@ -25,10 +27,21 @@ class _StandardAppBarActionsState extends State<StandardAppBarActions> {
   static final Set<int> _notifiedIds = {};
   bool _hasUnread = false;
 
+  StreamSubscription? _notifSub;
+
   @override
   void initState() {
     super.initState();
     _checkUnread();
+    _notifSub = NotificationService.instance.notificationsStream.listen((_) {
+      _checkUnread();
+    });
+  }
+
+  @override
+  void dispose() {
+    _notifSub?.cancel();
+    super.dispose();
   }
 
   @override

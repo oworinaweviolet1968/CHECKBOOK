@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:intl/intl.dart';
 import '../services/database_helper.dart';
+import '../services/notification_service.dart';
 import '../utils/colors.dart';
 import 'debt_history_screen.dart';
 import 'history_screen.dart';
@@ -183,17 +185,31 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _isLoading = true;
   final List<MapEntry<String, List<Map<String, dynamic>>>> _sections = [];
 
+  StreamSubscription? _notifSubscription;
+
   @override
   void initState() {
     super.initState();
     _loadNotifications();
+    _notifSubscription = NotificationService.instance.notificationsStream.listen((_) {
+      if (mounted) _loadNotifications();
+    });
+  }
+
+  @override
+  void dispose() {
+    _notifSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadNotifications() async {
-    final notifs = await DatabaseHelper.instance.getNotifications();
+    final notifs = await DatabaseHelper.instance.getNotificationsList();
     final mutableNotifs = List<Map<String, dynamic>>.of(notifs);
-    mutableNotifs.sort((a, b) =>
-        (b['created_at'] as String).compareTo(a['created_at'] as String));
+    mutableNotifs.sort((a, b) {
+      final aDate = (a['timestamp'] ?? a['created_at'])?.toString() ?? '';
+      final bDate = (b['timestamp'] ?? b['created_at'])?.toString() ?? '';
+      return bDate.compareTo(aDate);
+    });
 
     final Map<String, List<Map<String, dynamic>>> grouped = {};
     final DateTime now = DateTime.now();
@@ -247,8 +263,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   }
 
   Future<void> _onNotificationTap(Map<String, dynamic> notif) async {
-    if (notif['id'] != null) {
-      await DatabaseHelper.instance.markNotificationAsRead(notif['id'] as int);
+    final notifId = (notif['id'] ?? notif['uuid_id'] ?? notif['sync_id'])?.toString();
+    if (notifId != null && notifId.isNotEmpty) {
+      await NotificationService.instance.markAsRead(notifId);
       _loadNotifications();
     }
     final routeInfo = NotificationRouteInfo.fromMetadata(

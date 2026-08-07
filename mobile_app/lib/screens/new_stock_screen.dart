@@ -6,6 +6,7 @@ import '../utils/colors.dart';
 import '../utils/formatters.dart';
 import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
+import '../services/audit_service.dart';
 import '../models/stock_item.dart';
 import '../widgets/common_app_bar_actions.dart';
 import '../widgets/transaction_success_dialog.dart';
@@ -1222,7 +1223,18 @@ class _NewStockScreenState extends State<NewStockScreen> {
       if (itemsCopy.isNotEmpty) {
         String itemsStr = itemsCopy.map((e) => e.item).join(", ");
         String supplier = itemsCopy.first.supplier;
-        await DatabaseHelper.instance.addNotification("Added $itemsStr from $supplier", "Mobile");
+        await DatabaseHelper.instance.addNotification("Added $itemsStr from $supplier", "Mobile", targetType: 'stock', targetId: itemsStr);
+        try {
+          await AuditService.instance.logAction(
+            action: 'STOCK_UPDATE',
+            details: {
+              'items': itemsCopy.map((e) => {'item': e.item, 'quantity': e.unit, 'size': e.quantity, 'price': e.price, 'amount': e.amount}).toList(),
+              'supplier': supplier,
+            },
+          );
+        } catch (e) {
+          debugPrint('Error logging stock update audit: $e');
+        }
       }
 
       await SupasService.instance.uploadDatabase();

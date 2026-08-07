@@ -6,6 +6,7 @@ import '../utils/colors.dart';
 import '../utils/formatters.dart';
 import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
+import '../services/audit_service.dart';
 import '../services/printer_service.dart';
 import '../models/sale_item.dart';
 import '../widgets/common_app_bar_actions.dart';
@@ -1350,6 +1351,19 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
           targetType: hasDebt ? 'debt' : 'sale',
           targetId: receiptId,
         );
+        try {
+          await AuditService.instance.logAction(
+            action: hasDebt ? 'DEBT_RECORDED' : 'SALE_COMPLETED',
+            details: {
+              'customer': customerCopy,
+              'receipt_id': receiptId,
+              'total_amount': totalAmountCopy,
+              'items': cartCopy.map((e) => {'item': e.item, 'quantity': e.quantity, 'amount': e.amount, 'is_debt': e.isDebt}).toList(),
+            },
+          );
+        } catch (e) {
+          debugPrint('Error logging sale audit: $e');
+        }
       }
 
       await SupasService.instance.uploadDatabase();

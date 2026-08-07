@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
@@ -249,6 +250,42 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       final userId = response.user?.id;
 
       if (userId != null) {
+        final conflict = await SupasService.instance.checkSessionConflict(userId, category: 'mobile');
+        if (conflict != null && mounted) {
+          final shouldSwitch = await showCupertinoDialog<bool>(
+            context: context,
+            builder: (ctx) => CupertinoAlertDialog(
+              title: const Text('Active Session Found'),
+              content: Text(
+                'You are currently logged in on ${conflict.activeDeviceName}.\n\nWould you like to log out of that device and log in here?',
+              ),
+              actions: [
+                CupertinoDialogAction(
+                  isDestructiveAction: true,
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                CupertinoDialogAction(
+                  isDefaultAction: true,
+                  onPressed: () => Navigator.of(ctx).pop(true),
+                  child: const Text('Log Out Other Device & Continue'),
+                ),
+              ],
+            ),
+          );
+
+          if (shouldSwitch != true) {
+            await Supabase.instance.client.auth.signOut();
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+              });
+            }
+            return;
+          }
+        }
+
+        await SupasService.instance.registerSession(userId, category: 'mobile', force: true);
         await _saveRecentAccount(email);
         await SupasService.instance.migrateLegacyDatabase();
         await DatabaseHelper.instance.switchDatabase(userId);

@@ -11,6 +11,7 @@ import '../screens/deleted_history_screen.dart';
 import '../screens/price_update_screen.dart';
 import '../screens/debt_history_screen.dart';
 import '../screens/new_stock_screen.dart';
+import '../screens/audit_trail_screen.dart';
 import '../services/database_helper.dart';
 import '../services/shorebird_service.dart';
 import '../widgets/passcode_dialog.dart';
@@ -445,6 +446,16 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
                 subtitle: 'Get help or contact support',
                 icon: Icons.support_agent_rounded,
                 onTap: () {},
+              ),
+              _buildSettingsTile(
+                title: 'Cloud Audit Trail',
+                subtitle: 'View live cloud audit events & activity logs',
+                icon: Icons.manage_history_rounded,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AuditTrailScreen()),
+                  );
+                },
               ),
               _buildSettingsTile(
                 title: 'Delete History',

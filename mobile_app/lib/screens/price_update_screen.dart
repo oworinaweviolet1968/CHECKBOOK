@@ -3,6 +3,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../services/database_helper.dart';
 import '../services/supabase_service.dart';
+import '../services/audit_service.dart';
+import '../services/notification_service.dart';
 import '../utils/colors.dart';
 
 class PriceUpdateScreen extends StatefulWidget {
@@ -166,6 +168,25 @@ class _PriceUpdateScreenState extends State<PriceUpdateScreen> {
                         if (newUnitPrice != null) {
                           final newPiecePrice = newUnitPrice / (multiplier > 0 ? multiplier : 1);
                           await DatabaseHelper.instance.updateItemPrice(item['id'], newPiecePrice);
+                          try {
+                            await AuditService.instance.logAction(
+                              action: 'REPRICING',
+                              details: {
+                                'item': item['item'],
+                                'unit': unitLabel,
+                                'old_price': item['price'],
+                                'new_unit_price': newUnitPrice,
+                                'new_piece_price': newPiecePrice,
+                              },
+                            );
+                            await NotificationService.instance.notify(
+                              title: 'Repricing Alert',
+                              body: 'Updated price for ${item['item']} to UGX ${newUnitPrice.toStringAsFixed(0)} ($unitLabel)',
+                              type: 'REPRICING',
+                            );
+                          } catch (e) {
+                            debugPrint('Error logging repricing audit/notification: $e');
+                          }
                           SupasService.instance.uploadDatabase();
 
                           if (context.mounted) {

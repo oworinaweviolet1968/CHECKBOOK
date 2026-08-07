@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'dart:convert';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -10,6 +11,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'powersync/write_queue.dart';
 import 'powersync/powersync_engine.dart';
 import 'logger_service.dart';
+import 'audit_service.dart';
+import 'notification_service.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -398,13 +401,15 @@ class DatabaseHelper {
             )
           ''');
 
-          // Migration Helper (Clean)
+          // Migration Helper (Clean & Resilient)
           Future<void> addCol(String tbl, String col, String type) async {
-              var columns = await db.rawQuery("PRAGMA table_info($tbl)");
-              bool exists = columns.any((c) => c['name'] == col);
-              if (!exists) {
-                  await db.execute("ALTER TABLE $tbl ADD COLUMN $col $type");
-              }
+              try {
+                  var columns = await db.rawQuery("PRAGMA table_info($tbl)");
+                  bool exists = columns.any((c) => c['name']?.toString().toLowerCase() == col.toLowerCase());
+                  if (!exists) {
+                      await db.execute("ALTER TABLE $tbl ADD COLUMN $col $type");
+                  }
+              } catch (_) {}
           }
           
           await addCol("sales", "is_debt", "INTEGER DEFAULT 0");
@@ -439,6 +444,25 @@ class DatabaseHelper {
           await addCol("notifications", "sync_id", "TEXT");
           await addCol("notifications", "target_type", "TEXT");
           await addCol("notifications", "target_id", "TEXT");
+          await addCol("notifications", "uuid_id", "TEXT");
+          await addCol("notifications", "user_id", "TEXT");
+          await addCol("notifications", "title", "TEXT");
+          await addCol("notifications", "body", "TEXT");
+          await addCol("notifications", "type", "TEXT");
+          await addCol("notifications", "timestamp", "TEXT");
+          await addCol("notifications", "is_dirty", "INTEGER DEFAULT 0");
+
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS audit_logs (
+              id TEXT PRIMARY KEY,
+              user_id TEXT,
+              action TEXT,
+              details TEXT,
+              timestamp TEXT,
+              device_id TEXT,
+              is_dirty INTEGER DEFAULT 0
+            )
+          ''');
           
           // Backfill sync_id if null using standard dashed UUIDs
           final uuidGenSql = "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))";
@@ -697,11 +721,34 @@ class DatabaseHelper {
     // Notifications Table
     await db.execute('''
       CREATE TABLE IF NOT EXISTS notifications (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
+        uuid_id TEXT,
+        sync_id TEXT,
+        user_id TEXT,
+        title TEXT,
+        body TEXT,
         message TEXT,
         source TEXT,
+        type TEXT,
+        target_type TEXT,
+        target_id TEXT,
+        is_read INTEGER DEFAULT 0,
+        timestamp TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        is_read INTEGER DEFAULT 0
+        is_dirty INTEGER DEFAULT 0
+      )
+    ''');
+
+    // Audit Logs Table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        action TEXT,
+        details TEXT,
+        timestamp TEXT,
+        device_id TEXT,
+        is_dirty INTEGER DEFAULT 0
       )
     ''');
 
@@ -1363,6 +1410,21 @@ class DatabaseHelper {
           ? 'Deleted stock entry: $itemName'
           : 'Deleted sale for $customer: $itemName (UGX ${amount.toStringAsFixed(0)})';
       await addNotification(actionLabel, 'Mobile', targetType: 'deleted', targetId: itemName);
+      
+      try {
+        await AuditService.instance.logAction(
+          action: 'DELETE_TRANSACTION',
+          details: {
+            'item': itemName,
+            'customer': customer,
+            'amount': amount,
+            'type': type,
+            'date': item['date'],
+          },
+        );
+      } catch (e) {
+        print('Error logging delete transaction audit: $e');
+      }
     }
 
     // 6. Clean up any remaining orphan stock
@@ -2305,6 +2367,18 @@ class DatabaseHelper {
       if (source == 'Desktop') {
         await showLocalNotification(title ?? "Desktop App Input", message);
       }
+
+      // Sync to cloud NotificationService
+      try {
+        await NotificationService.instance.notify(
+          title: title ?? source,
+          body: message,
+          type: targetType ?? 'GENERAL',
+          showLocalNotification: false,
+        );
+      } catch (e) {
+        print('Error pushing notification through NotificationService: $e');
+      }
     } catch (e) {
       print("Error adding notification: $e");
     }
@@ -2328,5 +2402,218 @@ class DatabaseHelper {
   Future<void> clearAllNotifications() async {
       final db = await instance.database;
       await db.rawDelete("DELETE FROM notifications");
+  }
+
+  // --- AUDIT LOGS DATABASE METHODS ---
+
+  Future<void> saveAuditLog(Map<String, dynamic> log) async {
+    try {
+      final db = await instance.database;
+      await db.insert(
+        'audit_logs',
+        log,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      print('Error saving audit log: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getAuditLogs({String? action, int limit = 100}) async {
+    try {
+      final db = await instance.database;
+      if (action != null && action.isNotEmpty) {
+        return await db.query(
+          'audit_logs',
+          where: 'action = ?',
+          whereArgs: [action],
+          orderBy: 'timestamp DESC',
+          limit: limit,
+        );
+      }
+      return await db.query(
+        'audit_logs',
+        orderBy: 'timestamp DESC',
+        limit: limit,
+      );
+    } catch (e) {
+      print('Error getting audit logs: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getDirtyAuditLogs() async {
+    try {
+      final db = await instance.database;
+      return await db.query(
+        'audit_logs',
+        where: 'is_dirty = 1',
+      );
+    } catch (e) {
+      print('Error getting dirty audit logs: $e');
+      return [];
+    }
+  }
+
+  Future<void> clearDirtyAuditLogs(List<String> ids) async {
+    if (ids.isEmpty) return;
+    try {
+      final db = await instance.database;
+      final placeholders = List.filled(ids.length, '?').join(',');
+      await db.execute(
+        'UPDATE audit_logs SET is_dirty = 0 WHERE id IN ($placeholders)',
+        ids,
+      );
+    } catch (e) {
+      print('Error clearing dirty audit logs: $e');
+    }
+  }
+
+  Future<void> upsertCloudAuditLogs(List<Map<String, dynamic>> logs) async {
+    if (logs.isEmpty) return;
+    try {
+      final db = await instance.database;
+      final batch = db.batch();
+      for (var item in logs) {
+        final id = item['id']?.toString();
+        if (id == null || id.isEmpty) continue;
+
+        dynamic details = item['details'];
+        String detailsStr = '{}';
+        if (details is Map) {
+          detailsStr = jsonEncode(details);
+        } else if (details != null) {
+          detailsStr = details.toString();
+        }
+
+        batch.insert(
+          'audit_logs',
+          {
+            'id': id,
+            'user_id': item['user_id']?.toString() ?? '',
+            'action': item['action']?.toString() ?? 'GENERAL',
+            'details': detailsStr,
+            'timestamp': item['timestamp']?.toString() ?? DateTime.now().toUtc().toIso8601String(),
+            'device_id': item['device_id']?.toString() ?? '',
+            'is_dirty': 0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    } catch (e) {
+      print('Error upserting cloud audit logs: $e');
+    }
+  }
+
+  // --- NOTIFICATIONS DATABASE METHODS ---
+
+  Future<void> saveNotificationRecord(Map<String, dynamic> notif) async {
+    try {
+      final db = await instance.database;
+      await db.insert(
+        'notifications',
+        notif,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+    } catch (e) {
+      print('Error saving notification record: $e');
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getNotificationsList({int limit = 100}) async {
+    try {
+      final db = await instance.database;
+      return await db.rawQuery(
+        "SELECT * FROM notifications WHERE message NOT LIKE '%online%' AND message NOT LIKE '%offline%' AND message NOT LIKE '%internet%' ORDER BY timestamp DESC, created_at DESC LIMIT ?",
+        [limit]
+      );
+    } catch (e) {
+      print('Error getting notifications list: $e');
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getDirtyNotifications() async {
+    try {
+      final db = await instance.database;
+      return await db.query(
+        'notifications',
+        where: 'is_dirty = 1',
+      );
+    } catch (e) {
+      print('Error getting dirty notifications: $e');
+      return [];
+    }
+  }
+
+  Future<void> clearDirtyNotifications(List<String> ids) async {
+    if (ids.isEmpty) return;
+    try {
+      final db = await instance.database;
+      final placeholders = List.filled(ids.length, '?').join(',');
+      await db.execute(
+        "UPDATE notifications SET is_dirty = 0 WHERE id IN ($placeholders) OR uuid_id IN ($placeholders) OR sync_id IN ($placeholders)",
+        [...ids, ...ids, ...ids],
+      );
+    } catch (e) {
+      print('Error clearing dirty notifications: $e');
+    }
+  }
+
+  Future<void> upsertCloudNotifications(List<Map<String, dynamic>> notifs) async {
+    if (notifs.isEmpty) return;
+    try {
+      final db = await instance.database;
+      final batch = db.batch();
+      for (var item in notifs) {
+        final id = item['id']?.toString() ?? item['uuid_id']?.toString() ?? item['sync_id']?.toString();
+        if (id == null || id.isEmpty) continue;
+
+        batch.insert(
+          'notifications',
+          {
+            'id': id,
+            'uuid_id': id,
+            'sync_id': id,
+            'user_id': item['user_id']?.toString() ?? '',
+            'title': item['title']?.toString() ?? 'Alert',
+            'body': item['body']?.toString() ?? item['message']?.toString() ?? '',
+            'message': item['body']?.toString() ?? item['message']?.toString() ?? '',
+            'type': item['type']?.toString() ?? 'GENERAL',
+            'target_type': item['type']?.toString() ?? 'GENERAL',
+            'is_read': item['is_read'] == true || item['is_read'] == 1 ? 1 : 0,
+            'timestamp': item['timestamp']?.toString() ?? DateTime.now().toUtc().toIso8601String(),
+            'created_at': item['timestamp']?.toString() ?? DateTime.now().toUtc().toIso8601String(),
+            'is_dirty': 0,
+          },
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+      await batch.commit(noResult: true);
+    } catch (e) {
+      print('Error upserting cloud notifications: $e');
+    }
+  }
+
+  Future<void> markNotificationRead(String id) async {
+    try {
+      final db = await instance.database;
+      await db.execute(
+        "UPDATE notifications SET is_read = 1 WHERE id = ? OR uuid_id = ? OR sync_id = ?",
+        [id, id, id],
+      );
+    } catch (e) {
+      print('Error marking notification read: $e');
+    }
+  }
+
+  Future<void> clearAllNotificationsRecord() async {
+    try {
+      final db = await instance.database;
+      await db.execute("UPDATE notifications SET is_read = 1");
+    } catch (e) {
+      print('Error clearing all notifications: $e');
+    }
   }
 }

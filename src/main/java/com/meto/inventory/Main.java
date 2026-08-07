@@ -46,9 +46,22 @@ public class Main extends Application {
                         });
                         return;
                     } else {
-                        System.out.println("STARTUP: Silent login failed. Showing login view.");
-                        // Refresh token was invalid/expired (HTTP 400/401/etc.) -> Go to login screen
-                        javafx.application.Platform.runLater(() -> showLoginView(primaryStage));
+                        System.out.println("STARTUP: Silent login failed or server unreachable. Checking for cached session...");
+                        String localUid = service.getCurrentUserId();
+                        if (localUid != null && !localUid.isEmpty()) {
+                            System.out.println("STARTUP: Preserving offline session for user: " + localUid);
+                            javafx.application.Platform.runLater(() -> {
+                                try {
+                                    loadMainView(primaryStage);
+                                    triggerOfflineMode(localUid);
+                                } catch (Exception ex) {
+                                    ex.printStackTrace();
+                                    showLoginView(primaryStage);
+                                }
+                            });
+                        } else {
+                            javafx.application.Platform.runLater(() -> showLoginView(primaryStage));
+                        }
                     }
                 } catch (Exception e) {
                     // Network connection failed (IOException/ConnectException/etc.) -> OFFLINE MODE
