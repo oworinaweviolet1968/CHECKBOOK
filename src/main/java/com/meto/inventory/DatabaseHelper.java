@@ -508,20 +508,36 @@ public class DatabaseHelper {
             return 6.0;
 
         // GENERAL SECOND
-        if (cleanUnit.contains("box*10"))
-            return 10.0;
-        if (cleanUnit.contains("box*12") || cleanUnit.contains("dozen") || cleanUnit.contains("doz"))
-            return 12.0;
-        if (cleanUnit.contains("box*20") || cleanUnit.equals("box"))
-            return 20.0;
-        if (cleanUnit.contains("box*24") || cleanUnit.contains("carton"))
-            return 24.0;
+        if (cleanUnit.contains("box*100"))
+            return 100.0;
+        if (cleanUnit.contains("box*96"))
+            return 96.0;
         if (cleanUnit.contains("box*72"))
             return 72.0;
+        if (cleanUnit.contains("box*48"))
+            return 48.0;
+        if (cleanUnit.contains("box*36"))
+            return 36.0;
+        if (cleanUnit.contains("box*24") || cleanUnit.contains("carton"))
+            return 24.0;
+        if (cleanUnit.contains("box*20") || cleanUnit.equals("box"))
+            return 20.0;
+        if (cleanUnit.contains("box*12") || cleanUnit.contains("dozen") || cleanUnit.contains("doz"))
+            return 12.0;
+        if (cleanUnit.contains("box*10"))
+            return 10.0;
         if (cleanUnit.contains("crate"))
             return 25.0;
         if (cleanUnit.contains("box"))
             return 20.0;
+
+        if (cleanUnit.contains("*")) {
+            try {
+                String afterStar = cleanUnit.substring(cleanUnit.lastIndexOf("*") + 1).trim();
+                double val = extractNumericValue(afterStar);
+                if (val > 0) return val;
+            } catch (Exception ignored) {}
+        }
 
         return 1.0;
     }
@@ -1395,18 +1411,26 @@ public class DatabaseHelper {
         }
 
         // Legacy Fallbacks (space-normalized)
-        if (type.contains("box*10"))
-            return 10.0;
-        if (type.contains("box*12"))
-            return 12.0;
-        if (type.contains("box*24"))
-            return 24.0;
-        if (type.contains("crate*25"))
-            return 25.0;
+        if (type.contains("box*100"))
+            return 100.0;
+        if (type.contains("box*96"))
+            return 96.0;
         if (type.contains("box*72"))
             return 72.0;
+        if (type.contains("box*48"))
+            return 48.0;
+        if (type.contains("box*36"))
+            return 36.0;
+        if (type.contains("box*24"))
+            return 24.0;
         if (type.contains("box*20"))
             return 20.0;
+        if (type.contains("box*12"))
+            return 12.0;
+        if (type.contains("box*10"))
+            return 10.0;
+        if (type.contains("crate*25"))
+            return 25.0;
 
         return 1.0;
     }

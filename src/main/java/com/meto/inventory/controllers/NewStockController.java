@@ -172,7 +172,7 @@ public class NewStockController implements DataManager.DataChangeListener {
 
         // --- STEP 3: UNIT VALIDATION ---
         unitField.textProperty().addListener((obs, old, newVal) -> {
-            String countPattern = ".*\\d+.*(pc|pcs|doz|carton|box|sack|dozen|crate|box\\*10|box\\*12|box\\*20|box\\*24|box\\*72).*";
+            String countPattern = ".*\\d+.*(pc|pcs|doz|carton|box|sack|dozen|crate|box\\*10|box\\*12|box\\*20|box\\*24|box\\*36|box\\*48|box\\*72|box\\*96|box\\*100).*";
             if (newVal.toLowerCase().matches(countPattern)) {
                 setFlowLevel(3);
             } else {
@@ -493,44 +493,44 @@ public class NewStockController implements DataManager.DataChangeListener {
     }
 
     private void createUnitQuickButtons() {
-        Map<String, String> unitLabels = Map.of(
-                "pcs", "pcs * 1", "sack", "Sack", "half doz", "Half Doz * 6",
-                "dozen", "Dozen", "box*10", "Box * 10", "box*12", "Dozen",
-                "box*20", "Box * 20", "box*24", "Box * 24", "crate", "Crate * 25",
-                "box*72", "Box * 72");
+        Map<String, String> unitLabels = Map.ofEntries(
+                Map.entry("pcs", "pcs * 1"),
+                Map.entry("sack", "Sack"),
+                Map.entry("half doz", "Half Doz * 6"),
+                Map.entry("dozen", "Dozen"),
+                Map.entry("box*10", "Box * 10"),
+                Map.entry("box*12", "Dozen"),
+                Map.entry("box*20", "Box * 20"),
+                Map.entry("box*24", "Box * 24"),
+                Map.entry("box*36", "Box * 36"),
+                Map.entry("box*48", "Box * 48"),
+                Map.entry("crate", "Crate * 25"),
+                Map.entry("box*72", "Box * 72"),
+                Map.entry("box*96", "Box * 96"),
+                Map.entry("box*100", "Box * 100")
+        );
 
-        Map<String, Integer> unitMultipliers = Map.of(
-                "pcs", 1, "sack", 1, "half doz", 6,
-                "dozen", 12, "box*10", 10, "box*12", 12,
-                "box*20", 20, "box*24", 24, "crate", 25, "box*72", 72);
-
-        String[] order = { "pcs", "sack", "half doz", "box*10", "box*12", "box*20", "box*24", "crate", "box*72" };
+        String[] order = { "pcs", "sack", "half doz", "box*10", "box*12", "box*20", "box*24", "box*36", "box*48", "crate", "box*72", "box*96", "box*100" };
 
         for (String unitKey : order) {
             String labelText = unitLabels.get(unitKey);
-            Integer val = unitMultipliers.get(unitKey);
-            Button b = new Button(labelText);
+            Button button = new Button(labelText);
 
             if (unitKey.equals("sack")) {
-                b.setStyle("-fx-background-color: #2196F3; -fx-text-fill: white;");
+                button.setStyle("-fx-background-color: #2196F3; -fx-text-fill: white;");
             } else {
-                Label valLabel = new Label("*" + val);
-                valLabel.setStyle("-fx-text-fill: red; -fx-font-weight: bold; -fx-padding: 0 0 0 5;");
-                // Note: valLabel is redundant if labelText already has *X, but keeping for
-                // styling
-                // Actually, let's just use the mobile labels directly for unity.
-                b.setGraphic(null);
+                button.setGraphic(null);
             }
 
-            b.getStyleClass().add("pill-quick");
-            b.setOnAction(evt -> {
-                selectQuickButton(b, unitButtonsMap);
+            button.getStyleClass().add("pill-quick");
+            button.setOnAction(evt -> {
+                selectQuickButton(button, unitButtonsMap);
                 appendUnit(unitKey);
             });
 
             // STORE REFERENCE and add to box
-            unitButtonsMap.put(unitKey, b);
-            unitButtonsBox.getChildren().add(b);
+            unitButtonsMap.put(unitKey, button);
+            unitButtonsBox.getChildren().add(button);
         }
     }
 
@@ -555,8 +555,12 @@ public class NewStockController implements DataManager.DataChangeListener {
                 showButton("box*12");
                 showButton("box*20");
                 showButton("box*24");
+                showButton("box*36");
+                showButton("box*48");
                 showButton("crate");
                 showButton("box*72");
+                showButton("box*96");
+                showButton("box*100");
             } else {
                 showButton("sack");
             }
@@ -568,12 +572,21 @@ public class NewStockController implements DataManager.DataChangeListener {
             showButton("box*12");
             showButton("box*20");
             showButton("box*24");
+            showButton("box*36");
+            showButton("box*48");
             showButton("crate");
             showButton("box*72");
+            showButton("box*96");
+            showButton("box*100");
         } else {
             // DEFAULT/OTHER: Show pcs and standard units
             showButton("pcs");
             showButton("box*12");
+            showButton("box*24");
+            showButton("box*36");
+            showButton("box*48");
+            showButton("box*96");
+            showButton("box*100");
         }
     }
 

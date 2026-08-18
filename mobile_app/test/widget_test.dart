@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:CheckBook/services/passcode_service.dart';
-import 'package:CheckBook/widgets/stock_item_tile.dart';
+import 'package:checkbook/services/passcode_service.dart';
+import 'package:checkbook/widgets/stock_item_tile.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

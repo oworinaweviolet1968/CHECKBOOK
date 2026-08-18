@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:CheckBook/screens/notifications_screen.dart';
+import 'package:checkbook/screens/notifications_screen.dart';
 
 void main() {
   group('NotificationRouteInfo.parse Tests', () {

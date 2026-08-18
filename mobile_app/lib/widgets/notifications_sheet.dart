@@ -4,7 +4,7 @@ import '../services/notification_service.dart';
 import '../utils/colors.dart';
 
 class NotificationsSheet extends StatefulWidget {
-  const NotificationsSheet({Key? key}) : super(key: key);
+  const NotificationsSheet({super.key});
 
   static void show(BuildContext context) {
     showModalBottomSheet(

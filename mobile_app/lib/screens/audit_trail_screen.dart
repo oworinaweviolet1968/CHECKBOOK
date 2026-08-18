@@ -4,7 +4,7 @@ import '../services/audit_service.dart';
 import '../utils/colors.dart';
 
 class AuditTrailScreen extends StatefulWidget {
-  const AuditTrailScreen({Key? key}) : super(key: key);
+  const AuditTrailScreen({super.key});
 
   @override
   State<AuditTrailScreen> createState() => _AuditTrailScreenState();

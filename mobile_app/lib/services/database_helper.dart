@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/history_item.dart';
 import '../models/sale_item.dart';
@@ -339,7 +339,7 @@ class DatabaseHelper {
       path = join(dbPath, filePath);
     }
 
-    print('Database Path: $path');
+    debugPrint('Database Path: $path');
 
     return await openDatabase(
       path, 
@@ -477,7 +477,7 @@ class DatabaseHelper {
             try {
               await db.execute("UPDATE $t SET sync_id = substr(sync_id, 1, 8) || '-' || substr(sync_id, 9, 4) || '-' || substr(sync_id, 13, 4) || '-' || substr(sync_id, 17, 4) || '-' || substr(sync_id, 21, 12) WHERE length(sync_id) = 32");
             } catch (e) {
-              print("Failed to normalize sync_id on table $t: $e");
+              debugPrint("Failed to normalize sync_id on table $t: $e");
               try {
                 // If update failed due to UNIQUE constraint, delete the undashed duplicate (length 32)
                 // whose normalized version already exists in the table as a 36-character dashed UUID.
@@ -490,7 +490,7 @@ class DatabaseHelper {
                 // Retry the update
                 await db.execute("UPDATE $t SET sync_id = substr(sync_id, 1, 8) || '-' || substr(sync_id, 9, 4) || '-' || substr(sync_id, 13, 4) || '-' || substr(sync_id, 17, 4) || '-' || substr(sync_id, 21, 12) WHERE length(sync_id) = 32");
               } catch (innerErr) {
-                print("Failed to resolve unique constraint conflict on table $t: $innerErr");
+                debugPrint("Failed to resolve unique constraint conflict on table $t: $innerErr");
               }
             }
           }
@@ -512,7 +512,7 @@ class DatabaseHelper {
                 await db.execute("DELETE FROM stock WHERE is_edited = 0");
                 await db.execute("UPDATE settings SET value = '0' WHERE key = 'last_backup_timestamp'");
                 await db.execute("INSERT INTO settings (key, value) VALUES ('has_reset_zombies_v3', '1')");
-                print("ZOMBIE CLEANUP: Wiped corrupt local cloud data and reset sync cursor.");
+                debugPrint("ZOMBIE CLEANUP: Wiped corrupt local cloud data and reset sync cursor.");
             }
 
             // One-time migration to re-sync all sales to restore any missing records deleted by buggy deduplication
@@ -523,10 +523,10 @@ class DatabaseHelper {
                 await db.execute("DELETE FROM deleted_history"); // Clear all stale deletion logs!
                 await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('last_backup_timestamp', '0')"); // force sync cursor reset
                 await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('has_re_synced_missing_sales_v3', '1')");
-                print("RE-SYNC MIGRATION: Marked all sales as edited and reset sync cursor.");
+                debugPrint("RE-SYNC MIGRATION: Marked all sales as edited and reset sync cursor.");
               }
             } catch (e) {
-              print("Failed to run re-sync migration: $e");
+              debugPrint("Failed to run re-sync migration: $e");
             }
 
             await db.execute("DELETE FROM stock WHERE id NOT IN (SELECT MAX(id) FROM stock GROUP BY item, quantity)");
@@ -580,12 +580,12 @@ class DatabaseHelper {
                     "UPDATE sales SET receipt_id = ?, is_edited = 1 WHERE id IN ($idsCsv)",
                     [newReceiptId]
                   );
-                  print("DEBUG: Consolidated legacy sales: $idsToGroup under receipt_id: $newReceiptId");
+                  debugPrint("DEBUG: Consolidated legacy sales: $idsToGroup under receipt_id: $newReceiptId");
                 }
                 i = j;
               }
             } catch (e) {
-              print("Failed to clean up legacy sales: $e");
+              debugPrint("Failed to clean up legacy sales: $e");
             }
 
             // Deduplicate zombie duplicate sales entries (e.g. from checkout double-taps)
@@ -606,13 +606,13 @@ class DatabaseHelper {
                 final dupCustomer = row['customer'] as String? ?? '';
                 
                 await db.rawDelete('DELETE FROM sales WHERE id = ?', [dupId]);
-                print("DEDUPLICATE CLEANUP: Deleted duplicate sale ID: $dupId (sync_id: $dupSyncId) for customer: $dupCustomer");
+                debugPrint("DEDUPLICATE CLEANUP: Deleted duplicate sale ID: $dupId (sync_id: $dupSyncId) for customer: $dupCustomer");
               }
             } catch (e) {
-              print("Failed to deduplicate sales: $e");
+              debugPrint("Failed to deduplicate sales: $e");
             }
           } catch (e) {
-            print("Index creation failed: $e");
+            debugPrint("Index creation failed: $e");
           }
       }
     );
@@ -775,7 +775,7 @@ class DatabaseHelper {
           await txn.execute("DELETE FROM yearly_summaries");
           await txn.execute("UPDATE settings SET value = '0' WHERE key = 'last_backup_timestamp'");
       });
-      print("DATABASE: All local data cleared.");
+      debugPrint("DATABASE: All local data cleared.");
   }
 
   // --- Queries matching Java backend ---
@@ -823,7 +823,7 @@ class DatabaseHelper {
          };
        }
      } catch (e) {
-       print("Error fetching todays stats: $e");
+       debugPrint("Error fetching todays stats: $e");
      }
      return {'sales': 0.0, 'debt': 0.0, 'profit': 0.0};
   }
@@ -843,7 +843,7 @@ class DatabaseHelper {
          return (result.first['total_profit'] as num).toDouble();
        }
      } catch (e) {
-       print("Error fetching yesterday's profit: $e");
+       debugPrint("Error fetching yesterday's profit: $e");
      }
      return 0.0;
   }
@@ -1423,7 +1423,7 @@ class DatabaseHelper {
           },
         );
       } catch (e) {
-        print('Error logging delete transaction audit: $e');
+        debugPrint('Error logging delete transaction audit: $e');
       }
     }
 
@@ -1435,7 +1435,7 @@ class DatabaseHelper {
   Future<void> checkAutoResyncMigration() async {
     final resyncSetting = await getSetting('auto_resync_zombie_v5');
     if (resyncSetting == null || resyncSetting != '1') {
-      print('MIGRATION (Mobile): Performing one-time auto-resync and cache cleanup for zombie stock & sales');
+      debugPrint('MIGRATION (Mobile): Performing one-time auto-resync and cache cleanup for zombie stock & sales');
       try {
         final db = await instance.database;
         await db.execute("UPDATE sales SET is_edited = 0 WHERE sync_id IS NOT NULL AND sync_id != ''");
@@ -1452,9 +1452,9 @@ class DatabaseHelper {
         await db.execute("DELETE FROM deleted_stock WHERE EXISTS (SELECT 1 FROM stock WHERE stock.item = deleted_stock.item AND stock.quantity = deleted_stock.quantity)");
         await db.execute("DELETE FROM deleted_history WHERE EXISTS (SELECT 1 FROM sales WHERE sales.customer = deleted_history.customer AND sales.item = deleted_history.item AND sales.date = deleted_history.date)");
         await saveSetting('has_cleared_stale_tombstones_v1', '1');
-        print('MIGRATION (Mobile): Cleared stale tombstones for active stock/sales');
+        debugPrint('MIGRATION (Mobile): Cleared stale tombstones for active stock/sales');
       } catch (e) {
-        print('Failed to clear stale tombstones on Mobile: $e');
+        debugPrint('Failed to clear stale tombstones on Mobile: $e');
       }
     }
 
@@ -1464,9 +1464,9 @@ class DatabaseHelper {
         final db = await instance.database;
         await db.execute("DELETE FROM sales WHERE EXISTS (SELECT 1 FROM deleted_history WHERE (deleted_history.sync_id = sales.sync_id AND sales.sync_id IS NOT NULL AND sales.sync_id != '') OR (deleted_history.item = sales.item AND deleted_history.date = sales.date))");
         await saveSetting('has_purged_ghost_sales_v1', '1');
-        print('MIGRATION (Mobile): Purged ghost sales matching deleted_history');
+        debugPrint('MIGRATION (Mobile): Purged ghost sales matching deleted_history');
       } catch (e) {
-        print('Failed to purge ghost sales on Mobile: $e');
+        debugPrint('Failed to purge ghost sales on Mobile: $e');
       }
     }
 
@@ -1497,9 +1497,9 @@ class DatabaseHelper {
           ) AND sales.type != 'NEW STOCK'
         ''');
         await saveSetting('has_purged_deleted_stock_sales_v3', '1');
-        print('MIGRATION (Mobile): Purged ghost sales associated with deleted stock / zerospot');
+        debugPrint('MIGRATION (Mobile): Purged ghost sales associated with deleted stock / zerospot');
       } catch (e) {
-        print('Failed to purge ghost sales for deleted stock on Mobile: $e');
+        debugPrint('Failed to purge ghost sales for deleted stock on Mobile: $e');
       }
     }
   }
@@ -1534,7 +1534,7 @@ class DatabaseHelper {
       });
 
       await db.delete('stock', where: 'id = ?', whereArgs: [stockId]);
-      print("CLEANUP ZOMBIE STOCK: Deleted orphan stock '$itemName ($quantity)' (sync_id: $syncId)");
+      debugPrint("CLEANUP ZOMBIE STOCK: Deleted orphan stock '$itemName ($quantity)' (sync_id: $syncId)");
     }
   }
 
@@ -1673,8 +1673,11 @@ class DatabaseHelper {
     double fractionValue = 0.0;
 
     // Handle common fractions at the beginning
-    if (lowercaseText.startsWith("1/4")) fractionValue = 0.25;
-    else if (lowercaseText.startsWith("1/2")) fractionValue = 0.5;
+    if (lowercaseText.startsWith("1/4")) {
+      fractionValue = 0.25;
+    } else if (lowercaseText.startsWith("1/2")) {
+      fractionValue = 0.5;
+    }
 
     // Remove known fractions to avoid confusing regex
     String cleaned = lowercaseText.replaceAll("1/4", "").replaceAll("1/2", "").replaceAll(",", "").trim();
@@ -1717,7 +1720,9 @@ class DatabaseHelper {
               String afterStar = type.substring(type.lastIndexOf("*") + 1);
               double val = extractNumericValue(afterStar);
               if (val > 0) return val;
-          } catch (e) {}
+          } catch (_) {
+              // Ignore invalid fraction format
+          }
       }
       
       // Normalize 'type' by removing leading quantities
@@ -1741,14 +1746,18 @@ class DatabaseHelper {
                   String afterStar = sizeLower.substring(sizeLower.lastIndexOf("*") + 1);
                   double val = extractNumericValue(afterStar);
                   if (val > 0) return val;
-              } catch (e) {}
+              } catch (_) {
+                  // Ignore invalid size format
+              }
           }
           if (bulkLower.contains("*")) {
               try {
                   String afterStar = bulkLower.substring(bulkLower.lastIndexOf("*") + 1);
                   double val = extractNumericValue(afterStar);
                   if (val > 0) return val;
-              } catch (e) {}
+              } catch (_) {
+                  // Ignore invalid bulk format
+              }
           }
           
           // Fallback if no star but it's a known bulk term
@@ -1761,8 +1770,12 @@ class DatabaseHelper {
       if (type.contains("box*10")) return 10.0;
       if (type.contains("box*12")) return 12.0;
       if (type.contains("box*24")) return 24.0;
-      if (type.contains("crate*25")) return 25.0;
+      if (type.contains("box*36")) return 36.0;
+      if (type.contains("box*48")) return 48.0;
       if (type.contains("box*72")) return 72.0;
+      if (type.contains("box*96")) return 96.0;
+      if (type.contains("box*100")) return 100.0;
+      if (type.contains("crate*25")) return 25.0;
       if (type.contains("box*20")) return 20.0; 
 
       return 1.0;
@@ -1780,11 +1793,17 @@ class DatabaseHelper {
       if (cleaned.contains("sack")) return "Sack";
       if (cleaned.contains("halfdoz") || cleaned.contains("half doz")) return "half doz";
       String normalized = cleaned.replaceAll(' ', '');
+      final boxMatch = RegExp(r'box\*\d+').firstMatch(normalized);
+      if (boxMatch != null) return boxMatch.group(0)!;
       if (normalized.contains("box*12")) return "box*12";
       if (normalized.contains("box*10")) return "box*10";
       if (normalized.contains("box*20")) return "box*20";
       if (normalized.contains("box*24") || normalized.contains("carton")) return "box*24";
+      if (normalized.contains("box*36")) return "box*36";
+      if (normalized.contains("box*48")) return "box*48";
       if (normalized.contains("box*72")) return "box*72";
+      if (normalized.contains("box*96")) return "box*96";
+      if (normalized.contains("box*100")) return "box*100";
       if (normalized.contains("crate")) return "crate";
       if (normalized.contains("half")) return "half";
       if (normalized.contains("quarter")) return "quarter";
@@ -1892,7 +1911,7 @@ class DatabaseHelper {
 
       // Check tombstone: if stock item was deleted locally, skip restoring it
       if (await isStockDeleted(cloudItem, cloudQuantity, syncId: syncId)) {
-        print("SYNC: Skipping restore of stock $cloudItem ($cloudQuantity) - Deleted in tombstone.");
+        debugPrint("SYNC: Skipping restore of stock $cloudItem ($cloudQuantity) - Deleted in tombstone.");
         continue;
       }
 
@@ -1997,7 +2016,7 @@ class DatabaseHelper {
         bool inCloud = (syncId != null && cloudSyncIds.contains(syncId)) || cloudItemKeys.contains(itemKey);
         if (!inCloud && !isEdited) {
           await db.delete('stock', where: 'id = ?', whereArgs: [id]);
-          print("FULL SYNC PURGE: Deleted local stock '${row['item']} (${row['quantity']})' missing from cloud");
+          debugPrint("FULL SYNC PURGE: Deleted local stock '${row['item']} (${row['quantity']})' missing from cloud");
         }
       }
     }
@@ -2019,7 +2038,7 @@ class DatabaseHelper {
 
       // Check tombstone: if sale was deleted locally, skip restoring it
       if (isNew && await isSaleDeleted(customer, item, amount, date, syncId: syncId)) {
-        print("SYNC: Skipping restore of sale $item ($customer) - Deleted in tombstone.");
+        debugPrint("SYNC: Skipping restore of sale $item ($customer) - Deleted in tombstone.");
         continue;
       }
 
@@ -2161,7 +2180,7 @@ class DatabaseHelper {
           }
           if (!isRecentLocalDraft) {
             await db.delete('sales', where: 'id = ?', whereArgs: [id]);
-            print("FULL SYNC PURGE: Deleted local sale '${row['item']} (${row['customer']})' missing from cloud");
+            debugPrint("FULL SYNC PURGE: Deleted local sale '${row['item']} (${row['customer']})' missing from cloud");
           }
         }
       }
@@ -2254,7 +2273,7 @@ class DatabaseHelper {
     // TOMBSTONE CHECK: Don't restore if deleted in the cloud (other device)
     if (table == 'stock') {
       if (await isStockDeleted(data['item'] as String, data['quantity'] as String)) {
-        print("SYNC: Skipping restore of ${data['item']} - Deleted in cloud.");
+        debugPrint("SYNC: Skipping restore of ${data['item']} - Deleted in cloud.");
         return;
       }
     }
@@ -2264,7 +2283,7 @@ class DatabaseHelper {
           data['item'] as String,
           (data['amount'] as num).toDouble(),
           data['date'] as String)) {
-        print("SYNC: Skipping restore of sale ${data['item']} - Deleted in cloud.");
+        debugPrint("SYNC: Skipping restore of sale ${data['item']} - Deleted in cloud.");
         return;
       }
     }
@@ -2333,7 +2352,7 @@ class DatabaseHelper {
           ),
         );
       } catch (e) {
-        print("Error showing local notification: $e");
+        debugPrint("Error showing local notification: $e");
       }
     }
   }
@@ -2377,10 +2396,10 @@ class DatabaseHelper {
           showLocalNotification: false,
         );
       } catch (e) {
-        print('Error pushing notification through NotificationService: $e');
+        debugPrint('Error pushing notification through NotificationService: $e');
       }
     } catch (e) {
-      print("Error adding notification: $e");
+      debugPrint("Error adding notification: $e");
     }
   }
 
@@ -2389,7 +2408,7 @@ class DatabaseHelper {
           final db = await instance.database;
           return await db.rawQuery("SELECT id, message, source, created_at, is_read, target_type, target_id FROM notifications WHERE message NOT LIKE '%online%' AND message NOT LIKE '%offline%' AND message NOT LIKE '%internet%' ORDER BY created_at DESC");
       } catch (e) {
-          print("Error fetching notifications: $e");
+          debugPrint("Error fetching notifications: $e");
           return [];
       }
   }
@@ -2415,7 +2434,7 @@ class DatabaseHelper {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     } catch (e) {
-      print('Error saving audit log: $e');
+      debugPrint('Error saving audit log: $e');
     }
   }
 
@@ -2437,7 +2456,7 @@ class DatabaseHelper {
         limit: limit,
       );
     } catch (e) {
-      print('Error getting audit logs: $e');
+      debugPrint('Error getting audit logs: $e');
       return [];
     }
   }
@@ -2450,7 +2469,7 @@ class DatabaseHelper {
         where: 'is_dirty = 1',
       );
     } catch (e) {
-      print('Error getting dirty audit logs: $e');
+      debugPrint('Error getting dirty audit logs: $e');
       return [];
     }
   }
@@ -2465,7 +2484,7 @@ class DatabaseHelper {
         ids,
       );
     } catch (e) {
-      print('Error clearing dirty audit logs: $e');
+      debugPrint('Error clearing dirty audit logs: $e');
     }
   }
 
@@ -2502,7 +2521,7 @@ class DatabaseHelper {
       }
       await batch.commit(noResult: true);
     } catch (e) {
-      print('Error upserting cloud audit logs: $e');
+      debugPrint('Error upserting cloud audit logs: $e');
     }
   }
 
@@ -2517,7 +2536,7 @@ class DatabaseHelper {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     } catch (e) {
-      print('Error saving notification record: $e');
+      debugPrint('Error saving notification record: $e');
     }
   }
 
@@ -2529,7 +2548,7 @@ class DatabaseHelper {
         [limit]
       );
     } catch (e) {
-      print('Error getting notifications list: $e');
+      debugPrint('Error getting notifications list: $e');
       return [];
     }
   }
@@ -2542,7 +2561,7 @@ class DatabaseHelper {
         where: 'is_dirty = 1',
       );
     } catch (e) {
-      print('Error getting dirty notifications: $e');
+      debugPrint('Error getting dirty notifications: $e');
       return [];
     }
   }
@@ -2557,7 +2576,7 @@ class DatabaseHelper {
         [...ids, ...ids, ...ids],
       );
     } catch (e) {
-      print('Error clearing dirty notifications: $e');
+      debugPrint('Error clearing dirty notifications: $e');
     }
   }
 
@@ -2592,7 +2611,7 @@ class DatabaseHelper {
       }
       await batch.commit(noResult: true);
     } catch (e) {
-      print('Error upserting cloud notifications: $e');
+      debugPrint('Error upserting cloud notifications: $e');
     }
   }
 
@@ -2604,7 +2623,7 @@ class DatabaseHelper {
         [id, id, id],
       );
     } catch (e) {
-      print('Error marking notification read: $e');
+      debugPrint('Error marking notification read: $e');
     }
   }
 
@@ -2613,7 +2632,7 @@ class DatabaseHelper {
       final db = await instance.database;
       await db.execute("UPDATE notifications SET is_read = 1");
     } catch (e) {
-      print('Error clearing all notifications: $e');
+      debugPrint('Error clearing all notifications: $e');
     }
   }
 }

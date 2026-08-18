@@ -511,7 +511,7 @@ class SupasService {
               await client.storage.from('backups').remove(['$userId/$fileName']);
               await client.storage.from('backups').remove(['$userId/inventory.db']); // legacy
           } catch (e) {
-              print('CLOUDWIPE STORAGE: $e');
+              debugPrint('CLOUDWIPE STORAGE: $e');
           }
 
           // 2. Reset cloud metadata
@@ -559,7 +559,7 @@ class SupasService {
           .where((item) => item['email'] == email)
           .toList();
     } catch (e) {
-      print('LOGIN POLL ERROR: $e');
+      debugPrint('LOGIN POLL ERROR: $e');
       return [];
     }
   }

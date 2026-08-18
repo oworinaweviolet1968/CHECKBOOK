@@ -45,7 +45,7 @@ class _DeletedHistoryScreenState extends State<DeletedHistoryScreen> {
         });
       }
     } catch (e) {
-      print("Error loading deleted history: $e");
+      debugPrint("Error loading deleted history: $e");
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -246,16 +246,16 @@ class _DeletedHistoryScreenState extends State<DeletedHistoryScreen> {
     return Container(
       decoration: BoxDecoration(
           color: isHighlighted
-              ? Colors.red.withOpacity(0.08)
+              ? Colors.red.withValues(alpha: 0.08)
               : (isOld ? const Color(0xFFFFF1F2) : Colors.white),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isHighlighted ? Colors.red : (isOld ? Colors.red.withOpacity(0.2) : Colors.grey.shade100),
+            color: isHighlighted ? Colors.red : (isOld ? Colors.red.withValues(alpha: 0.2) : Colors.grey.shade100),
             width: isHighlighted ? 2.5 : 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: isHighlighted ? Colors.red.withOpacity(0.3) : Colors.black.withOpacity(0.02),
+              color: isHighlighted ? Colors.red.withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.02),
               blurRadius: isHighlighted ? 12 : 4,
               offset: const Offset(0, 2),
             )

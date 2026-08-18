@@ -198,7 +198,7 @@ void main() {
         sessionValid = true;
       }
 
-      if (sessionValid && (Supabase.instance.client.auth.currentSession != null || currentSession != null)) {
+      if (sessionValid) {
         await DatabaseHelper.instance.switchDatabase(userId);
         await SupasService.instance.downloadReceiptSettings();
         await PasscodeService.instance.init();
@@ -259,9 +259,6 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Timer? _loginPollTimer;
   Timer? _dataSyncTimer;
   Timer? _desktopPresenceTimer;
-
-  // Track previous desktop status to detect transitions
-  DesktopStatus _prevDesktopStatus = DesktopStatus.checking;
 
   late List<Widget> _screens;
 
@@ -355,10 +352,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   Future<void> _pollDesktopPresence() async {
     try {
-      final newStatus = await SupasService.instance.checkDesktopPresence();
+      await SupasService.instance.checkDesktopPresence();
       if (!mounted) return;
-
-      _prevDesktopStatus = newStatus;
 
       // Presence status updated on SupasService.instance.desktopStatus notifier.
       // We do NOT pollute persistent notification DB or spam snackbars on status checks.
@@ -392,7 +387,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           TextButton(
             onPressed: () async {
               await SupasService.instance.updateLoginRequestStatus(request['id'], 'rejected');
-              if (mounted) Navigator.of(context).pop();
+              if (context.mounted) Navigator.of(context).pop();
               _isDialogOpen = false;
             },
             child: const Text('Reject', style: TextStyle(color: Colors.red)),
@@ -400,7 +395,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
           TextButton(
             onPressed: () async {
               await SupasService.instance.updateLoginRequestStatus(request['id'], 'approved');
-              if (mounted) Navigator.of(context).pop();
+              if (context.mounted) Navigator.of(context).pop();
               _isDialogOpen = false;
             },
             child: const Text('Approve', style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold)),
@@ -529,8 +524,8 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => WillPopScope(
-        onWillPop: () async => false,
+      builder: (dialogContext) => PopScope(
+        canPop: false,
         child: AlertDialog(
           title: const Row(
             children: [
@@ -553,7 +548,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
                 final isOwnershipActive = isOwnershipEnabled && (ownershipExpiry == 0 || ownershipExpiry > now);
 
                 if (isOwnershipActive) {
-                  Navigator.of(context).pop();
+                  if (dialogContext.mounted) Navigator.of(dialogContext).pop();
                   _isDialogOpen = false;
                 }
               },

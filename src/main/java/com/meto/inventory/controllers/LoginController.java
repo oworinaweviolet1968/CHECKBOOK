@@ -436,91 +436,59 @@ public class LoginController {
 
     private void handleMobileLogin() {
         String email = emailField.getText().trim();
-        if (email.isEmpty()) {
-            statusLabel.setText("Please enter your email first.");
-            return;
-        }
+        Stage ownerStage = (Stage) mobileLoginButton.getScene().getWindow();
 
-        setLoading(true);
-        statusLabel.setText("Check your mobile app for a login prompt...");
-        statusLabel.setStyle("-fx-text-fill: #2196F3;");
+        com.meto.inventory.components.MobileLoginModal modal = new com.meto.inventory.components.MobileLoginModal(
+            ownerStage,
+            email,
+            new com.meto.inventory.components.MobileLoginModal.LoginCallback() {
+                @Override
+                public void onSuccess(String refreshToken, String userEmail) {
+                    setLoading(true);
+                    statusLabel.setText("Login approved! Syncing...");
+                    statusLabel.setStyle("-fx-text-fill: green;");
 
-        new Thread(() -> {
-            String requestId = null;
-            try {
-                SupabaseService service = SupabaseService.getInstance();
-                requestId = service.createLoginRequest(email);
-
-                // Dispatch FCM notification to notify the mobile app
-                try {
-                    com.meto.inventory.services.NotificationService.getInstance().sendAppUpdateNotification(
-                            "Login Approval Request",
-                            "Desktop login request initiated for " + email);
-                } catch (Exception ignored) {
-                }
-
-                long startTime = System.currentTimeMillis();
-                boolean approved = false;
-                String refreshToken = null;
-
-                while (System.currentTimeMillis() - startTime < 120000) {
-                    com.google.gson.JsonObject request = service.pollLoginRequest(requestId);
-                    if (request != null) {
-                        String status = request.get("status").getAsString();
-                        if ("approved".equals(status)) {
-                            approved = true;
-                            if (request.has("refresh_token") && !request.get("refresh_token").isJsonNull()) {
-                                refreshToken = request.get("refresh_token").getAsString();
+                    new Thread(() -> {
+                        try {
+                            SupabaseService service = SupabaseService.getInstance();
+                            boolean success;
+                            if (refreshToken.contains(":::")) {
+                                String[] parts = refreshToken.split(":::", 2);
+                                String accToken = parts[0];
+                                String refToken = parts.length > 1 ? parts[1] : "";
+                                success = service.signInWithAccessToken(accToken, refToken);
+                            } else {
+                                success = service.signInWithRefreshToken(refreshToken);
                             }
-                            break;
-                        } else if ("rejected".equals(status)) {
-                            break;
+
+                            if (success) {
+                                Platform.runLater(() -> {
+                                    startSyncProcess();
+                                });
+                            } else {
+                                Platform.runLater(() -> {
+                                    statusLabel.setText("Login failed after approval (invalid session token).");
+                                    setLoading(false);
+                                });
+                            }
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                            Platform.runLater(() -> {
+                                statusLabel.setText("Error signing in: " + ex.getMessage());
+                                setLoading(false);
+                            });
                         }
-                    }
-                    Thread.sleep(3000);
+                    }).start();
                 }
 
-                if (approved && refreshToken != null && !refreshToken.trim().isEmpty()) {
-                    boolean success = false;
-                    if (refreshToken.contains(":::")) {
-                        String[] parts = refreshToken.split(":::", 2);
-                        String accToken = parts[0];
-                        String refToken = parts.length > 1 ? parts[1] : "";
-                        success = service.signInWithAccessToken(accToken, refToken);
-                    } else {
-                        success = service.signInWithRefreshToken(refreshToken);
-                    }
-
-                    if (success) {
-                        Platform.runLater(() -> {
-                            statusLabel.setText("Login approved! Syncing...");
-                            statusLabel.setStyle("-fx-text-fill: green;");
-                            startSyncProcess();
-                        });
-                    } else {
-                        Platform.runLater(() -> {
-                            statusLabel.setText("Login failed after approval (invalid session token).");
-                            setLoading(false);
-                        });
-                    }
-                } else {
-                    Platform.runLater(() -> {
-                        statusLabel.setText("Login request timed out, rejected, or missing token.");
-                        setLoading(false);
-                    });
-                }
-
-            } catch (Exception ex) {
-                ex.printStackTrace();
-                Platform.runLater(() -> {
-                    statusLabel.setText("Mobile login error: " + ex.getMessage());
-                    setLoading(false);
-                });
-            } finally {
-                if (requestId != null) {
-                    SupabaseService.getInstance().deleteLoginRequest(requestId);
+                @Override
+                public void onError(String message) {
+                    statusLabel.setText(message);
+                    statusLabel.setStyle("-fx-text-fill: red;");
                 }
             }
-        }).start();
+        );
+
+        modal.show();
     }
 }

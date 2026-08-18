@@ -32,7 +32,6 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.38.9'
           channel: 'stable'
 
       # 4. Get dependencies
@@ -40,28 +39,34 @@ jobs:
         working-directory: mobile_app
         run: flutter pub get
 
-      # 5. Setup Shorebird
-      - name: Setup Shorebird
-        uses: shorebirdtech/setup-shorebird@v1
-
-      # 6. Build Shorebird Release APK
-      - name: Build Shorebird Release APK
+      # 5. Build APK (Shorebird if token exists, standard Flutter fallback if not)
+      - name: Build APK
         working-directory: mobile_app
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
-        run: shorebird release android --artifact=apk --build-name=2.2.0 --build-number=${{ github.run_number }}
-        
-      # 7. Rename APK
+        run: |
+          if [ -n "$SHOREBIRD_TOKEN" ]; then
+            curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/shorebirdtech/shorebird/main/bin/install.sh | sh
+            export PATH="$HOME/.shorebird/bin:$PATH"
+            shorebird release android --artifact=apk --build-name=2.2.0 --build-number=${{ github.run_number }}
+          else
+            echo "SHOREBIRD_TOKEN not found, building standard Flutter APK..."
+            flutter build apk --release --build-name=2.2.0 --build-number=${{ github.run_number }}
+          fi
+
+      # 6. Rename APK
       - name: Rename APK
         working-directory: mobile_app
-        run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/CheckBook.apk
+        run: |
+          mkdir -p build/app/outputs/flutter-apk/
+          find build/app/outputs -name "*.apk" -exec cp {} build/app/outputs/flutter-apk/CheckBook.apk \;
 
-      # 8. Release to beckhamz777/cb repository (or current repo if CROSS_REPO_PAT is not set)
+      # 7. Create GitHub Release
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          repository: ${{ secrets.CROSS_REPO_PAT != '' && 'beckhamz777/cb' || github.repository }}
-          token: ${{ secrets.CROSS_REPO_PAT || secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: v2.2
           name: Release v2.2
           draft: false
@@ -70,18 +75,18 @@ jobs:
             mobile_app/build/app/outputs/flutter-apk/CheckBook.apk
           overwrite_files: true
 
-      # 9. Register Release in Supabase app_releases table
+      # 8. Register Release in Supabase app_releases table
       - name: Register Release in Supabase
         run: |
           curl -X POST "https://jhucvkqwenhyiveqsmtf.supabase.co/rest/v1/app_releases" \
-            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpodWN2a3F3ZW5oeWl2ZXFzbXRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NzI5MjIsImV4cCI6MjA4NTU0ODkyMn0.yXju47Ly5ak8Gm4D0OI42O89qTsc0nYtkmAb7dGFCC8" \
-            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpodWN2a3F3ZW5oeWl2ZXFzbXRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NzI5MjIsImV4cCI6MjA4NTU0ODkyMn0.yXju47Ly5ak8Gm4D0OI42O89qTsc0nYtkmAb7dGFCC8" \
+            -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpodWN2a3F3ZW5oeWl2ZXFzbXRmIiwicm9sZCI6ImFub24iLCJpYXQiOjE3Njk5NzI5MjIsImV4cCI6MjA4NTU0ODkyMn0.yXju47Ly5ak8Gm4D0OI42O89qTsc0nYtkmAb7dGFCC8" \
+            -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpodWN2a3F3ZW5oeWl2ZXFzbXRmIiwicm9sZCI6ImFub24iLCJpYXQiOjE3Njk5NzI5MjIsImV4cCI6MjA4NTU0ODkyMn0.yXju47Ly5ak8Gm4D0OI42O89qTsc0nYtkmAb7dGFCC8" \
             -H "Content-Type: application/json" \
             -H "Prefer: return=minimal" \
             -d '{
               "platform": "android",
               "version": "2.2.0+${{ github.run_number }}",
-              "download_url": "https://github.com/beckhamz777/cb/releases/download/v2.2/CheckBook.apk",
+              "download_url": "https://github.com/${{ github.repository }}/releases/download/v2.2/CheckBook.apk",
               "mandatory": false,
               "release_notes": "Automated Android Build 2.2.0+${{ github.run_number }}"
             }'

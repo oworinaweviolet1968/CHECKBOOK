@@ -43,10 +43,11 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
     {"label": "6 pcs", "value": "half doz"},
     {"label": "10 pcs", "value": "box*10"},
     {"label": "12 pcs", "value": "box*12"},
-    {"label": "20 pcs", "value": "box*20"},
     {"label": "24 pcs", "value": "box*24"},
-    {"label": "25 pcs", "value": "crate"},
-    {"label": "72 pcs", "value": "box*72"},
+    {"label": "36 pcs", "value": "box*36"},
+    {"label": "48 pcs", "value": "box*48"},
+    {"label": "96 pcs", "value": "box*96"},
+    {"label": "100 pcs", "value": "box*100"},
   ];
 
   bool _isBulkItem = false;
@@ -408,6 +409,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                             _updateStockDisplay();
                             _updatePieceCount();
                           });
+                          _checkExistingPrice();
                         },
                         onAddNew: () {
                           _promptCustomInput(
@@ -422,6 +424,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
                                 _updateStockDisplay();
                                 _updatePieceCount();
                               });
+                              _checkExistingPrice();
                             },
                           );
                         },
@@ -966,11 +969,11 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
     required VoidCallback onTap,
     required bool isSelected,
   }) {
-    final activeColor = AppColors.primaryGreen;
-    final inactiveBg = const Color(0xFFF4F6F8);
-    final inactiveText = const Color(0xFF333333);
-    final inactiveIcon = const Color(0xFF555555);
-    final inactiveBorder = const Color(0xFFE0E0E0);
+    final activeColor = AppColors.primaryGreen; // #00D09C
+    final inactiveBg = const Color(0xFFF8FAFC);
+    final inactiveText = const Color(0xFF475569);
+    final inactiveIcon = const Color(0xFF64748B);
+    final inactiveBorder = const Color(0xFFE2E8F0);
 
     return InkWell(
       onTap: onTap,
@@ -1074,10 +1077,18 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
     String u = unit.toLowerCase().replaceAll(' ', '');
     if (u == 'pcs' || u == '1pc' || u == 'pc') return '1 pc';
     if (u == 'halfdoz') return '6 pcs';
+    final match = RegExp(r'box\*(\d+)').firstMatch(u);
+    if (match != null) {
+      return '${match.group(1)} pcs';
+    }
     if (u.contains('box*10')) return '10 pcs';
     if (u.contains('box*12')) return '12 pcs';
     if (u.contains('box*20')) return '20 pcs';
     if (u.contains('box*24')) return '24 pcs';
+    if (u.contains('box*36')) return '36 pcs';
+    if (u.contains('box*48')) return '48 pcs';
+    if (u.contains('box*96')) return '96 pcs';
+    if (u.contains('box*100')) return '100 pcs';
     if (u == 'crate' || u.contains('crate*25')) return '25 pcs';
     if (u.contains('box*72')) return '72 pcs';
     if (u == 'sack') return 'Sack';
@@ -1174,8 +1185,13 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
     String button = btnValue.toLowerCase().replaceAll(' ', '');
 
     if (selected == button) return true;
-    if (selected.contains(button)) return true;
-    if (button == "pcs" && (selected == "pcs" || selected.endsWith("pcs"))) return true;
+    if (button == "pcs" && (selected == "pcs" || selected == "pc" || selected == "1pc")) return true;
+
+    if (selected.contains('*') && button.contains('*')) {
+      String selectedNum = selected.split('*').last;
+      String buttonNum = button.split('*').last;
+      return selectedNum == buttonNum;
+    }
 
     return false;
   }
@@ -1189,6 +1205,23 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
     });
   }
 
+  void _checkExistingPrice() async {
+    if (_selectedItem != null && _selectedSize != null) {
+      double basePrice = await DatabaseHelper.instance.getLastRecordedPrice(_selectedItem!, _selectedSize!);
+      if (basePrice > 0) {
+        double multiplier = DatabaseHelper.instance.getUnitMultiplier(_selectedUnitLabel, _selectedSize!);
+        if (multiplier <= 0) multiplier = 1.0;
+        double unitPrice = basePrice * multiplier;
+
+        if (mounted) {
+          setState(() {
+            _priceController.text = unitPrice.toStringAsFixed(0);
+          });
+        }
+      }
+    }
+  }
+
   void _appendUnit(String val) async {
     String cleanVal = DatabaseHelper.instance.cleanUnitLabel(val);
 
@@ -1197,7 +1230,10 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
 
     setState(() {
       _selectedUnitLabel = cleanVal;
-      if (currentNum > 0) {
+      if (currentNum <= 0) {
+        _unitController.text = "1";
+        currentNum = 1.0;
+      } else {
         _unitController.text = currentNum.toStringAsFixed(0);
       }
 
@@ -1205,6 +1241,7 @@ class _ProcessSaleScreenState extends State<ProcessSaleScreen> {
       double total = currentNum * multiplier;
       _totalPiecesSuffix = _isBulkItem ? "${total.toStringAsFixed(2)} kg" : "${total.toStringAsFixed(0)} pcs";
     });
+    _checkExistingPrice();
   }
 
   void _addToCart() async {

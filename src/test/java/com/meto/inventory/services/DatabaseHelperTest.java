@@ -267,4 +267,17 @@ public class DatabaseHelperTest {
             assertEquals(1, rs.getInt(1), "Stock with case-insensitive sales match should be preserved");
         }
     }
+
+    @Test
+    public void testPackagingPresetsMultipliers() {
+        assertEquals(36.0, dbHelper.getUnitMultiplier("Box * 36", "500ml", "Box * 36"));
+        assertEquals(48.0, dbHelper.getUnitMultiplier("box*48", "1kg", "box*48"));
+        assertEquals(96.0, dbHelper.getUnitMultiplier("Box * 96", "250g", "Box * 96"));
+        assertEquals(100.0, dbHelper.getUnitMultiplier("box*100", "None", "box*100"));
+
+        assertEquals(36.0, dbHelper.convertToBaseUnit("box*36"));
+        assertEquals(48.0, dbHelper.convertToBaseUnit("box*48"));
+        assertEquals(96.0, dbHelper.convertToBaseUnit("box*96"));
+        assertEquals(100.0, dbHelper.convertToBaseUnit("box*100"));
+    }
 }

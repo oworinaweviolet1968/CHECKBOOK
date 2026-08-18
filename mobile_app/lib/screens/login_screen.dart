@@ -595,7 +595,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       decoration: BoxDecoration(
         color: const Color(0xFFF2F2F7),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withOpacity(0.04)),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.04)),
       ),
       child: Row(
         children: [
@@ -675,7 +675,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: Colors.black.withOpacity(0.06), width: 1),
+                  border: Border.all(color: Colors.black.withValues(alpha: 0.06), width: 1),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x0A000000),

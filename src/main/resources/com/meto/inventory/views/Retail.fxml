@@ -102,7 +102,11 @@
                         <Button fx:id="box12Btn"    text="Dozen"        styleClass="pill-quick"/>
                         <Button fx:id="box20Btn"    text="Box * 20"     styleClass="pill-quick"/>
                         <Button fx:id="box24Btn"    text="Box * 24"     styleClass="pill-quick"/>
+                        <Button fx:id="box36Btn"    text="Box * 36"     styleClass="pill-quick"/>
+                        <Button fx:id="box48Btn"    text="Box * 48"     styleClass="pill-quick"/>
                         <Button fx:id="box72Btn"    text="Box * 72"     styleClass="pill-quick"/>
+                        <Button fx:id="box96Btn"    text="Box * 96"     styleClass="pill-quick"/>
+                        <Button fx:id="box100Btn"   text="Box * 100"    styleClass="pill-quick"/>
                         <Button fx:id="crateBtn"    text="Crate * 25"   styleClass="pill-quick"/>
                         <Button fx:id="sackUnitBtn" text="Sack"         styleClass="pill-quick"/>
                     </FlowPane>

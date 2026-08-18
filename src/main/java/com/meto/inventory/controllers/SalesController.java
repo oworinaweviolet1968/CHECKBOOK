@@ -61,7 +61,7 @@ public class SalesController implements DataManager.DataChangeListener {
 
     // Unit buttons
     @FXML
-    private Button pcsBtn, halfDozBtn, box10Btn, box12Btn, box20Btn, box24Btn, box72Btn, crateBtn;
+    private Button pcsBtn, halfDozBtn, box10Btn, box12Btn, box20Btn, box24Btn, box36Btn, box48Btn, box72Btn, box96Btn, box100Btn, crateBtn;
 
     @FXML
     private TableView<SaleItem> salesTable;
@@ -556,7 +556,7 @@ public class SalesController implements DataManager.DataChangeListener {
         // Collect all weight buttons and unit buttons for selection tracking
         java.util.List<Button> wBtns = java.util.List.of(quarterKgBtn, halfKgBtn, kgBtn, sackBtn);
         java.util.List<Button> uBtns = java.util.List.of(pcsBtn, halfDozBtn, box10Btn, box12Btn, box20Btn, box24Btn,
-                box72Btn, crateBtn, sackUnitBtn);
+                box36Btn, box48Btn, box72Btn, box96Btn, box100Btn, crateBtn, sackUnitBtn);
 
         quarterKgBtn.setOnAction(e -> {
             selectQuickBtn(quarterKgBtn, wBtns);
@@ -607,9 +607,25 @@ public class SalesController implements DataManager.DataChangeListener {
             selectQuickBtn(box24Btn, uBtns);
             appendToUnit("Box * 24");
         });
+        box36Btn.setOnAction(e -> {
+            selectQuickBtn(box36Btn, uBtns);
+            appendToUnit("Box * 36");
+        });
+        box48Btn.setOnAction(e -> {
+            selectQuickBtn(box48Btn, uBtns);
+            appendToUnit("Box * 48");
+        });
         box72Btn.setOnAction(e -> {
             selectQuickBtn(box72Btn, uBtns);
             appendToUnit("Box * 72");
+        });
+        box96Btn.setOnAction(e -> {
+            selectQuickBtn(box96Btn, uBtns);
+            appendToUnit("Box * 96");
+        });
+        box100Btn.setOnAction(e -> {
+            selectQuickBtn(box100Btn, uBtns);
+            appendToUnit("Box * 100");
         });
         crateBtn.setOnAction(e -> {
             selectQuickBtn(crateBtn, uBtns);
@@ -667,7 +683,7 @@ public class SalesController implements DataManager.DataChangeListener {
         unitErrorLabel.setVisible(false);
         unitErrorLabel.setManaged(false);
 
-        String countPattern = ".*(\\d|/)+(.*)(pcs|doz|carton|box|sack|dozen|kg|ml|l|crate|half doz|box\\*10|box\\*12|box\\*20|box\\*24|box\\*72).*";
+        String countPattern = ".*(\\d|/)+(.*)(pcs|doz|carton|box|sack|dozen|kg|ml|l|crate|half doz|box\\*10|box\\*12|box\\*20|box\\*24|box\\*36|box\\*48|box\\*72|box\\*96|box\\*100).*";
 
         if (countUnit.isEmpty() || !countUnit.matches(countPattern)) {
             unitErrorLabel.setVisible(true);
