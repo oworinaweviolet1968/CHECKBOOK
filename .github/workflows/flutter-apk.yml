@@ -21,53 +21,57 @@ jobs:
           submodules: recursive
           token: ${{ secrets.CROSS_REPO_PAT || secrets.GITHUB_TOKEN }}
 
-      # 2. Set up Java 17 (required by Android Gradle)
+      # 2. Set up Java 17 with Gradle Caching enabled
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+          cache: gradle
 
-      # 3. Set up Flutter
+      # 3. Set up Flutter with Caching enabled
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          cache: true
+          cache-key: "flutter-:os:-:channel:-:version:-:arch:-:hash:"
 
-      # 4. Get dependencies
+      # 4. Shorebird CLI Setup (if SHOREBIRD secret is set)
+      - name: Setup Shorebird
+        if: secrets.SHOREBIRD != ''
+        uses: shorebirdtech/setup-shorebird@v1
+        with:
+          shorebird-token: ${{ secrets.SHOREBIRD }}
+        continue-on-error: true
+
+      # 5. Get dependencies
       - name: Get Flutter dependencies
         working-directory: mobile_app
         run: flutter pub get
 
-      # 5. Build APK (Shorebird if token exists, standard Flutter fallback if not)
+      # 6. Build APK (Shorebird release if token exists, standard Flutter build if not)
       - name: Build APK
         working-directory: mobile_app
         env:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD }}
         run: |
-          if [ -n "$SHOREBIRD_TOKEN" ]; then
-            echo "Installing Shorebird CLI..."
-            curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/shorebirdtech/install/main/install.sh | sh || true
-            export PATH="$HOME/.shorebird/bin:$PATH"
-            if command -v shorebird >/dev/null 2>&1; then
-              shorebird release android --artifact=apk --build-name=2.2.0 --build-number=${{ github.run_number }}
-            else
-              echo "Shorebird installation unavailable, falling back to standard Flutter APK build..."
-              flutter build apk --release --build-name=2.2.0 --build-number=${{ github.run_number }}
-            fi
+          if [ -n "$SHOREBIRD_TOKEN" ] && command -v shorebird >/dev/null 2>&1; then
+            echo "Building Shorebird Android Release..."
+            shorebird release android --artifact=apk --build-name=2.2.0 --build-number=${{ github.run_number }}
           else
-            echo "SHOREBIRD_TOKEN not found, building standard Flutter APK..."
+            echo "Building standard Flutter APK..."
             flutter build apk --release --build-name=2.2.0 --build-number=${{ github.run_number }}
           fi
 
-      # 6. Rename APK
+      # 7. Rename APK
       - name: Rename APK
         working-directory: mobile_app
         run: |
           mkdir -p build/app/outputs/flutter-apk/
           find build/app/outputs -name "*.apk" -exec cp {} build/app/outputs/flutter-apk/CheckBook.apk \;
 
-      # 7. Create GitHub Release
+      # 8. Create GitHub Release
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -81,7 +85,7 @@ jobs:
             mobile_app/build/app/outputs/flutter-apk/CheckBook.apk
           overwrite_files: true
 
-      # 8. Register Release in Supabase app_releases table
+      # 9. Register Release in Supabase app_releases table
       - name: Register Release in Supabase
         run: |
           curl -X POST "https://jhucvkqwenhyiveqsmtf.supabase.co/rest/v1/app_releases" \
@@ -96,4 +100,3 @@ jobs:
               "mandatory": false,
               "release_notes": "Automated Android Build 2.2.0+${{ github.run_number }}"
             }'
-
