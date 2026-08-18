@@ -46,9 +46,15 @@ jobs:
           SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD }}
         run: |
           if [ -n "$SHOREBIRD_TOKEN" ]; then
-            curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/shorebirdtech/shorebird/main/bin/install.sh | sh
+            echo "Installing Shorebird CLI..."
+            curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/shorebirdtech/install/main/install.sh | sh || true
             export PATH="$HOME/.shorebird/bin:$PATH"
-            shorebird release android --artifact=apk --build-name=2.2.0 --build-number=${{ github.run_number }}
+            if command -v shorebird >/dev/null 2>&1; then
+              shorebird release android --artifact=apk --build-name=2.2.0 --build-number=${{ github.run_number }}
+            else
+              echo "Shorebird installation unavailable, falling back to standard Flutter APK build..."
+              flutter build apk --release --build-name=2.2.0 --build-number=${{ github.run_number }}
+            fi
           else
             echo "SHOREBIRD_TOKEN not found, building standard Flutter APK..."
             flutter build apk --release --build-name=2.2.0 --build-number=${{ github.run_number }}
