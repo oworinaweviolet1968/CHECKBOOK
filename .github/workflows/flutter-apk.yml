@@ -43,7 +43,7 @@ jobs:
       - name: Build APK
         working-directory: mobile_app
         env:
-          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD_TOKEN }}
+          SHOREBIRD_TOKEN: ${{ secrets.SHOREBIRD }}
         run: |
           if [ -n "$SHOREBIRD_TOKEN" ]; then
             curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/shorebirdtech/shorebird/main/bin/install.sh | sh
