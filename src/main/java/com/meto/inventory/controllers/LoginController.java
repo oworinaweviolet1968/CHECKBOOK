@@ -21,7 +21,7 @@ import java.io.IOException;
 public class LoginController {
 
     @FXML
-    private TextField emailField;
+    private TextField checkbookIdField;
     @FXML
     private PasswordField passwordField;
     @FXML
@@ -39,6 +39,32 @@ public class LoginController {
         loginButton.setOnAction(e -> handleLogin());
         mobileLoginButton.setOnAction(e -> handleMobileLogin());
 
+        // Auto-formatting listener for Checkbook ID input (uppercase & prefix formatting)
+        checkbookIdField.textProperty().addListener((obs, oldText, newText) -> {
+            if (newText == null || newText.isEmpty()) return;
+            // If user enters email address, keep full text as is
+            if (newText.contains("@")) return;
+
+            String cleaned = newText.toUpperCase().replaceAll("[^A-Z0-9-]", "");
+            if (!cleaned.startsWith("CK-") && cleaned.length() > 0) {
+                if (cleaned.startsWith("CK")) {
+                    cleaned = "CK-" + cleaned.substring(Math.min(2, cleaned.length()));
+                } else {
+                    cleaned = "CK-" + cleaned;
+                }
+            }
+            if (cleaned.length() > 9 && !cleaned.contains("@")) {
+                cleaned = cleaned.substring(0, 9);
+            }
+            if (!cleaned.equals(newText)) {
+                final String formatted = cleaned;
+                Platform.runLater(() -> {
+                    checkbookIdField.setText(formatted);
+                    checkbookIdField.positionCaret(formatted.length());
+                });
+            }
+        });
+
         // Listen for progress updates
         SupabaseService.getInstance().addProgressListener(progress -> {
             Platform.runLater(() -> {
@@ -55,11 +81,10 @@ public class LoginController {
     }
 
     private void handleLogin() {
-        String email = emailField.getText().trim();
-        String password = passwordField.getText();
+        String inputId = checkbookIdField.getText().trim();
 
-        if (email.isEmpty() || password.isEmpty()) {
-            statusLabel.setText("Please enter both email and password.");
+        if (inputId.isEmpty()) {
+            statusLabel.setText("Please enter your Checkbook ID.");
             return;
         }
 
@@ -68,163 +93,134 @@ public class LoginController {
         new Thread(() -> {
             try {
                 SupabaseService service = SupabaseService.getInstance();
-                boolean success = service.signIn(email, password);
+                String formattedCheckbookId = inputId.toUpperCase();
+                if (!formattedCheckbookId.contains("@") && !formattedCheckbookId.startsWith("CK-")) {
+                    formattedCheckbookId = "CK-" + formattedCheckbookId;
+                }
 
-                if (success) {
-                    // Check for Admin
-                    if (email.equalsIgnoreCase("admin@gmail.com")) {
-                        Platform.runLater(() -> {
-                            loadAdminView();
-                        });
-                        return;
-                    }
-
-                    // Standard User Checks
-                    try {
-                        com.google.gson.JsonObject metadata = service.getUserMetadata();
-
-                        // 1. Ownership Check (Simple Boolean)
-                        // If field is MISSING, we default to TRUE (Allowed) to avoid blocking legacy
-                        // users
-                        // unless explicitly set to FALSE. OR we can default to FALSE if strict.
-                        // User requested: "ownership_payment: false" -> Block.
-                        boolean ownershipPaid = true; // Default Allow
-                        if (metadata.has("ownership_payment")) {
-                            ownershipPaid = metadata.get("ownership_payment").getAsBoolean();
-                        }
-                        // --- CHECK EXPIRE DATES ---
-                        boolean dataChanged = false;
-                        java.util.Map<String, Object> expiryUpdates = new java.util.HashMap<>();
-                        long nowMs = System.currentTimeMillis();
-
-                        if (metadata.has("ownership_expiry")) {
-                            try {
-                                long expiry = metadata.get("ownership_expiry").getAsLong();
-                                if (expiry > 0 && nowMs > expiry) {
-                                    System.out.println("Ownership expired!");
-                                    ownershipPaid = false;
-                                    expiryUpdates.put("ownership_payment", false);
-                                    expiryUpdates.put("ownership_expiry", 0);
-                                    dataChanged = true;
-                                }
-                            } catch (Exception ignore) {
-                            }
-                        }
-
-                        if (metadata.has("backup_expiry")) {
-                            try {
-                                long expiry = metadata.get("backup_expiry").getAsLong();
-                                if (expiry > 0 && nowMs > expiry) {
-                                    System.out.println("Backup expired!");
-                                    expiryUpdates.put("monthly_cloud_backup", false);
-                                    expiryUpdates.put("backup_expiry", 0);
-                                    dataChanged = true;
-                                }
-                            } catch (Exception ignore) {
-                            }
-                        }
-
-                        // Apply expiry updates immediately
-                        if (dataChanged) {
-                            service.updateUserFields(expiryUpdates);
-                            // Refresh metadata? Or just rely on local vars?
-                            // Local vars below need to reflect it.
-                            // ownershipPaid is already updated above.
-                            // We need to re-fetch or just flow through. check backupEnabled below.
-                        }
-
-                        // 2. Backup Check
-                        boolean backupEnabled = true; // Default Allow
-                        if (metadata.has("monthly_cloud_backup")) {
-                            backupEnabled = metadata.get("monthly_cloud_backup").getAsBoolean();
-                        }
-
-                        // --- UPDATE EMAIL FOR ADMIN VIEW ---
-                        // Only update if missing or different to save writes
-                        if (!metadata.has("email") || !metadata.get("email").getAsString().equals(email)) {
-                            java.util.Map<String, Object> updates = new java.util.HashMap<>();
-                            updates.put("email", email);
-                            service.updateUserFields(updates);
-                        }
-
-                        final boolean finalOwnershipPaid = ownershipPaid;
-                        final boolean finalBackupEnabled = backupEnabled;
-                        final String currentUid = service.getCurrentUserId();
-
-                        Platform.runLater(() -> {
-                            if (!finalOwnershipPaid) {
-                                setLoading(false);
-                                statusLabel.setText("Access Denied: Payment Required.");
-                                showOwnershipAlert(email);
-                                return; // BLOCK LOGIN
-                            }
-
-                            // Update DataManager
-                            com.meto.inventory.DataManager.getInstance().setBackupEnabled(finalBackupEnabled);
-
-                            if (!finalBackupEnabled) {
-                                showBackupDisabledAlert(email);
-                            }
-
-                            SupabaseService.SessionConflictInfo conflict = service.checkSessionConflict(currentUid,
-                                    "desktop");
-                            if (conflict != null) {
-                                Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-                                alert.setTitle("Active Session Found");
-                                alert.setHeaderText("Logged in on another Desktop device");
-                                alert.setContentText("You are currently logged in on " + conflict.activeDeviceName
-                                        + ".\n\nWould you like to log out of that device and log in here?");
-
-                                ButtonType btnContinue = new ButtonType("Log Out Other Device & Continue",
-                                        ButtonBar.ButtonData.OK_DONE);
-                                ButtonType btnCancel = new ButtonType("Cancel", ButtonBar.ButtonData.CANCEL_CLOSE);
-                                alert.getButtonTypes().setAll(btnContinue, btnCancel);
-
-                                java.util.Optional<ButtonType> result = alert.showAndWait();
-                                if (!result.isPresent() || result.get() != btnContinue) {
-                                    service.logout();
-                                    setLoading(false);
-                                    statusLabel.setText("Login cancelled.");
-                                    statusLabel.setStyle("-fx-text-fill: red;");
-                                    return;
-                                }
-                            }
-
-                            service.registerSession(currentUid, "desktop", conflict != null);
-
-                            statusLabel.setText("Login successful! Syncing data...");
-                            statusLabel.setStyle("-fx-text-fill: green;");
-
-                            startSyncProcess();
-                        });
-
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                        // Proceed on metadata error (e.g. network)
-                        Platform.runLater(() -> {
-                            statusLabel.setText("Login successful! (Check failed)");
-                            startSyncProcess();
-                        });
-                    }
-
-                } else {
+                // Initiate pairing request
+                com.google.gson.JsonObject initRes = service.initiatePairingRequest(formattedCheckbookId);
+                if (initRes == null || !initRes.has("success") || !initRes.get("success").getAsBoolean()) {
+                    String errMsg = (initRes != null && initRes.has("message")) ? initRes.get("message").getAsString() : "Checkbook ID not found. Find your ID inside your Mobile App under Settings > Checkbook ID.";
                     Platform.runLater(() -> {
                         setLoading(false);
-                        statusLabel.setText("Login failed. Check credentials.");
+                        statusLabel.setText(errMsg);
+                        statusLabel.setStyle("-fx-text-fill: red;");
+                    });
+                    return;
+                }
+
+                String sessionId = initRes.get("session_id").getAsString();
+                String targetEmail = initRes.has("email") ? initRes.get("email").getAsString() : "";
+                String targetUserId = initRes.has("user_id") ? initRes.get("user_id").getAsString() : "";
+
+                Platform.runLater(() -> {
+                    statusLabel.setText("Approval request sent to your mobile device. Please tap Accept to authorize this desktop.");
+                    statusLabel.setStyle("-fx-text-fill: #0284C7;");
+                });
+
+                // Poll status every 3 seconds for up to 120 seconds
+                boolean approved = false;
+                String token = null;
+
+                for (int secondsLeft = 120; secondsLeft > 0; secondsLeft -= 3) {
+                    Thread.sleep(3000);
+                    com.google.gson.JsonObject statusRes = service.checkPairingStatus(sessionId);
+
+                    if (statusRes != null && statusRes.has("status")) {
+                        String st = statusRes.get("status").getAsString();
+                        if ("APPROVED".equalsIgnoreCase(st)) {
+                            approved = true;
+                            if (statusRes.has("pairing_token") && !statusRes.get("pairing_token").isJsonNull()) {
+                                token = statusRes.get("pairing_token").getAsString();
+                            }
+                            if (statusRes.has("email") && !statusRes.get("email").isJsonNull()) {
+                                targetEmail = statusRes.get("email").getAsString();
+                            }
+                            if (statusRes.has("user_id") && !statusRes.get("user_id").isJsonNull()) {
+                                targetUserId = statusRes.get("user_id").getAsString();
+                            }
+                            break;
+                        } else if ("REJECTED".equalsIgnoreCase(st)) {
+                            Platform.runLater(() -> {
+                                setLoading(false);
+                                statusLabel.setText("Login request was declined on your mobile device.");
+                                statusLabel.setStyle("-fx-text-fill: red;");
+                            });
+                            return;
+                        } else if ("EXPIRED".equalsIgnoreCase(st)) {
+                            break;
+                        }
+                    }
+
+                    final int remaining = secondsLeft - 3;
+                    Platform.runLater(() -> {
+                        statusLabel.setText("Waiting for mobile approval (" + Math.max(0, remaining) + "s remaining)... Please tap Accept on your mobile app.");
+                        statusLabel.setStyle("-fx-text-fill: #0284C7;");
                     });
                 }
-            } catch (Exception ex) {
-                ex.printStackTrace();
+
+                if (!approved) {
+                    Platform.runLater(() -> {
+                        setLoading(false);
+                        statusLabel.setText("Connection request timed out. Please tap Login to try again.");
+                        statusLabel.setStyle("-fx-text-fill: red;");
+                    });
+                    return;
+                }
+
+                // Approved pairing! Perform strict user license/ownership checks BEFORE saving session to disk
+                final String finalEmail = targetEmail;
+                final String finalUserId = targetUserId;
+                final String finalToken = token;
+
+                try {
+                    com.google.gson.JsonObject metadata = service.getUserMetadata(finalUserId, finalEmail);
+                    boolean ownershipPaid = service.isOwnershipOrTrialValid(metadata);
+                    boolean backupEnabled = (metadata != null && metadata.has("monthly_cloud_backup")) ? metadata.get("monthly_cloud_backup").getAsBoolean() : true;
+
+                    final boolean finalOwnershipPaid = ownershipPaid;
+                    final boolean finalBackupEnabled = backupEnabled;
+
+                    Platform.runLater(() -> {
+                        if (!finalOwnershipPaid) {
+                            // Purge any local session file/tokens
+                            service.clearSession();
+                            setLoading(false);
+                            statusLabel.setText("Access Denied: 7-Day Free Trial Expired. License Required.");
+                            statusLabel.setStyle("-fx-text-fill: red;");
+                            showOwnershipAlert(finalEmail);
+                            return;
+                        }
+
+                        // Atomic Persistence: Save pairing token to disk ONLY on full verification success
+                        service.savePairingToken(finalToken, finalUserId, finalEmail);
+
+                        com.meto.inventory.DataManager.getInstance().setBackupEnabled(finalBackupEnabled);
+
+                        if (!finalBackupEnabled) {
+                            showBackupDisabledAlert(finalEmail);
+                        }
+
+                        // Load App
+                        com.meto.inventory.DataManager.getInstance().switchDatabaseOnly(service.getCurrentUserId());
+                        loadMainView();
+                    });
+
+                } catch (Exception ex) {
+                    service.clearSession();
+                    Platform.runLater(() -> {
+                        setLoading(false);
+                        statusLabel.setText("Error verifying account license. Please try again.");
+                        statusLabel.setStyle("-fx-text-fill: red;");
+                    });
+                }
+
+            } catch (Exception e) {
                 Platform.runLater(() -> {
                     setLoading(false);
-                    String msg = ex.getMessage();
-                    if (msg.contains("INVALID_LOGIN_CREDENTIALS")) {
-                        statusLabel.setText("Invalid email or password.");
-                    } else if (msg.contains("EMAIL_NOT_FOUND")) {
-                        statusLabel.setText("Account not found. Create one?");
-                    } else {
-                        statusLabel.setText("Error: " + msg);
-                    }
+                    statusLabel.setText("Error: " + e.getMessage());
+                    statusLabel.setStyle("-fx-text-fill: red;");
                 });
             }
         }).start();
@@ -340,28 +336,112 @@ public class LoginController {
         }).start();
     }
 
+    private static long parseTimestamp(String tsStr) {
+        if (tsStr == null || tsStr.trim().isEmpty()) return 0;
+        try {
+            return Long.parseLong(tsStr.trim());
+        } catch (NumberFormatException e) {
+            try {
+                String clean = tsStr.replace("Z", "").replace(" ", "T");
+                if (clean.contains(".")) {
+                    clean = clean.substring(0, clean.indexOf("."));
+                }
+                java.time.LocalDateTime ldt = java.time.LocalDateTime.parse(clean);
+                return ldt.atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli();
+            } catch (Exception ex) {
+                return 0;
+            }
+        }
+    }
+
+    private static boolean isTrialActive(com.google.gson.JsonObject metadata) {
+        if (metadata == null) return true;
+        long now = System.currentTimeMillis();
+
+        if (metadata.has("account_status")) {
+            String status = metadata.get("account_status").getAsString();
+            if ("trial_active".equalsIgnoreCase(status) || "active".equalsIgnoreCase(status)) return true;
+        }
+        if (metadata.has("subscription_status")) {
+            String status = metadata.get("subscription_status").getAsString();
+            if ("TRIAL_ACTIVE".equalsIgnoreCase(status) || "ACTIVE".equalsIgnoreCase(status)) return true;
+        }
+
+        if (metadata.has("trial_expires_at") && !metadata.get("trial_expires_at").isJsonNull()) {
+            try {
+                String expStr = metadata.get("trial_expires_at").getAsString();
+                long expMs = parseTimestamp(expStr);
+                if (expMs > now) {
+                    return true;
+                }
+            } catch (Exception ignore) {}
+        }
+
+        String createdStr = null;
+        if (metadata.has("trial_started_at") && !metadata.get("trial_started_at").isJsonNull()) {
+            createdStr = metadata.get("trial_started_at").getAsString();
+        } else if (metadata.has("created_at") && !metadata.get("created_at").isJsonNull()) {
+            createdStr = metadata.get("created_at").getAsString();
+        }
+
+        if (createdStr != null) {
+            long createdMs = parseTimestamp(createdStr);
+            if (createdMs > 0 && (now - createdMs) < (7L * 24 * 3600 * 1000)) {
+                return true;
+            }
+        }
+
+        // If trial timestamp metadata field is not present or newly created account, default to active trial (7 days)
+        if (createdStr == null && (!metadata.has("ownership_payment") || metadata.get("ownership_payment").getAsBoolean())) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static boolean isOwnershipOrTrialValid(com.google.gson.JsonObject metadata) {
+        if (metadata == null) return true;
+
+        if (isTrialActive(metadata)) {
+            return true;
+        }
+
+        boolean ownershipPaid = true;
+        if (metadata.has("ownership_payment")) {
+            ownershipPaid = metadata.get("ownership_payment").getAsBoolean();
+        }
+
+        if (metadata.has("ownership_expiry")) {
+            try {
+                long expiry = metadata.get("ownership_expiry").getAsLong();
+                if (expiry > 0 && System.currentTimeMillis() > expiry) {
+                    ownershipPaid = false;
+                }
+            } catch (Exception ignore) {}
+        }
+
+        return ownershipPaid;
+    }
+
     private void showOwnershipAlert(String email) {
         javafx.scene.control.Alert alert = new javafx.scene.control.Alert(javafx.scene.control.Alert.AlertType.WARNING);
-        alert.setTitle("Account Expired");
-        alert.setHeaderText("Ownership Payment Required");
+        alert.setTitle("Free Trial Expired");
+        alert.setHeaderText("Ownership License Required");
 
         javafx.scene.text.TextFlow textFlow = new javafx.scene.text.TextFlow();
         javafx.scene.text.Text t1 = new javafx.scene.text.Text(
-                "Access has been denied. Please complete your payment to activate CheckBook Pro.\n\n");
-        javafx.scene.text.Text t2 = new javafx.scene.text.Text("Send 203,000 UGX to MTN Number:\n");
-        javafx.scene.text.Text t3 = new javafx.scene.text.Text("076 031 5703\n");
+                "Your 7-Day Free Trial has ended. Please subscribe or activate your license to continue using CheckBook.\n\n");
+        javafx.scene.text.Text t2 = new javafx.scene.text.Text("Customer Support Helpline:\n");
+        t2.setStyle("-fx-font-weight: bold;");
+        javafx.scene.text.Text t3 = new javafx.scene.text.Text("076 031 5703\n\n");
         t3.setStyle("-fx-font-weight: bold; -fx-font-size: 16px;");
-        javafx.scene.text.Text t4 = new javafx.scene.text.Text("Name: Oworinawe Prince Beckham\n\n");
-        javafx.scene.text.Text t5 = new javafx.scene.text.Text(
-                "After sending, please WhatsApp your receipt footprint and your account email ");
-        javafx.scene.text.Text t6 = new javafx.scene.text.Text(email);
-        t6.setStyle("-fx-font-weight: bold;");
-        javafx.scene.text.Text t7 = new javafx.scene.text.Text(" to ");
-        javafx.scene.text.Text t8 = new javafx.scene.text.Text("076 031 5703");
-        t8.setStyle("-fx-font-weight: bold;");
-        javafx.scene.text.Text t9 = new javafx.scene.text.Text(" for immediate ownership activation.");
+        javafx.scene.text.Text t4 = new javafx.scene.text.Text("Account Email: ");
+        javafx.scene.text.Text t5 = new javafx.scene.text.Text(email + "\n\n");
+        t5.setStyle("-fx-font-weight: bold;");
+        javafx.scene.text.Text t6 = new javafx.scene.text.Text(
+                "Contact our customer support helpline for assistance with account activation or inquiries.");
 
-        textFlow.getChildren().addAll(t1, t2, t3, t4, t5, t6, t7, t8, t9);
+        textFlow.getChildren().addAll(t1, t2, t3, t4, t5, t6);
         alert.getDialogPane().setContent(textFlow);
 
         javafx.scene.control.ButtonType closeBtn = new javafx.scene.control.ButtonType("Close",
@@ -373,25 +453,23 @@ public class LoginController {
     private void showBackupDisabledAlert(String email) {
         javafx.scene.control.Alert alert = new javafx.scene.control.Alert(
                 javafx.scene.control.Alert.AlertType.INFORMATION);
-        alert.setTitle("Backup Disabled");
+        alert.setTitle("Backup Status");
         alert.setHeaderText("Monthly Backup Disabled");
 
         javafx.scene.text.TextFlow textFlow = new javafx.scene.text.TextFlow();
         javafx.scene.text.Text t1 = new javafx.scene.text.Text(
-                "Cloud backup is turned off. Your data is safe locally.\n\nTo activate your cloud subscription, send 15,000 UGX to MTN Number:\n");
-        javafx.scene.text.Text t2 = new javafx.scene.text.Text("076 031 5703\n");
-        t2.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
-        javafx.scene.text.Text t3 = new javafx.scene.text.Text("Name: Oworinawe Prince Beckham\n\n");
-        javafx.scene.text.Text t4 = new javafx.scene.text.Text(
-                "Then WhatsApp your receipt footprint and account email ");
-        javafx.scene.text.Text t5 = new javafx.scene.text.Text(email);
+                "Cloud backup is currently inactive. Your data remains stored safely on your local computer.\n\n");
+        javafx.scene.text.Text t2 = new javafx.scene.text.Text("Customer Support Helpline:\n");
+        t2.setStyle("-fx-font-weight: bold;");
+        javafx.scene.text.Text t3 = new javafx.scene.text.Text("076 031 5703\n\n");
+        t3.setStyle("-fx-font-weight: bold; -fx-font-size: 16px;");
+        javafx.scene.text.Text t4 = new javafx.scene.text.Text("Account Email: ");
+        javafx.scene.text.Text t5 = new javafx.scene.text.Text(email + "\n\n");
         t5.setStyle("-fx-font-weight: bold;");
-        javafx.scene.text.Text t6 = new javafx.scene.text.Text(" to ");
-        javafx.scene.text.Text t7 = new javafx.scene.text.Text("076 031 5703");
-        t7.setStyle("-fx-font-weight: bold;");
-        javafx.scene.text.Text t8 = new javafx.scene.text.Text(" for immediate cloud activation.");
+        javafx.scene.text.Text t6 = new javafx.scene.text.Text(
+                "Contact our customer support helpline for assistance with cloud backup activation or inquiries.");
 
-        textFlow.getChildren().addAll(t1, t2, t3, t4, t5, t6, t7, t8);
+        textFlow.getChildren().addAll(t1, t2, t3, t4, t5, t6);
         alert.getDialogPane().setContent(textFlow);
 
         javafx.scene.control.ButtonType closeBtn = new javafx.scene.control.ButtonType("Close",
@@ -402,8 +480,10 @@ public class LoginController {
 
     private void setLoading(boolean loading) {
         loginButton.setDisable(loading);
-        emailField.setDisable(loading);
-        passwordField.setDisable(loading);
+        checkbookIdField.setDisable(loading);
+        if (passwordField != null) {
+            passwordField.setDisable(loading);
+        }
         if (loading) {
             statusLabel.setText("Processing...");
             statusLabel.setStyle("-fx-text-fill: blue;");
@@ -435,7 +515,7 @@ public class LoginController {
     }
 
     private void handleMobileLogin() {
-        String email = emailField.getText().trim();
+        String email = checkbookIdField.getText().trim();
         Stage ownerStage = (Stage) mobileLoginButton.getScene().getWindow();
 
         com.meto.inventory.components.MobileLoginModal modal = new com.meto.inventory.components.MobileLoginModal(

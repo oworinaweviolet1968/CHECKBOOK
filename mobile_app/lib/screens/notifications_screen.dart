@@ -420,7 +420,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
 
 
-    final bool isUnread = (notif['is_read'] as int? ?? 0) == 0;
+    final rawRead = notif['is_read'];
+    final bool isUnread = rawRead == 0 || rawRead == '0' || rawRead == false;
 
     final radius = BorderRadius.only(
       topLeft: isFirst ? const Radius.circular(8) : Radius.zero,
@@ -570,14 +571,17 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           ),
         ),
         actions: [
-          if (_notifications.any((n) => (n['is_read'] as int? ?? 0) == 0))
+          if (_notifications.any((n) => n['is_read'] == 0 || n['is_read'] == '0' || n['is_read'] == false))
             Padding(
               padding: const EdgeInsets.only(right: 8.0),
               child: TextButton.icon(
                 onPressed: () async {
                   for (var n in _notifications) {
-                    if ((n['is_read'] as int? ?? 0) == 0) {
-                      await DatabaseHelper.instance.markNotificationAsRead(n['id'] as int);
+                    final isUnread = n['is_read'] == 0 || n['is_read'] == '0' || n['is_read'] == false;
+                    if (isUnread) {
+                      final rawId = n['id'];
+                      final int targetId = rawId is int ? rawId : (rawId is num ? rawId.toInt() : (int.tryParse(rawId?.toString() ?? '0') ?? 0));
+                      await DatabaseHelper.instance.markNotificationAsRead(targetId);
                     }
                   }
                   _loadNotifications();

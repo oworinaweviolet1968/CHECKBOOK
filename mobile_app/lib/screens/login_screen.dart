@@ -6,9 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/supabase_service.dart';
 import '../services/database_helper.dart';
+import '../services/auth_service.dart';
+import 'web_verification_required_screen.dart';
 import '../main.dart'; // To navigate to MainScreen
 import '../utils/colors.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -250,6 +251,28 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       final userId = response.user?.id;
 
       if (userId != null) {
+        // Enforce Web-First Access Gate & 7-Day Free Trial Check
+        final gateResult = await MobileAuthService.instance.verifyMobileLoginGate(
+          email: email,
+          userId: userId,
+        );
+
+        if (!gateResult.isAllowed) {
+          await Supabase.instance.client.auth.signOut();
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+            });
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => WebVerificationRequiredScreen(
+                  customMessage: gateResult.message,
+                ),
+              ),
+            );
+          }
+          return;
+        }
         final conflict = await SupasService.instance.checkSessionConflict(userId, category: 'mobile');
         if (conflict != null && mounted) {
           final shouldSwitch = await showCupertinoDialog<bool>(
@@ -918,20 +941,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                           style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
                         ),
                         GestureDetector(
-                          onTap: () async {
-                            final messenger = ScaffoldMessenger.of(context);
-                            final url = Uri.parse('https://beckhamz777.github.io/cb/#/checkout');
-                            if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-                              if (mounted) {
-                                messenger.showSnackBar(
-                                  SnackBar(
-                                    content: const Text('Could not open website'),
-                                    backgroundColor: const Color(0xFFEF4444),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  ),
-                                );
-                              }
-                            }
+                          onTap: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const WebVerificationRequiredScreen(
+                                  portalUrl: 'https://checkbookug.vercel.app/#/checkout',
+                                ),
+                              ),
+                            );
                           },
                           child: const Text(
                             'Sign Up',

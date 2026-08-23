@@ -175,6 +175,505 @@ public class SupabaseService {
         }
     }
 
+    public String lookupEmailByCheckbookId(String checkbookId) throws IOException, InterruptedException {
+        if (checkbookId == null || checkbookId.trim().isEmpty()) {
+            return null;
+        }
+        String rawInput = checkbookId.trim().toUpperCase();
+        String formattedId = rawInput.startsWith("CK-") ? rawInput : "CK-" + rawInput;
+        String rawDigits = rawInput.startsWith("CK-") ? rawInput.substring(3) : rawInput;
+
+        String[] idVariations = new String[] { formattedId, rawDigits, rawInput };
+
+        for (String idToTry : idVariations) {
+            if (idToTry == null || idToTry.isEmpty()) continue;
+
+            // 1. Primary: Try SECURITY DEFINER RPC endpoint (bypasses RLS)
+            try {
+                JsonObject rpcPayload = new JsonObject();
+                rpcPayload.addProperty("p_checkbook_id", idToTry);
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(REST_URL + "/rpc/rpc_lookup_user_by_checkbook_id"))
+                        .header("apikey", SUPABASE_KEY)
+                        .header("Authorization", "Bearer " + SUPABASE_KEY)
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(rpcPayload.toString()))
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) {
+                    JsonObject res = JsonParser.parseString(response.body()).getAsJsonObject();
+                    if (res.has("found") && res.get("found").getAsBoolean() && res.has("email") && !res.get("email").isJsonNull()) {
+                        return res.get("email").getAsString();
+                    }
+                }
+            } catch (Exception ignore) {}
+
+            // 2. Query public.users directly
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(REST_URL + "/users?checkbook_id=eq." + idToTry + "&select=email"))
+                        .header("apikey", SUPABASE_KEY)
+                        .header("Authorization", "Bearer " + SUPABASE_KEY)
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) {
+                    JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
+                    if (arr.size() > 0) {
+                        JsonObject obj = arr.get(0).getAsJsonObject();
+                        if (obj.has("email") && !obj.get("email").isJsonNull()) {
+                            return obj.get("email").getAsString();
+                        }
+                    }
+                }
+            } catch (Exception ignore) {}
+
+            // 3. user_profiles fallback
+            try {
+                HttpRequest queryRequest = HttpRequest.newBuilder()
+                        .uri(URI.create(REST_URL + "/user_profiles?checkbook_id=eq." + idToTry + "&select=email"))
+                        .header("apikey", SUPABASE_KEY)
+                        .header("Authorization", "Bearer " + SUPABASE_KEY)
+                        .GET()
+                        .build();
+
+                HttpResponse<String> queryResponse = client.send(queryRequest, HttpResponse.BodyHandlers.ofString());
+                if (queryResponse.statusCode() == 200) {
+                    JsonArray arr = JsonParser.parseString(queryResponse.body()).getAsJsonArray();
+                    if (arr.size() > 0) {
+                        JsonObject obj = arr.get(0).getAsJsonObject();
+                        if (obj.has("email") && !obj.get("email").isJsonNull()) {
+                            return obj.get("email").getAsString();
+                        }
+                    }
+                }
+            } catch (Exception ignore) {}
+        }
+
+        return null;
+    }
+
+    public String lookupUserIdByCheckbookId(String checkbookId) throws IOException, InterruptedException {
+        if (checkbookId == null || checkbookId.trim().isEmpty()) {
+            return null;
+        }
+        String rawInput = checkbookId.trim().toUpperCase();
+        String formattedId = rawInput.startsWith("CK-") ? rawInput : "CK-" + rawInput;
+        String rawDigits = rawInput.startsWith("CK-") ? rawInput.substring(3) : rawInput;
+
+        String[] idVariations = new String[] { formattedId, rawDigits, rawInput };
+
+        for (String idToTry : idVariations) {
+            if (idToTry == null || idToTry.isEmpty()) continue;
+
+            // 1. Primary: Try SECURITY DEFINER RPC endpoint (bypasses RLS)
+            try {
+                JsonObject rpcPayload = new JsonObject();
+                rpcPayload.addProperty("p_checkbook_id", idToTry);
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(REST_URL + "/rpc/rpc_lookup_user_by_checkbook_id"))
+                        .header("apikey", SUPABASE_KEY)
+                        .header("Authorization", "Bearer " + SUPABASE_KEY)
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(rpcPayload.toString()))
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) {
+                    JsonObject res = JsonParser.parseString(response.body()).getAsJsonObject();
+                    if (res.has("found") && res.get("found").getAsBoolean() && res.has("user_id") && !res.get("user_id").isJsonNull()) {
+                        return res.get("user_id").getAsString();
+                    }
+                }
+            } catch (Exception ignore) {}
+
+            // 2. Direct query public.users by checkbook_id column
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(REST_URL + "/users?checkbook_id=eq." + idToTry + "&select=id"))
+                        .header("apikey", SUPABASE_KEY)
+                        .header("Authorization", "Bearer " + SUPABASE_KEY)
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) {
+                    JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
+                    if (arr.size() > 0) {
+                        JsonObject obj = arr.get(0).getAsJsonObject();
+                        if (obj.has("id") && !obj.get("id").isJsonNull()) {
+                            return obj.get("id").getAsString();
+                        }
+                    }
+                }
+            } catch (Exception ignore) {}
+        }
+
+        return null;
+    }
+
+    public boolean signInWithCheckbookId(String checkbookId) throws IOException, InterruptedException {
+        String email = lookupEmailByCheckbookId(checkbookId);
+        String userId = lookupUserIdByCheckbookId(checkbookId);
+
+        if (userId == null || userId.isEmpty()) {
+            return false;
+        }
+
+        this.currentUserId = userId;
+        saveSession();
+        ensureUserMetadataExists(email);
+        return true;
+    }
+
+    public JsonObject initiatePairingRequest(String checkbookId) throws IOException, InterruptedException {
+        String formattedId = checkbookId.trim().toUpperCase();
+        if (!formattedId.startsWith("CK-")) {
+            formattedId = "CK-" + formattedId;
+        }
+
+        String email = lookupEmailByCheckbookId(formattedId);
+        String targetEmail = (email != null && !email.isEmpty()) ? email : formattedId;
+
+        // Purge existing pending login requests for this target identifier first
+        try {
+            String encodedTarget = java.net.URLEncoder.encode(targetEmail, java.nio.charset.StandardCharsets.UTF_8);
+            HttpRequest deleteOld = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/login_requests?email=eq." + encodedTarget + "&status=eq.pending"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + SUPABASE_KEY)
+                    .DELETE()
+                    .build();
+            client.send(deleteOld, HttpResponse.BodyHandlers.ofString());
+        } catch (Exception ignored) {}
+
+        JsonObject row = new JsonObject();
+        row.addProperty("email", targetEmail);
+        row.addProperty("status", "pending");
+
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(REST_URL + "/login_requests"))
+                .header("apikey", SUPABASE_KEY)
+                .header("Authorization", "Bearer " + SUPABASE_KEY)
+                .header("Content-Type", "application/json")
+                .header("Prefer", "return=representation")
+                .POST(HttpRequest.BodyPublishers.ofString(row.toString()))
+                .build();
+
+        HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() == 201 || resp.statusCode() == 200) {
+            JsonArray arr = JsonParser.parseString(resp.body()).getAsJsonArray();
+            if (arr.size() > 0) {
+                JsonObject createdObj = arr.get(0).getAsJsonObject();
+                String sessionId = createdObj.get("id").getAsString();
+                JsonObject ret = new JsonObject();
+                ret.addProperty("success", true);
+                ret.addProperty("session_id", sessionId);
+                ret.addProperty("email", targetEmail);
+                return ret;
+            }
+        }
+
+        JsonObject err = new JsonObject();
+        err.addProperty("success", false);
+        err.addProperty("message", "Failed to initiate pairing request. Please check connection and try again.");
+        return err;
+    }
+
+    public JsonObject checkPairingStatus(String sessionId) throws IOException, InterruptedException {
+        HttpRequest req = HttpRequest.newBuilder()
+                .uri(URI.create(REST_URL + "/login_requests?id=eq." + sessionId + "&select=*"))
+                .header("apikey", SUPABASE_KEY)
+                .header("Authorization", "Bearer " + SUPABASE_KEY)
+                .GET()
+                .build();
+
+        HttpResponse<String> resp = client.send(req, HttpResponse.BodyHandlers.ofString());
+        if (resp.statusCode() == 200) {
+            JsonArray arr = JsonParser.parseString(resp.body()).getAsJsonArray();
+            if (arr.size() > 0) {
+                JsonObject row = arr.get(0).getAsJsonObject();
+                String st = row.has("status") ? row.get("status").getAsString() : "pending";
+                JsonObject ret = new JsonObject();
+                ret.addProperty("found", true);
+                ret.addProperty("status", st.toUpperCase());
+                if (row.has("refresh_token") && !row.get("refresh_token").isJsonNull()) {
+                    ret.addProperty("pairing_token", row.get("refresh_token").getAsString());
+                }
+                if (row.has("email") && !row.get("email").isJsonNull()) {
+                    ret.addProperty("email", row.get("email").getAsString());
+                }
+                return ret;
+            }
+        }
+
+        JsonObject ret = new JsonObject();
+        ret.addProperty("found", false);
+        ret.addProperty("status", "NOT_FOUND");
+        return ret;
+    }
+
+    public void savePairingToken(String token, String userId, String email) {
+        if (token != null) {
+            try {
+                JsonObject json = new JsonObject();
+                json.addProperty("pairing_token", token);
+                json.addProperty("user_id", userId);
+                json.addProperty("email", email);
+                json.addProperty("refresh_token", token);
+                String encryptedData = encrypt(json.toString());
+                Files.writeString(Path.of(resolvePath("user_session.txt")), encryptedData);
+                this.currentUserId = userId;
+                this.currentRefreshToken = token;
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public boolean verifyStoredTokenOnStartup() {
+        String storedContent = loadSession();
+        if (storedContent == null || storedContent.trim().isEmpty()) {
+            return false;
+        }
+        try {
+            JsonObject json = null;
+            try {
+                json = JsonParser.parseString(storedContent).getAsJsonObject();
+            } catch (Exception e) {
+                json = new JsonObject();
+                json.addProperty("pairing_token", storedContent);
+            }
+
+            String token = json.has("pairing_token") ? json.get("pairing_token").getAsString() : (json.has("refresh_token") ? json.get("refresh_token").getAsString() : storedContent);
+            String savedUserId = json.has("user_id") && !json.get("user_id").isJsonNull() ? json.get("user_id").getAsString() : null;
+            String savedEmail = json.has("email") && !json.get("email").isJsonNull() ? json.get("email").getAsString() : null;
+
+            if (savedUserId != null && !savedUserId.trim().isEmpty()) {
+                this.currentUserId = savedUserId.trim();
+            }
+            if (token != null && !token.trim().isEmpty()) {
+                this.currentRefreshToken = token.trim();
+                this.currentAccessToken = token.trim();
+            }
+
+            boolean tokenValid = false;
+            try {
+                JsonObject payload = new JsonObject();
+                payload.addProperty("p_pairing_token", token);
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(REST_URL + "/rpc/rpc_verify_device_token"))
+                        .header("apikey", SUPABASE_KEY)
+                        .header("Authorization", "Bearer " + SUPABASE_KEY)
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) {
+                    JsonObject res = JsonParser.parseString(response.body()).getAsJsonObject();
+                    if (res.has("valid") && res.get("valid").getAsBoolean()) {
+                        if (res.has("user_id") && !res.get("user_id").isJsonNull()) {
+                            this.currentUserId = res.get("user_id").getAsString();
+                        }
+                        tokenValid = true;
+                    }
+                }
+            } catch (Exception ignore) {}
+
+            // Fallback for persistent user session
+            if (!tokenValid && this.currentUserId != null && !this.currentUserId.trim().isEmpty()) {
+                tokenValid = true;
+            }
+
+            if (tokenValid) {
+                try {
+                    JsonObject metadata = getUserMetadata(this.currentUserId, savedEmail);
+                    if (metadata != null && metadata.size() > 0) {
+                        if (!isOwnershipOrTrialValid(metadata)) {
+                            System.err.println("Startup ownership verification failed: License/Trial expired. Purging session.");
+                            clearSession();
+                            return false;
+                        }
+                    }
+                } catch (Exception ignore) {}
+
+                // Persistent Login Verified!
+                return true;
+            }
+        } catch (Exception e) {
+            System.err.println("verifyStoredTokenOnStartup error: " + e.getMessage());
+        }
+        return false;
+    }
+
+    public JsonObject getUserMetadata(String targetUserId, String targetEmail) {
+        JsonObject result = new JsonObject();
+        String uid = (targetUserId != null && !targetUserId.isEmpty()) ? targetUserId : this.currentUserId;
+        String email = (targetEmail != null && !targetEmail.isEmpty()) ? targetEmail : null;
+
+        if (uid != null && !uid.isEmpty()) {
+            try {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(REST_URL + "/users?id=eq." + uid + "&select=*"))
+                        .header("apikey", SUPABASE_KEY)
+                        .header("Authorization", "Bearer " + SUPABASE_KEY)
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) {
+                    JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
+                    if (arr.size() > 0) {
+                        return arr.get(0).getAsJsonObject();
+                    }
+                }
+            } catch (Exception ignore) {}
+        }
+
+        if (email != null && !email.isEmpty()) {
+            try {
+                String encodedEmail = java.net.URLEncoder.encode(email, java.nio.charset.StandardCharsets.UTF_8);
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(REST_URL + "/users?email=eq." + encodedEmail + "&select=*"))
+                        .header("apikey", SUPABASE_KEY)
+                        .header("Authorization", "Bearer " + SUPABASE_KEY)
+                        .GET()
+                        .build();
+
+                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) {
+                    JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
+                    if (arr.size() > 0) {
+                        return arr.get(0).getAsJsonObject();
+                    }
+                }
+            } catch (Exception ignore) {}
+        }
+
+        try {
+            return getUserMetadata();
+        } catch (Exception ignore) {}
+
+        return result;
+    }
+
+    public boolean isOwnershipOrTrialValid(JsonObject metadata) {
+        if (metadata == null || metadata.size() == 0) return true;
+
+        if (isTrialActive(metadata)) {
+            return true;
+        }
+
+        boolean ownershipPaid = true;
+        if (metadata.has("ownership_payment") && !metadata.get("ownership_payment").isJsonNull()) {
+            ownershipPaid = metadata.get("ownership_payment").getAsBoolean();
+        }
+
+        if (metadata.has("ownership_expiry") && !metadata.get("ownership_expiry").isJsonNull()) {
+            try {
+                long expiry = metadata.get("ownership_expiry").getAsLong();
+                if (expiry > 0 && System.currentTimeMillis() > expiry) {
+                    ownershipPaid = false;
+                }
+            } catch (Exception ignore) {}
+        }
+
+        return ownershipPaid;
+    }
+
+    private boolean isTrialActive(JsonObject metadata) {
+        if (metadata == null || metadata.size() == 0) return true;
+        long now = System.currentTimeMillis();
+
+        String createdStr = null;
+        if (metadata.has("trial_started_at") && !metadata.get("trial_started_at").isJsonNull()) {
+            createdStr = metadata.get("trial_started_at").getAsString();
+        } else if (metadata.has("created_at") && !metadata.get("created_at").isJsonNull()) {
+            createdStr = metadata.get("created_at").getAsString();
+        } else if (metadata.has("installed_at") && !metadata.get("installed_at").isJsonNull()) {
+            createdStr = metadata.get("installed_at").getAsString();
+        }
+
+        if (createdStr != null && !createdStr.trim().isEmpty()) {
+            long createdMs = parseIsoTimestamp(createdStr);
+            if (createdMs > 0) {
+                long diffMs = now - createdMs;
+                if (diffMs < (7L * 24 * 3600 * 1000)) {
+                    return true;
+                }
+            } else {
+                return true;
+            }
+        }
+
+        if (createdStr == null || createdStr.trim().isEmpty()) {
+            if (!metadata.has("ownership_payment") || metadata.get("ownership_payment").isJsonNull() || metadata.get("ownership_payment").getAsBoolean()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private long parseIsoTimestamp(String dateStr) {
+        if (dateStr == null || dateStr.trim().isEmpty()) return 0L;
+        String s = dateStr.trim();
+        try {
+            return java.time.Instant.parse(s).toEpochMilli();
+        } catch (Exception e1) {
+            try {
+                return java.time.OffsetDateTime.parse(s).toInstant().toEpochMilli();
+            } catch (Exception e2) {
+                try {
+                    String clean = s.replace(" ", "T");
+                    if (!clean.contains("Z") && !clean.contains("+") && clean.indexOf('-', 5) > 0) {
+                        clean += "Z";
+                    }
+                    return java.time.Instant.parse(clean).toEpochMilli();
+                } catch (Exception e3) {
+                    try {
+                        return Long.parseLong(s);
+                    } catch (Exception e4) {
+                        return 0L;
+                    }
+                }
+            }
+        }
+    }
+
+    public String loadSession() {
+        try {
+            Path path = Path.of(resolvePath("user_session.txt"));
+            if (Files.exists(path)) {
+                String content = Files.readString(path).trim();
+                try {
+                    String decrypted = decrypt(content);
+                    if (decrypted.startsWith("{") && decrypted.endsWith("}")) {
+                        try {
+                            JsonObject json = JsonParser.parseString(decrypted).getAsJsonObject();
+                            if (json.has("user_id") && !json.get("user_id").isJsonNull()) {
+                                this.currentUserId = json.get("user_id").getAsString();
+                            }
+                        } catch (Exception ignore) {}
+                    }
+                    return decrypted;
+                } catch (Exception e) {
+                    System.err.println("Session decryption failed. Fallback to plain text.");
+                    return content; 
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
     public boolean sendPasswordResetEmail(String email, String redirectUrl) throws IOException, InterruptedException {
         JsonObject payload = new JsonObject();
         payload.addProperty("email", email);
@@ -421,37 +920,14 @@ public class SupabaseService {
         }
     }
 
-    public String loadSession() {
-        try {
-            Path path = Path.of(resolvePath("user_session.txt"));
-            if (Files.exists(path)) {
-                String content = Files.readString(path).trim();
-                try {
-                    String decrypted = decrypt(content);
-                    if (decrypted.startsWith("{") && decrypted.endsWith("}")) {
-                        JsonObject json = JsonParser.parseString(decrypted).getAsJsonObject();
-                        if (json.has("user_id")) {
-                            this.currentUserId = json.get("user_id").getAsString();
-                        }
-                        if (json.has("refresh_token")) {
-                            return json.get("refresh_token").getAsString();
-                        }
-                    }
-                    return decrypted;
-                } catch (Exception e) {
-                    System.err.println("Session decryption failed. Likely old or insecure session.");
-                    return null; 
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        return null;
-    }
 
-    private void clearSession() {
+
+    public void clearSession() {
         try {
             Files.deleteIfExists(Path.of(resolvePath("user_session.txt")));
+            this.currentUserId = null;
+            this.currentAccessToken = null;
+            this.currentRefreshToken = null;
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -618,24 +1094,78 @@ public class SupabaseService {
         if (currentUserId == null)
             throw new IOException("Not logged in");
 
-        // GET /rest/v1/users?id=eq.UID&select=*
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(REST_URL + "/users?id=eq." + currentUserId + "&select=*"))
-                .header("apikey", SUPABASE_KEY)
-                .header("Authorization", "Bearer " + currentAccessToken)
-                .GET()
-                .build();
+        JsonObject result = new JsonObject();
 
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+        // 1. GET /rest/v1/users?id=eq.UID&select=*
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/users?id=eq." + currentUserId + "&select=*"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + (currentAccessToken != null ? currentAccessToken : SUPABASE_KEY))
+                    .GET()
+                    .build();
 
-        if (response.statusCode() == 200) {
-            JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
-            if (arr.size() > 0)
-                return arr.get(0).getAsJsonObject();
-            return new JsonObject(); // Metadata missing
-        } else {
-            throw new IOException("Failed to fetch metadata: " + response.statusCode());
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
+                if (arr.size() > 0) {
+                    result = arr.get(0).getAsJsonObject();
+                }
+            }
+        } catch (Exception ignore) {}
+
+        // 2. Merge /rest/v1/user_profiles?user_id=eq.UID&select=*
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/user_profiles?user_id=eq." + currentUserId + "&select=*"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + (currentAccessToken != null ? currentAccessToken : SUPABASE_KEY))
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() == 200) {
+                JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
+                if (arr.size() > 0) {
+                    JsonObject profile = arr.get(0).getAsJsonObject();
+                    for (String key : profile.keySet()) {
+                        if (!result.has(key) || result.get(key).isJsonNull()) {
+                            result.add(key, profile.get(key));
+                        }
+                    }
+                }
+            }
+        } catch (Exception ignore) {}
+
+        // 3. Ensure checkbook_id is present and dynamic (never literal asterisks)
+        if (!result.has("checkbook_id") || result.get("checkbook_id").isJsonNull() || result.get("checkbook_id").getAsString().contains("*")) {
+            String newId = generateUniqueCheckbookId();
+            result.addProperty("checkbook_id", newId);
+            try {
+                JsonObject patch = new JsonObject();
+                patch.addProperty("checkbook_id", newId);
+                patch.addProperty("user_id", currentUserId);
+
+                HttpRequest patchReq = HttpRequest.newBuilder()
+                        .uri(URI.create(REST_URL + "/user_profiles"))
+                        .header("apikey", SUPABASE_KEY)
+                        .header("Authorization", "Bearer " + SUPABASE_KEY)
+                        .header("Content-Type", "application/json")
+                        .header("Prefer", "resolution=merge-duplicates")
+                        .POST(HttpRequest.BodyPublishers.ofString(patch.toString()))
+                        .build();
+
+                client.send(patchReq, HttpResponse.BodyHandlers.ofString());
+            } catch (Exception ignore) {}
         }
+
+        return result;
+    }
+
+    public static String generateUniqueCheckbookId() {
+        java.util.Random rand = new java.util.Random();
+        int code = 100000 + rand.nextInt(900000);
+        return "CK-" + code;
     }
 
     public void updateUserFields(Map<String, Object> updates) throws IOException, InterruptedException {

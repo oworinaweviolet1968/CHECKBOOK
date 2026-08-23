@@ -12,7 +12,6 @@ import 'powersync/write_queue.dart';
 import 'powersync/powersync_engine.dart';
 import 'logger_service.dart';
 import 'audit_service.dart';
-import 'notification_service.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -37,6 +36,24 @@ class DatabaseHelper {
   }
 
   static int _hexDigit(int value) => value < 10 ? 48 + value : 97 + value - 10;
+
+  static int _safeInt(dynamic val, [int fallback = 0]) {
+    if (val == null) return fallback;
+    if (val is int) return val;
+    if (val is num) return val.toInt();
+    if (val is String) return int.tryParse(val) ?? fallback;
+    if (val is bool) return val ? 1 : 0;
+    return fallback;
+  }
+
+  static bool _safeBool(dynamic val) {
+    if (val == null) return false;
+    if (val is bool) return val;
+    if (val is int) return val == 1;
+    if (val is num) return val.toInt() == 1;
+    if (val is String) return val == '1' || val.toLowerCase() == 'true';
+    return false;
+  }
 
   static int _getSecondsDifference(String? t1, String? t2) {
     if (t1 == null || t2 == null) return 9999;
@@ -170,20 +187,20 @@ class DatabaseHelper {
       double profitVal = (rs['profit'] as num).toDouble();
 
       return HistoryItem(
-        id: rs['id'] as int,
-        customer: rs['customer'] as String,
-        item: rs['item'] as String,
-        type: rs['type'] as String,
+        id: _safeInt(rs['id']),
+        customer: rs['customer'] as String? ?? "",
+        item: rs['item'] as String? ?? "",
+        type: rs['type'] as String? ?? "",
         quantity: "-",
         unit: "-",
         price: "-",
         amount: amount.toStringAsFixed(0),
         paidAmount: (rs['paid_amount'] as num? ?? 0).toStringAsFixed(0),
         profit: profitVal.toStringAsFixed(0),
-        date: rs['date'] as String,
-        isDebt: (rs['is_debt'] as int? ?? 0) == 1,
-        isPaid: (rs['is_paid'] as int? ?? 0) == 1,
-        isEdited: (rs['is_edited'] as int? ?? 0) == 1,
+        date: rs['date'] as String? ?? "",
+        isDebt: _safeBool(rs['is_debt']),
+        isPaid: _safeBool(rs['is_paid']),
+        isEdited: _safeBool(rs['is_edited']),
         deviceSource: rs['device_source'] as String? ?? "System",
         receiptId: rs['receipt_id'] as String?,
       );
@@ -221,20 +238,20 @@ class DatabaseHelper {
       double profitVal = (rs['profit'] as num).toDouble();
 
       return HistoryItem(
-        id: rs['id'] as int,
-        customer: rs['customer'] as String,
-        item: rs['item'] as String,
-        type: rs['type'] as String,
+        id: _safeInt(rs['id']),
+        customer: rs['customer'] as String? ?? "",
+        item: rs['item'] as String? ?? "",
+        type: rs['type'] as String? ?? "",
         quantity: "-",
         unit: "-",
         price: "-",
         amount: amount.toStringAsFixed(0),
         paidAmount: (rs['paid_amount'] as num? ?? 0).toStringAsFixed(0),
         profit: profitVal.toStringAsFixed(0),
-        date: rs['date'] as String,
-        isDebt: (rs['is_debt'] as int? ?? 0) == 1,
-        isPaid: (rs['is_paid'] as int? ?? 0) == 1,
-        isEdited: (rs['is_edited'] as int? ?? 0) == 1,
+        date: rs['date'] as String? ?? "",
+        isDebt: _safeBool(rs['is_debt']),
+        isPaid: _safeBool(rs['is_paid']),
+        isEdited: _safeBool(rs['is_edited']),
         deviceSource: rs['device_source'] as String? ?? "System",
       );
     }).toList().cast<HistoryItem>();
@@ -275,20 +292,20 @@ class DatabaseHelper {
       double profitVal = (rs['profit'] as num).toDouble();
 
       return HistoryItem(
-        id: rs['id'] as int,
-        customer: rs['customer'] as String,
-        item: rs['item'] as String,
-        type: rs['type'] as String,
+        id: _safeInt(rs['id']),
+        customer: rs['customer'] as String? ?? "",
+        item: rs['item'] as String? ?? "",
+        type: rs['type'] as String? ?? "",
         quantity: "-",
         unit: "-",
         price: "-",
         amount: amount.toStringAsFixed(0),
         paidAmount: (rs['paid_amount'] as num? ?? 0).toStringAsFixed(0),
         profit: profitVal.toStringAsFixed(0),
-        date: rs['date'] as String,
-        isDebt: (rs['is_debt'] as int? ?? 0) == 1,
-        isPaid: (rs['is_paid'] as int? ?? 0) == 1,
-        isEdited: (rs['is_edited'] as int? ?? 0) == 1,
+        date: rs['date'] as String? ?? "",
+        isDebt: _safeBool(rs['is_debt']),
+        isPaid: _safeBool(rs['is_paid']),
+        isEdited: _safeBool(rs['is_edited']),
         deviceSource: rs['device_source'] as String? ?? "System",
       );
     }).toList().cast<HistoryItem>();
@@ -2370,7 +2387,7 @@ class DatabaseHelper {
         }
       } else {
         final recent = await db.rawQuery(
-          "SELECT id FROM notifications WHERE message = ? AND created_at >= datetime('now', '-10 seconds')",
+          "SELECT id FROM notifications WHERE message = ? AND created_at >= datetime('now', '-300 seconds')",
           [message]
         );
         if (recent.isNotEmpty) {
@@ -2386,18 +2403,6 @@ class DatabaseHelper {
       if (source == 'Desktop') {
         await showLocalNotification(title ?? "Desktop App Input", message);
       }
-
-      // Sync to cloud NotificationService
-      try {
-        await NotificationService.instance.notify(
-          title: title ?? source,
-          body: message,
-          type: targetType ?? 'GENERAL',
-          showLocalNotification: false,
-        );
-      } catch (e) {
-        debugPrint('Error pushing notification through NotificationService: $e');
-      }
     } catch (e) {
       debugPrint("Error adding notification: $e");
     }
@@ -2406,6 +2411,8 @@ class DatabaseHelper {
   Future<List<Map<String, dynamic>>> getNotifications() async {
       try {
           final db = await instance.database;
+          // Auto-clean old exact duplicate notifications for clean UX
+          await db.execute("DELETE FROM notifications WHERE id NOT IN (SELECT MIN(id) FROM notifications GROUP BY message, date(created_at))");
           return await db.rawQuery("SELECT id, message, source, created_at, is_read, target_type, target_id FROM notifications WHERE message NOT LIKE '%online%' AND message NOT LIKE '%offline%' AND message NOT LIKE '%internet%' ORDER BY created_at DESC");
       } catch (e) {
           debugPrint("Error fetching notifications: $e");

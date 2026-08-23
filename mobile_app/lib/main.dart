@@ -17,6 +17,7 @@ import 'services/database_helper.dart';
 import 'services/supabase_service.dart';
 import 'services/passcode_service.dart';
 import 'services/shorebird_service.dart';
+import 'widgets/device_pairing_dialog.dart';
 import 'utils/colors.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
@@ -283,6 +284,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   Future<void> _initDatabase() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId != null) {
+      await SupasService.instance.refreshUserMetadata();
       await SupasService.instance.migrateLegacyDatabase();
       await DatabaseHelper.instance.switchDatabase(userId);
       await SupasService.instance.downloadReceiptSettings();
@@ -315,8 +317,9 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
   // --- POLLING (reliable fallback) ---
 
   void _startPolling() {
-    // Poll for login requests every 5 seconds
-    _loginPollTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pollLoginRequests());
+    // Poll for login requests every 2 seconds for immediate approval prompt
+    _loginPollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollLoginRequests());
+    _pollLoginRequests();
 
     // Poll for remote data changes every 30 seconds
     _dataSyncTimer = Timer.periodic(const Duration(seconds: 30), (_) => _pollDataSync());
@@ -373,36 +376,41 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _showLoginApprovalDialog(Map<String, dynamic> request) {
+  final Set<String> _handledRequestIds = {};
+
+  void _showLoginApprovalDialog(Map<String, dynamic> request) async {
+    final sessionId = request['id']?.toString() ?? '';
+    if (sessionId.isNotEmpty && _handledRequestIds.contains(sessionId)) return;
     if (_isDialogOpen) return;
     _isDialogOpen = true;
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Login Approval'),
-        content: Text('Approve login request for ${request['email']} on desktop application?'),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              await SupasService.instance.updateLoginRequestStatus(request['id'], 'rejected');
-              if (context.mounted) Navigator.of(context).pop();
-              _isDialogOpen = false;
-            },
-            child: const Text('Reject', style: TextStyle(color: Colors.red)),
-          ),
-          TextButton(
-            onPressed: () async {
-              await SupasService.instance.updateLoginRequestStatus(request['id'], 'approved');
-              if (context.mounted) Navigator.of(context).pop();
-              _isDialogOpen = false;
-            },
-            child: const Text('Approve', style: TextStyle(color: AppColors.primaryGreen, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
+    if (sessionId.isNotEmpty) {
+      _handledRequestIds.add(sessionId);
+    }
+
+    String displayCid = request['checkbook_id']?.toString() ?? '';
+    if (displayCid.isEmpty || displayCid.contains('*')) {
+      final itemEmail = request['email']?.toString() ?? '';
+      if (itemEmail.toUpperCase().startsWith('CK-')) {
+        displayCid = itemEmail.toUpperCase();
+      }
+    }
+    if (displayCid.isEmpty || displayCid.contains('*')) {
+      displayCid = SupasService.instance.userMetadata.value?['checkbook_id']?.toString() ??
+          SupasService.instance.client.auth.currentUser?.userMetadata?['checkbook_id']?.toString() ??
+          'CK-872017';
+    }
+
+    final deviceName = request['device_name']?.toString() ?? 'Desktop PC';
+
+    await DevicePairingDialog.show(
+      context,
+      sessionId: sessionId,
+      checkbookId: displayCid,
+      deviceName: deviceName,
     );
+
+    _isDialogOpen = false;
   }
 
   @override
@@ -437,15 +445,21 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
     return ValueListenableBuilder<Map<String, dynamic>?>(
       valueListenable: SupasService.instance.userMetadata,
       builder: (context, meta, child) {
+        int parseInt(dynamic val) {
+          if (val == null) return 0;
+          if (val is int) return val;
+          if (val is num) return val.toInt();
+          if (val is String) return int.tryParse(val) ?? 0;
+          return 0;
+        }
+
         final now = DateTime.now().millisecondsSinceEpoch;
 
-        // 1. Ownership Check
-        final isOwnershipEnabled = meta?['ownership_payment'] as bool? ?? false;
-        final ownershipExpiry = meta?['ownership_expiry'] as int? ?? 0;
-        final isOwnershipActive = isOwnershipEnabled && (ownershipExpiry == 0 || ownershipExpiry > now);
+        // 1. Ownership & 7-Day Free Trial Check
+        final isAccessValid = isOwnershipOrTrialValid(meta);
 
-        if (!isOwnershipActive && meta != null) {
-          // Trigger ownership popup if not active
+        if (!isAccessValid && meta != null) {
+          // Trigger ownership popup only if trial has expired and license is unpaid
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _showOwnershipRequiredDialog();
           });
@@ -453,7 +467,7 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
         // 2. Backup Subscription Banner
         final isBackupEnabled = meta?['monthly_cloud_backup'] as bool? ?? true;
-        final backupExpiry = meta?['backup_expiry'] as int? ?? 0;
+        final backupExpiry = parseInt(meta?['backup_expiry']);
         final isBackupActive = isBackupEnabled && (backupExpiry == 0 || backupExpiry > now);
 
         return Scaffold(
@@ -517,6 +531,69 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
 
   bool _isDialogOpen = false;
 
+  bool isOwnershipOrTrialValid(Map<String, dynamic>? meta) {
+    if (meta == null) return true; // Default allow if meta loading/null
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    int parseInt(dynamic val) {
+      if (val == null) return 0;
+      if (val is int) return val;
+      if (val is num) return val.toInt();
+      if (val is String) return int.tryParse(val) ?? 0;
+      return 0;
+    }
+
+    // 1. Check paid license ownership
+    final isOwnershipEnabled = meta['ownership_payment'] as bool? ?? false;
+    final ownershipExpiry = parseInt(meta['ownership_expiry']);
+    if (isOwnershipEnabled && (ownershipExpiry == 0 || ownershipExpiry > now)) {
+      return true;
+    }
+
+    // 2. Check explicit trial/subscription status
+    final subStatus = (meta['subscription_status'] ?? meta['account_status'] ?? '').toString().toUpperCase();
+    if (subStatus == 'TRIAL_ACTIVE' || subStatus == 'ACTIVE') {
+      return true;
+    }
+
+    // 3. Check explicit trial_expires_at timestamp
+    final trialExpiresVal = meta['trial_expires_at'];
+    if (trialExpiresVal != null) {
+      int expMs = 0;
+      if (trialExpiresVal is String) {
+        expMs = DateTime.tryParse(trialExpiresVal)?.millisecondsSinceEpoch ?? 0;
+      } else if (trialExpiresVal is num) {
+        expMs = trialExpiresVal.toInt();
+      }
+      if (expMs > now) {
+        return true;
+      }
+    }
+
+    // 4. Check account age: trial_end_at = created_at + 7 days
+    final createdVal = meta['trial_started_at'] ?? meta['created_at'];
+    int createdMs = 0;
+    if (createdVal != null) {
+      if (createdVal is String) {
+        createdMs = DateTime.tryParse(createdVal)?.millisecondsSinceEpoch ?? 0;
+      } else if (createdVal is num) {
+        createdMs = createdVal.toInt();
+      }
+    }
+
+    // If created_at timestamp is null/0 or brand new account, default to active trial (7 days)
+    if (createdMs == 0) {
+      return true;
+    }
+
+    final sevenDaysMs = 7 * 24 * 3600 * 1000;
+    if ((now - createdMs) < sevenDaysMs) {
+      return true; // Unrestricted access during 7-day free trial
+    }
+
+    return false; // Trial expired & no paid license
+  }
+
   void _showOwnershipRequiredDialog() {
     if (_isDialogOpen) return;
     _isDialogOpen = true;
@@ -531,23 +608,18 @@ class _MainScreenState extends State<MainScreen> with WidgetsBindingObserver {
             children: [
               Icon(Icons.lock, color: Colors.red),
               SizedBox(width: 8),
-              Text('Ownership Required'),
+              Text('Free Trial Expired'),
             ],
           ),
           content: const Text(
-            'Your application ownership has expired or is not verified. Please contact support to activate your license and continue using the app.',
+            'Your 7-Day Free Trial has expired. Please contact support (076 031 5703) to activate your license and continue using the app.',
           ),
           actions: [
             TextButton(
               onPressed: () async {
                 await SupasService.instance.refreshUserMetadata();
                 final meta = SupasService.instance.userMetadata.value;
-                final now = DateTime.now().millisecondsSinceEpoch;
-                final isOwnershipEnabled = meta?['ownership_payment'] as bool? ?? false;
-                final ownershipExpiry = meta?['ownership_expiry'] as int? ?? 0;
-                final isOwnershipActive = isOwnershipEnabled && (ownershipExpiry == 0 || ownershipExpiry > now);
-
-                if (isOwnershipActive) {
+                if (isOwnershipOrTrialValid(meta)) {
                   if (dialogContext.mounted) Navigator.of(dialogContext).pop();
                   _isDialogOpen = false;
                 }

@@ -939,14 +939,6 @@ public class SalesController implements DataManager.DataChangeListener {
         }
 
         if (!items.isEmpty()) {
-            java.util.List<String> itemNames = new java.util.ArrayList<>();
-            for (SaleItem item : items) {
-                itemNames.add(item.getItems());
-            }
-            String itemsStr = String.join(", ", itemNames);
-            String action = isDebt ? "Debt recorded" : "Sale made";
-            dataManager.getDbHelper().addNotification(action + " for " + customer + ": " + itemsStr, "Desktop");
-
             if (isDebt) {
                 double totalDebt = dataManager.getDbHelper().getCustomerDebt(customer);
                 com.meto.inventory.services.NotificationService.getInstance().sendDesktopActionNotification(

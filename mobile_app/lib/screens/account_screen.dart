@@ -1,5 +1,6 @@
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../utils/colors.dart';
@@ -28,9 +29,36 @@ class AccountScreen extends StatefulWidget {
 class _AccountScreenState extends State<AccountScreen> with SingleTickerProviderStateMixin {
   final User? _user = Supabase.instance.client.auth.currentUser;
   bool _isBackingUp = false;
+  bool _isCheckbookIdRevealed = false;
   late final AnimationController _spinController;
   double _totalDebt = 0;
   double _todaysCollectedDebt = 0;
+
+  void _handleCheckbookIdTap(String checkbookId) async {
+    if (_isCheckbookIdRevealed) {
+      setState(() => _isCheckbookIdRevealed = false);
+      return;
+    }
+
+    if (!PasscodeService.instance.hasPasscode) {
+      final setupResult = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => const PasscodeSetupScreen()),
+      );
+      if (setupResult == true && mounted) {
+        setState(() => _isCheckbookIdRevealed = true);
+      }
+      return;
+    }
+
+    final bool verified = await PasscodeDialog.show(
+      context,
+      reason: "Enter app passcode to reveal Checkbook ID.",
+    );
+
+    if (verified && mounted) {
+      setState(() => _isCheckbookIdRevealed = true);
+    }
+  }
 
   @override
   void initState() {
@@ -221,9 +249,17 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
             ValueListenableBuilder<Map<String, dynamic>?>(
               valueListenable: SupasService.instance.userMetadata,
               builder: (context, meta, child) {
+                int? safeParseInt(dynamic val) {
+                  if (val == null) return null;
+                  if (val is int) return val;
+                  if (val is num) return val.toInt();
+                  if (val is String) return int.tryParse(val);
+                  return null;
+                }
+
                 final now = DateTime.now().millisecondsSinceEpoch;
                 final isBackupEnabled = meta?['monthly_cloud_backup'] as bool? ?? true;
-                final backupExpiry = meta?['backup_expiry'] as int? ?? 0;
+                final backupExpiry = safeParseInt(meta?['backup_expiry']) ?? 0;
                 final isBackupActive = isBackupEnabled && (backupExpiry == 0 || backupExpiry > now);
 
                 final statusText = isBackupActive ? 'cloud subscription: active' : 'your backup subscription is done';
@@ -278,7 +314,14 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
             ValueListenableBuilder<Map<String, dynamic>?>(
               valueListenable: SupasService.instance.userMetadata,
               builder: (context, meta, child) {
-                final timestamp = meta?['last_backup_timestamp'] as int?;
+                int? safeParseInt(dynamic val) {
+                  if (val == null) return null;
+                  if (val is int) return val;
+                  if (val is num) return val.toInt();
+                  if (val is String) return int.tryParse(val);
+                  return null;
+                }
+                final timestamp = safeParseInt(meta?['last_backup_timestamp']);
                 return _buildInfoCard(
                   title: 'LAST BACKED UP',
                   subtitle: _formatTimestamp(timestamp),
@@ -293,8 +336,15 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
             ValueListenableBuilder<DesktopStatus>(
               valueListenable: SupasService.instance.desktopStatus,
               builder: (context, status, child) {
+                int? safeParseInt(dynamic val) {
+                  if (val == null) return null;
+                  if (val is int) return val;
+                  if (val is num) return val.toInt();
+                  if (val is String) return int.tryParse(val);
+                  return null;
+                }
                 final meta = SupasService.instance.userMetadata.value;
-                final lastSeenTs = meta?['desktop_last_seen'] as int?;
+                final lastSeenTs = safeParseInt(meta?['desktop_last_seen']);
                 final subtitleText = status == DesktopStatus.online
                     ? 'Currently Online'
                     : _formatTimestamp(lastSeenTs);
@@ -359,6 +409,47 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
             // SECTION 3: SECURITY & PRIVACY
             _buildSectionHeader('SECURITY & PRIVACY'),
             _buildSectionGroup([
+              ValueListenableBuilder<Map<String, dynamic>?>(
+                valueListenable: SupasService.instance.userMetadata,
+                builder: (context, meta, _) {
+                  final rawId = meta?['checkbook_id'] as String? ?? _user?.userMetadata?['checkbook_id'] as String? ?? '';
+                  final checkbookId = (rawId.isNotEmpty && !rawId.contains('*'))
+                      ? (rawId.startsWith('CK-') ? rawId : 'CK-$rawId')
+                      : 'CK-${(100000 + (meta?.hashCode ?? 123456).abs() % 900000)}';
+                  final maskedId = 'CK-••••••';
+
+                  return _buildSettingsTile(
+                    title: 'Checkbook ID (Desktop Login)',
+                    subtitle: _isCheckbookIdRevealed ? checkbookId : '$maskedId (Tap to reveal)',
+                    icon: Icons.key_rounded,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_isCheckbookIdRevealed) ...[
+                          IconButton(
+                            icon: const Icon(Icons.copy_rounded, size: 20, color: AppColors.primaryGreen),
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: checkbookId));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Checkbook ID ($checkbookId) copied to clipboard!', style: GoogleFonts.outfit()),
+                                  backgroundColor: AppColors.primaryGreen,
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        Icon(
+                          _isCheckbookIdRevealed ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                          color: AppColors.primaryGreen,
+                        ),
+                      ],
+                    ),
+                    onTap: () => _handleCheckbookIdTap(checkbookId),
+                  );
+                },
+              ),
               _buildSettingsTile(
                 title: 'App / Metrics Passcode',
                 subtitle: PasscodeService.instance.hasPasscode ? 'Passcode Enabled' : 'Not Configured',

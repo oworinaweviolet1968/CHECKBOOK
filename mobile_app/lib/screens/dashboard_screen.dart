@@ -10,6 +10,9 @@ import '../services/supabase_service.dart';
 import '../services/passcode_service.dart';
 import 'package:intl/intl.dart';
 
+import 'dart:async';
+import '../widgets/device_pairing_dialog.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -29,6 +32,8 @@ class DashboardScreenState extends State<DashboardScreen> {
   late Future<double> _prevWeeklyProfit;
 
   bool _showAllStock = false;
+  Timer? _pairingCheckTimer;
+  bool _isPairingModalOpen = false;
 
   final _formatter = NumberFormat("#,###");
 
@@ -36,6 +41,35 @@ class DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     refreshData();
+    _startPairingCheckLoop();
+  }
+
+  void _startPairingCheckLoop() {
+    _pairingCheckTimer?.cancel();
+    _pairingCheckTimer = Timer.periodic(const Duration(seconds: 4), (_) async {
+      if (_isPairingModalOpen || !mounted) return;
+      final pending = await SupasService.instance.checkPendingPairingRequests();
+      if (pending != null && pending['id'] != null && mounted) {
+        _isPairingModalOpen = true;
+        final sessionId = pending['id'].toString();
+        final checkbookId = pending['checkbook_id']?.toString() ?? 'CK-******';
+        final deviceName = pending['device_name']?.toString() ?? 'Desktop PC';
+
+        await DevicePairingDialog.show(
+          context,
+          sessionId: sessionId,
+          checkbookId: checkbookId,
+          deviceName: deviceName,
+        );
+        _isPairingModalOpen = false;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _pairingCheckTimer?.cancel();
+    super.dispose();
   }
 
   void refreshData() {
@@ -331,7 +365,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                                          packagingUnit: item['unit'] ?? 'pcs', 
                                          quantity: displayAvail,
                                          isLowStock: isLow,
-                                         isEdited: (item['is_edited'] as int? ?? 0) == 1,
+                                         isEdited: item['is_edited'] == 1 || item['is_edited'] == '1' || item['is_edited'] == true,
                                          source: item['device_source'] as String? ?? "System",
                                      );
                                  }).toList(),
@@ -424,7 +458,7 @@ class DashboardScreenState extends State<DashboardScreen> {
                                      final time = timeStr;
                                      
                                      final unitSold = sale['unit']; 
-                                     final isDebt = (sale['is_debt'] as int? ?? 0) == 1;
+                                     final isDebt = sale['is_debt'] == 1 || sale['is_debt'] == '1' || sale['is_debt'] == true;
                                                                           return ValueListenableBuilder<bool>(
                                          valueListenable: PasscodeService.instance.isLocked,
                                          builder: (context, isLocked, child) {

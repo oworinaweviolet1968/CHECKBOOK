@@ -2654,7 +2654,7 @@ public class DatabaseHelper {
                         }
                     }
 
-                    if ("Mobile".equals(deviceSource) && isRecent) {
+                    if ("Mobile".equalsIgnoreCase(deviceSource) && isRecent) {
                         if ("NEW STOCK".equals(type)) {
                             addNotification("NEW STOCK: " + item + " has been stocked", "Mobile");
                         } else {
@@ -2710,8 +2710,10 @@ public class DatabaseHelper {
                 } else {
                     if (cloudPaidAmount > localPaidAmount) {
                         double diff = cloudPaidAmount - localPaidAmount;
-                        addNotification("Payment of UGX " + (int) Math.round(diff) + " received for " + customer,
-                                "Mobile");
+                        if ("Mobile".equalsIgnoreCase(deviceSource)) {
+                            addNotification("Payment of UGX " + (int) Math.round(diff) + " received for " + customer,
+                                    "Mobile");
+                        }
                         if (localId != -1) {
                             try (PreparedStatement payStmt = connection.prepareStatement(
                                     "INSERT INTO debt_payments(sale_id, amount_paid, payment_date, sync_id) VALUES(?, ?, ?, ?)")) {
@@ -2972,10 +2974,26 @@ public class DatabaseHelper {
     // --- NOTIFICATIONS ---
 
     public void addNotification(String message, String source) {
+        if (message == null || message.trim().isEmpty()) return;
+
+        // Deduplication check: skip if similar notification exists within 5 minutes (300 seconds)
+        String checkSql = "SELECT COUNT(*) FROM notifications WHERE (message = ? OR message LIKE ?) AND (strftime('%s', 'now') - strftime('%s', created_at) < 300)";
+        try (PreparedStatement checkStmt = connection.prepareStatement(checkSql)) {
+            checkStmt.setString(1, message);
+            checkStmt.setString(2, "%" + message + "%");
+            try (ResultSet rs = checkStmt.executeQuery()) {
+                if (rs.next() && rs.getInt(1) > 0) {
+                    return; // Skip duplicate notification
+                }
+            }
+        } catch (SQLException ignored) {
+        }
+
+        String notifSource = (source != null && !source.isEmpty()) ? source : "System";
         String sql = "INSERT INTO notifications (message, source, sync_id) VALUES (?, ?, ?)";
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, message);
-            pstmt.setString(2, source);
+            pstmt.setString(2, notifSource);
             pstmt.setString(3, java.util.UUID.randomUUID().toString());
             pstmt.executeUpdate();
         } catch (SQLException e) {
@@ -2985,6 +3003,12 @@ public class DatabaseHelper {
 
     public List<NotificationItem> getNotifications() {
         List<NotificationItem> notifications = new ArrayList<>();
+        // Auto-clean old exact duplicate notifications for clean UX
+        try (Statement cleanupStmt = connection.createStatement()) {
+            cleanupStmt.executeUpdate("DELETE FROM notifications WHERE id NOT IN (SELECT MIN(id) FROM notifications GROUP BY message, date(created_at))");
+        } catch (SQLException ignored) {
+        }
+
         String sql = "SELECT id, message, source, created_at, is_read FROM notifications ORDER BY created_at DESC";
         try (Statement stmt = connection.createStatement();
                 ResultSet rs = stmt.executeQuery(sql)) {

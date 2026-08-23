@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'database_helper.dart';
@@ -481,10 +482,52 @@ class SupasService {
     return;
   }
 
+  String generateUniqueCheckbookId() {
+    final random = Random();
+    final digits = List.generate(6, (_) => random.nextInt(10)).join();
+    return 'CK-$digits';
+  }
+
   Future<Map<String, dynamic>?> refreshUserMetadata() async {
       if (userId == null) return null;
       try {
-        final meta = await client.from('users').select().eq('id', userId!).maybeSingle();
+        final meta = await client.from('users').select().eq('id', userId!).maybeSingle() ?? <String, dynamic>{};
+        
+        String? checkbookId = client.auth.currentUser?.userMetadata?['checkbook_id'] as String?;
+        if (checkbookId == null || checkbookId.isEmpty || checkbookId.contains('*')) {
+          try {
+            final profile = await client.from('user_profiles').select('checkbook_id').eq('user_id', userId!).maybeSingle();
+            if (profile != null && profile['checkbook_id'] != null && !(profile['checkbook_id'] as String).contains('*')) {
+              checkbookId = profile['checkbook_id'] as String;
+            }
+          } catch (_) {}
+        }
+
+        // If checkbookId is still unassigned or contains literal asterisks, generate dynamic 6-digit ID
+        if (checkbookId == null || checkbookId.isEmpty || checkbookId.contains('*')) {
+          checkbookId = generateUniqueCheckbookId();
+          try {
+            await client.from('users').upsert({
+              'id': userId,
+              'checkbook_id': checkbookId,
+            }, onConflict: 'id');
+          } catch (e) {
+            try {
+              await client.from('user_profiles').upsert({
+                'user_id': userId,
+                'checkbook_id': checkbookId,
+                'updated_at': DateTime.now().toIso8601String(),
+              }, onConflict: 'user_id');
+            } catch (_) {}
+          }
+        }
+
+        // Ensure checkbook_id is synced to Supabase Auth metadata
+        try {
+          await client.auth.updateUser(UserAttributes(data: {'checkbook_id': checkbookId}));
+        } catch (_) {}
+
+        meta['checkbook_id'] = checkbookId;
         userMetadata.value = meta;
         return meta;
       } catch (e, stack) {
@@ -545,18 +588,46 @@ class SupasService {
   /// This works even if the Realtime WebSocket has gone stale.
   Future<List<Map<String, dynamic>>> fetchPendingLoginRequests() async {
     final email = client.auth.currentUser?.email;
-    if (userId == null || email == null) return [];
+    final currentUid = userId;
+    if (currentUid == null) return [];
 
     try {
-      final result = await client
+      final List<dynamic> result = await client
           .from('login_requests')
-          .select()
-          .eq('status', 'pending');
+          .select();
 
-      // Filter by current user's email (RLS should handle this, but just in case)
-      return (result as List<dynamic>)
+      final myCheckbookId = userMetadata.value?['checkbook_id'] as String? ??
+          client.auth.currentUser?.userMetadata?['checkbook_id'] as String?;
+      final formattedMyCid = myCheckbookId?.trim().toUpperCase();
+      final formattedEmail = email?.trim().toLowerCase();
+
+      final now = DateTime.now();
+      return result
           .cast<Map<String, dynamic>>()
-          .where((item) => item['email'] == email)
+          .where((item) {
+            final st = (item['status'] ?? '').toString().toLowerCase();
+            if (st != 'pending') return false;
+
+            final itemEmail = (item['email'] ?? item['user_email'] ?? '').toString().trim();
+            final itemEmailLower = itemEmail.toLowerCase();
+            final itemEmailUpper = itemEmail.toUpperCase();
+
+            // Match if email equals user email, or equals checkbook ID, or if item email is a CK- request
+            final isMatch = (formattedEmail != null && itemEmailLower == formattedEmail) ||
+                (formattedMyCid != null && itemEmailUpper == formattedMyCid) ||
+                (formattedMyCid != null && itemEmailUpper.contains(formattedMyCid)) ||
+                itemEmailUpper.startsWith('CK-');
+
+            if (!isMatch) return false;
+
+            final expStr = item['created_at']?.toString();
+            if (expStr != null) {
+              final created = DateTime.tryParse(expStr);
+              if (created != null && now.difference(created).inMinutes > 5) return false;
+            }
+
+            return true;
+          })
           .toList();
     } catch (e) {
       debugPrint('LOGIN POLL ERROR: $e');
@@ -565,17 +636,32 @@ class SupasService {
   }
 
   Future<void> updateLoginRequestStatus(String requestId, String status) async {
-    final updates = <String, dynamic>{
-      'status': status,
-    };
-    if (status == 'approved') {
-      final session = client.auth.currentSession;
-      final accToken = session?.accessToken ?? '';
-      final refToken = session?.refreshToken ?? '';
-      updates['refresh_token'] = '$accToken:::$refToken';
+    final lowercaseStatus = status.toLowerCase(); // 'approved' or 'rejected'
+    final uppercaseStatus = status.toUpperCase(); // 'APPROVED' or 'REJECTED'
+    final session = client.auth.currentSession;
+    final accToken = session?.accessToken ?? '';
+    final refToken = session?.refreshToken ?? '';
+    final tokenPayload = '$accToken:::$refToken';
+
+    // 1. Update login_requests with schema-valid columns only
+    try {
+      await client.from('login_requests').update({
+        'status': lowercaseStatus,
+        'refresh_token': tokenPayload,
+      }).eq('id', requestId);
+    } catch (e) {
+      debugPrint('Error updating login_requests status: $e');
     }
 
-    await client.from('login_requests').update(updates).eq('id', requestId);
+    // 2. Try device_pairing_requests table fallback
+    try {
+      await client.from('device_pairing_requests').update({
+        'status': uppercaseStatus,
+        'pairing_token': tokenPayload,
+        'refresh_token': tokenPayload,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', requestId);
+    } catch (_) {}
   }
 
   // --- REMOTE DATA CHANGE DETECTION ---
@@ -591,7 +677,8 @@ class SupasService {
       final meta = await client.from('users').select('last_backup_timestamp').eq('id', userId!).maybeSingle();
       if (meta == null) return false;
 
-      final cloudTs = meta['last_backup_timestamp'] as int? ?? 0;
+      final val = meta['last_backup_timestamp'];
+      final cloudTs = val is int ? val : (val is num ? val.toInt() : (val is String ? (int.tryParse(val) ?? 0) : 0));
 
       final localVersionStr = await DatabaseHelper.instance.getSetting('last_backup_timestamp');
       final localVersionTs = int.tryParse(localVersionStr ?? '0') ?? 0;
@@ -720,5 +807,83 @@ class SupasService {
       AppLogger.error('REALTIME INIT ERROR: $e', tag: 'SupasService', error: e, stackTrace: stack);
       _realtimeChannel = null;
     }
+  }
+
+  /// Checks for active pending desktop device pairing requests for the current user
+  Future<Map<String, dynamic>?> checkPendingPairingRequests() async {
+    if (userId == null) return null;
+    final nowIso = DateTime.now().toIso8601String();
+
+    // 1. Try device_pairing_requests table
+    try {
+      final result = await client
+          .from('device_pairing_requests')
+          .select()
+          .eq('user_id', userId!)
+          .eq('status', 'PENDING')
+          .gt('expires_at', nowIso)
+          .maybeSingle();
+      if (result != null) return result;
+    } catch (_) {}
+
+    // 2. Try login_requests table fallback
+    try {
+      final result = await client
+          .from('login_requests')
+          .select()
+          .eq('user_id', userId!)
+          .eq('status', 'PENDING')
+          .gt('expires_at', nowIso)
+          .maybeSingle();
+      if (result != null) return result;
+    } catch (_) {}
+
+    return null;
+  }
+
+  /// Responds to a desktop device pairing request (ACCEPT or REJECT)
+  Future<bool> respondPairingRequest(String sessionId, String action) async {
+    final lowercaseStatus = (action.toUpperCase() == 'ACCEPT' || action.toUpperCase() == 'APPROVED') ? 'approved' : 'rejected';
+    final uppercaseStatus = lowercaseStatus.toUpperCase();
+
+    final session = client.auth.currentSession;
+    final accToken = session?.accessToken ?? '';
+    final refToken = session?.refreshToken ?? '';
+    final tokenPayload = '$accToken:::$refToken';
+
+    // 1. Try RPC rpc_respond_pairing_request
+    try {
+      final res = await client.rpc('rpc_respond_pairing_request', params: {
+        'p_session_id': sessionId,
+        'p_action': action,
+      });
+      if (res != null && (res['success'] == true || res['status'] == uppercaseStatus || res['status'] == lowercaseStatus)) {
+        return true;
+      }
+    } catch (_) {}
+
+    // 2. Direct update on login_requests with schema-valid columns
+    try {
+      await client.from('login_requests').update({
+        'status': lowercaseStatus,
+        'refresh_token': tokenPayload,
+      }).eq('id', sessionId);
+      return true;
+    } catch (e) {
+      debugPrint('Error updating login_requests in respondPairingRequest: $e');
+    }
+
+    // 3. Direct update on device_pairing_requests fallback
+    try {
+      await client.from('device_pairing_requests').update({
+        'status': uppercaseStatus,
+        'pairing_token': tokenPayload,
+        'refresh_token': tokenPayload,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', sessionId);
+      return true;
+    } catch (_) {}
+
+    return false;
   }
 }

@@ -145,9 +145,6 @@ public class DataManager {
                 // --- CONNECTIVITY TRANSITION NOTIFICATIONS ---
                 if (wasOnline == null || wasOnline != online) {
                     if (online) {
-                        NotificationService.getInstance()
-                            .sendDesktopActionNotification("Desktop App Online", "Desktop app accessed the internet and is now online.");
-                        
                         javafx.application.Platform.runLater(() -> {
                             com.meto.inventory.utils.ToastService.showSuccess(
                                 "Connection Restored",
@@ -206,20 +203,55 @@ public class DataManager {
 
     }
 
+    private final java.util.Set<String> displayedToastKeys = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+
     private void checkAndDisplayNotifications() {
         if (dbHelper == null) return;
         java.util.List<DatabaseHelper.NotificationItem> notifs = dbHelper.getNotifications();
+        long nowSec = System.currentTimeMillis() / 1000L;
+
         for (DatabaseHelper.NotificationItem notif : notifs) {
-            if (!notif.isRead() && "Mobile".equals(notif.getSource())) {
+            if (notif.isRead() || !"Mobile".equals(notif.getSource())) {
+                continue;
+            }
+
+            String notifKey = notif.getId() + "_" + notif.getMessage();
+
+            // 1. Skip if toast was already rendered during this app session
+            if (displayedToastKeys.contains(notifKey)) {
+                dbHelper.markNotificationAsRead(notif.getId());
+                continue;
+            }
+
+            // 2. Filter out stale actions (created > 5 minutes ago)
+            boolean isStale = false;
+            if (notif.getCreatedAt() != null && !notif.getCreatedAt().isEmpty()) {
+                try {
+                    String cleanDate = notif.getCreatedAt().replace("Z", "").replace(" ", "T");
+                    java.time.LocalDateTime dt = java.time.LocalDateTime.parse(
+                        cleanDate.length() >= 19 ? cleanDate.substring(0, 19) : cleanDate
+                    );
+                    long notifSec = dt.atZone(java.time.ZoneId.systemDefault()).toEpochSecond();
+                    if ((nowSec - notifSec) > 300) { // > 5 minutes
+                        isStale = true;
+                    }
+                } catch (Exception ignore) {
+                }
+            }
+
+            // Mark key as seen and mark read in database
+            displayedToastKeys.add(notifKey);
+            dbHelper.markNotificationAsRead(notif.getId());
+
+            // 3. Only render UI Toast for fresh (non-stale) mobile inputs
+            if (!isStale) {
                 javafx.application.Platform.runLater(() -> {
                     com.meto.inventory.utils.ToastService.showInfo(
                         "Mobile App Input",
                         notif.getMessage()
                     );
                 });
-                dbHelper.markNotificationAsRead(notif.getId());
-                // Notify UI to refresh Notifications view
-                notifyDataChanged(false); 
+                notifyDataChanged(false);
             }
         }
     }

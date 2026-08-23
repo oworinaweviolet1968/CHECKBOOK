@@ -895,7 +895,6 @@ public class NewStockController implements DataManager.DataChangeListener {
 
             if (items.isEmpty()) {
                 showAlert("Stock saved successfully!");
-                dataManager.getDbHelper().addNotification("Added stock from " + supplier, "Desktop");
                 supplierNameComboBox.getEditor().clear();
                 supplierNameComboBox.setValue(null);
             } else {

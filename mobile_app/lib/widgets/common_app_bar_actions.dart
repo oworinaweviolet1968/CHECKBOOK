@@ -56,9 +56,11 @@ class _StandardAppBarActionsState extends State<StandardAppBarActions> {
     
     bool hasUnread = false;
     for (var n in notifs) {
-      if (n['is_read'] == 0) {
+      final isUnread = n['is_read'] == 0 || n['is_read'] == '0' || n['is_read'] == false;
+      if (isUnread) {
         hasUnread = true;
-        int id = n['id'] as int;
+        final rawId = n['id'];
+        int id = rawId is int ? rawId : (rawId is num ? rawId.toInt() : (int.tryParse(rawId?.toString() ?? '0') ?? 0));
         if (n['source'] == 'Desktop' && !_notifiedIds.contains(id)) {
           _notifiedIds.add(id);
           ScaffoldMessenger.of(context).showSnackBar(
@@ -215,7 +217,8 @@ class _DesktopStatusChip extends StatelessWidget {
 
   String _statusTooltip(DesktopStatus status) {
     final meta = SupasService.instance.userMetadata.value;
-    final lastSeenTs = meta?['desktop_last_seen'] as int?;
+    final val = meta?['desktop_last_seen'];
+    final lastSeenTs = val is int ? val : (val is num ? val.toInt() : (val is String ? int.tryParse(val) : null));
     String timeStr = 'Never';
     if (lastSeenTs != null && lastSeenTs > 0) {
       final date = DateTime.fromMillisecondsSinceEpoch(lastSeenTs);

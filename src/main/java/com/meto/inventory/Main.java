@@ -17,77 +17,15 @@ public class Main extends Application {
         // Check for free OTA updates via Supabase
         com.meto.inventory.services.AutoUpdater.checkForUpdatesAsync();
 
+        // Verify stored persistent device token on startup
         com.meto.inventory.services.SupabaseService service = com.meto.inventory.services.SupabaseService.getInstance();
-        
-        // Restore last active userId from saved JSON session first if present
-        String savedToken = service.loadSession();
+        boolean hasValidToken = service.verifyStoredTokenOnStartup();
 
-        System.out.println("STARTUP: loaded token = " + (savedToken == null ? "null" : savedToken));
-
-        if (savedToken != null) {
-            // Show a splash or just attempt silent login
-            Thread loginThread = new Thread(() -> {
-                try {
-                    System.out.println("STARTUP: Thread started, attempting silent login...");
-                    boolean success = service.signInWithRefreshToken(savedToken);
-                    System.out.println("STARTUP: Silent login result: " + success);
-                    if (success) {
-                        javafx.application.Platform.runLater(() -> {
-                            try {
-                                System.out.println("STARTUP: Loading main view...");
-                                loadMainView(primaryStage);
-                                System.out.println("STARTUP: Triggering sync...");
-                                triggerSync();
-                            } catch (Exception e) {
-                                System.err.println("STARTUP ERROR: Failed to load main view: " + e.getMessage());
-                                e.printStackTrace();
-                                showLoginView(primaryStage);
-                            }
-                        });
-                        return;
-                    } else {
-                        System.out.println("STARTUP: Silent login failed or server unreachable. Checking for cached session...");
-                        String localUid = service.getCurrentUserId();
-                        if (localUid != null && !localUid.isEmpty()) {
-                            System.out.println("STARTUP: Preserving offline session for user: " + localUid);
-                            javafx.application.Platform.runLater(() -> {
-                                try {
-                                    loadMainView(primaryStage);
-                                    triggerOfflineMode(localUid);
-                                } catch (Exception ex) {
-                                    ex.printStackTrace();
-                                    showLoginView(primaryStage);
-                                }
-                            });
-                        } else {
-                            javafx.application.Platform.runLater(() -> showLoginView(primaryStage));
-                        }
-                    }
-                } catch (Exception e) {
-                    // Network connection failed (IOException/ConnectException/etc.) -> OFFLINE MODE
-                    System.err.println("Offline mode active: Network error during auto-login: " + e.getMessage());
-                    
-                    String localUid = service.getCurrentUserId();
-                    if (localUid != null) {
-                        // User has an active local session! Let them in offline!
-                        javafx.application.Platform.runLater(() -> {
-                            try {
-                                loadMainView(primaryStage);
-                                // Trigger offline local DB setup
-                                triggerOfflineMode(localUid);
-                            } catch (Exception ex) {
-                                ex.printStackTrace();
-                                showLoginView(primaryStage);
-                            }
-                        });
-                    } else {
-                        // No cached UID, must authenticate online
-                        javafx.application.Platform.runLater(() -> showLoginView(primaryStage));
-                    }
-                }
-            });
-            loginThread.setDaemon(true);
-            loginThread.start();
+        if (hasValidToken) {
+            String currentUid = service.getCurrentUserId();
+            com.meto.inventory.DataManager.getInstance().switchDatabaseOnly(currentUid);
+            loadMainView(primaryStage);
+            triggerSync();
         } else {
             showLoginView(primaryStage);
         }
@@ -229,25 +167,23 @@ public class Main extends Application {
     private void showBackupDisabledAlert(String email) {
         javafx.scene.control.Alert alert = new javafx.scene.control.Alert(
                 javafx.scene.control.Alert.AlertType.INFORMATION);
-        alert.setTitle("Backup Disabled");
+        alert.setTitle("Backup Status");
         alert.setHeaderText("Monthly Backup Disabled");
 
         javafx.scene.text.TextFlow textFlow = new javafx.scene.text.TextFlow();
         javafx.scene.text.Text t1 = new javafx.scene.text.Text(
-                "Cloud backup is turned off. Your data is safe locally.\n\nTo activate your cloud subscription, send 15,000 UGX to MTN Number:\n");
-        javafx.scene.text.Text t2 = new javafx.scene.text.Text("076 031 5703\n");
-        t2.setStyle("-fx-font-weight: bold; -fx-font-size: 14px;");
-        javafx.scene.text.Text t3 = new javafx.scene.text.Text("Name: Oworinawe Prince Beckham\n\n");
-        javafx.scene.text.Text t4 = new javafx.scene.text.Text(
-                "Then WhatsApp your receipt footprint and account email ");
-        javafx.scene.text.Text t5 = new javafx.scene.text.Text(email);
+                "Cloud backup is currently inactive. Your data remains stored safely on your local computer.\n\n");
+        javafx.scene.text.Text t2 = new javafx.scene.text.Text("Customer Support Helpline:\n");
+        t2.setStyle("-fx-font-weight: bold;");
+        javafx.scene.text.Text t3 = new javafx.scene.text.Text("076 031 5703\n\n");
+        t3.setStyle("-fx-font-weight: bold; -fx-font-size: 16px;");
+        javafx.scene.text.Text t4 = new javafx.scene.text.Text("Account Email: ");
+        javafx.scene.text.Text t5 = new javafx.scene.text.Text(email + "\n\n");
         t5.setStyle("-fx-font-weight: bold;");
-        javafx.scene.text.Text t6 = new javafx.scene.text.Text(" to ");
-        javafx.scene.text.Text t7 = new javafx.scene.text.Text("076 031 5703");
-        t7.setStyle("-fx-font-weight: bold;");
-        javafx.scene.text.Text t8 = new javafx.scene.text.Text(" for immediate cloud activation.");
+        javafx.scene.text.Text t6 = new javafx.scene.text.Text(
+                "Contact our customer support helpline for assistance with cloud backup activation or inquiries.");
 
-        textFlow.getChildren().addAll(t1, t2, t3, t4, t5, t6, t7, t8);
+        textFlow.getChildren().addAll(t1, t2, t3, t4, t5, t6);
         alert.getDialogPane().setContent(textFlow);
 
         javafx.scene.control.ButtonType closeBtn = new javafx.scene.control.ButtonType("Close",
