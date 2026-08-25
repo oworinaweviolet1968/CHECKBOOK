@@ -202,13 +202,16 @@ public class SupabaseService {
                         .build();
 
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                System.out.println("[RPC TRACE] POST /rpc/rpc_lookup_user_by_checkbook_id (" + idToTry + ") -> Status: " + response.statusCode() + ", Body: " + response.body());
                 if (response.statusCode() == 200) {
                     JsonObject res = JsonParser.parseString(response.body()).getAsJsonObject();
                     if (res.has("found") && res.get("found").getAsBoolean() && res.has("email") && !res.get("email").isJsonNull()) {
                         return res.get("email").getAsString();
                     }
                 }
-            } catch (Exception ignore) {}
+            } catch (Exception e) {
+                System.out.println("[RPC ERROR] Exception in RPC lookup: " + e.getMessage());
+            }
 
             // 2. Query public.users directly
             try {
@@ -220,6 +223,7 @@ public class SupabaseService {
                         .build();
 
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+                System.out.println("[REST TRACE] GET /users?checkbook_id=eq." + idToTry + " -> Status: " + response.statusCode() + ", Body: " + response.body());
                 if (response.statusCode() == 200) {
                     JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
                     if (arr.size() > 0) {
@@ -229,7 +233,9 @@ public class SupabaseService {
                         }
                     }
                 }
-            } catch (Exception ignore) {}
+            } catch (Exception e) {
+                System.out.println("[REST ERROR] Exception in users query: " + e.getMessage());
+            }
 
             // 3. user_profiles fallback
             try {
@@ -241,6 +247,7 @@ public class SupabaseService {
                         .build();
 
                 HttpResponse<String> queryResponse = client.send(queryRequest, HttpResponse.BodyHandlers.ofString());
+                System.out.println("[REST TRACE] GET /user_profiles?checkbook_id=eq." + idToTry + " -> Status: " + queryResponse.statusCode() + ", Body: " + queryResponse.body());
                 if (queryResponse.statusCode() == 200) {
                     JsonArray arr = JsonParser.parseString(queryResponse.body()).getAsJsonArray();
                     if (arr.size() > 0) {
@@ -250,7 +257,9 @@ public class SupabaseService {
                         }
                     }
                 }
-            } catch (Exception ignore) {}
+            } catch (Exception e) {
+                System.out.println("[REST ERROR] Exception in user_profiles query: " + e.getMessage());
+            }
         }
 
         return null;
@@ -337,7 +346,27 @@ public class SupabaseService {
         }
 
         String email = lookupEmailByCheckbookId(formattedId);
-        String targetEmail = (email != null && !email.isEmpty()) ? email : formattedId;
+        if (email == null || email.trim().isEmpty()) {
+            // Also try raw input
+            email = lookupEmailByCheckbookId(checkbookId.trim());
+        }
+
+        if (email == null || email.trim().isEmpty()) {
+            JsonObject err = new JsonObject();
+            err.addProperty("success", false);
+            err.addProperty("message", "Checkbook ID not found. Please verify your Checkbook ID under Mobile App > Settings > Checkbook ID.");
+            return err;
+        }
+
+        String targetEmail = email.trim();
+        String targetUserId = lookupUserIdByCheckbookId(formattedId);
+        if (targetUserId == null || targetUserId.trim().isEmpty()) {
+            targetUserId = lookupUserIdByCheckbookId(checkbookId.trim());
+        }
+
+        if (targetUserId != null && !targetUserId.trim().isEmpty()) {
+            this.currentUserId = targetUserId.trim();
+        }
 
         // Purge existing pending login requests for this target identifier first
         try {
@@ -374,6 +403,9 @@ public class SupabaseService {
                 ret.addProperty("success", true);
                 ret.addProperty("session_id", sessionId);
                 ret.addProperty("email", targetEmail);
+                if (targetUserId != null && !targetUserId.isEmpty()) {
+                    ret.addProperty("user_id", targetUserId);
+                }
                 return ret;
             }
         }

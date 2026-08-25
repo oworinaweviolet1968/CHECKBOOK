@@ -60,6 +60,10 @@ public class DatabaseHelper {
     }
 
     public void setDatabaseName(String localFileName) {
+        if (localFileName == null || localFileName.trim().isEmpty() || localFileName.endsWith("inventory_.db") || localFileName.contains("unknown_user")) {
+            System.out.println("GUARD: Ignoring request to set unauthenticated/empty database name: " + localFileName);
+            return;
+        }
         try {
             if (connection != null && !connection.isClosed()) {
                 connection.close();

@@ -76,14 +76,14 @@ jobs:
           Get-ChildItem -Path output -Filter *.msi | Rename-Item -NewName "CHECKBOOK.IMS.msi"
 
 
-      # 7. Release MSI to beckhamz777/cb repository (or current repo if CROSS_REPO_PAT is not set)
+      # 7. Release MSI to GitHub repository
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          repository: ${{ secrets.CROSS_REPO_PAT != '' && 'beckhamz777/cb' || github.repository }}
-          token: ${{ secrets.CROSS_REPO_PAT || secrets.GITHUB_TOKEN }}
-          tag_name: v2.2
-          name: Release v2.2
+          repository: ${{ github.repository }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v2.2.{0}', github.run_number) }}
+          name: ${{ github.ref_type == 'tag' && github.ref_name || format('Release v2.2.{0}', github.run_number) }}
           draft: false
           prerelease: false
           files: |
@@ -94,10 +94,12 @@ jobs:
       - name: Register Release in Supabase
         shell: powershell
         run: |
+          $tag = if ('${{ github.ref_type }}' -eq 'tag') { '${{ github.ref_name }}' } else { "v2.2.${{ github.run_number }}" }
+          $repo = '${{ github.repository }}'
           $body = @{
               platform = "desktop"
               version = "2.2.${{ github.run_number }}"
-              download_url = "https://github.com/beckhamz777/cb/releases/download/v2.2/CHECKBOOK.IMS.msi"
+              download_url = "https://github.com/$repo/releases/download/$tag/CHECKBOOK.IMS.msi"
               mandatory = $false
               release_notes = "Automated Windows Desktop Build 2.2.${{ github.run_number }}"
           } | ConvertTo-Json
@@ -111,4 +113,5 @@ jobs:
                 "Prefer" = "return=minimal"
             } `
             -Body $body
+
 

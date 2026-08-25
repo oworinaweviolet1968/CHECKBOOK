@@ -39,6 +39,10 @@ public class DataManager {
     }
 
     public void switchDatabaseOnly(String userId) {
+        if (userId == null || userId.trim().isEmpty() || "unknown_user".equalsIgnoreCase(userId.trim())) {
+            System.out.println("GUARD: Refusing to switch database to empty/unauthenticated userId.");
+            return;
+        }
         // Sanitize userId just in case (e.g. email or uuid)
         String cleanId = userId.replaceAll("[^a-zA-Z0-9]", "_");
         String dbName = "inventory_" + cleanId + ".db";

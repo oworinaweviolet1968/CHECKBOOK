@@ -256,11 +256,11 @@ public class LoginController {
                 // This must happen for ALL users, regardless of backup status.
                 try {
                     String currentUid = SupabaseService.getInstance().getCurrentUserId();
-                    if (currentUid == null || currentUid.isEmpty())
-                        currentUid = "unknown_user";
-
-                    // PERFORM THE SWITCH
-                    com.meto.inventory.DataManager.getInstance().switchDatabaseOnly(currentUid); // This sets the name
+                    if (currentUid != null && !currentUid.trim().isEmpty() && !"unknown_user".equalsIgnoreCase(currentUid.trim())) {
+                        com.meto.inventory.DataManager.getInstance().switchDatabaseOnly(currentUid); // This sets the name
+                    } else {
+                        System.out.println("GUARD: startSyncProcess skipping database switch because currentUid is unauthenticated.");
+                    }
                 } catch (Exception e) {
                     e.printStackTrace();
                     System.out.println("Critical Error switching database. Falling back to default.");

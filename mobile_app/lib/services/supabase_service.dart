@@ -503,29 +503,36 @@ class SupasService {
           } catch (_) {}
         }
 
-        // If checkbookId is still unassigned or contains literal asterisks, generate dynamic 6-digit ID
-        if (checkbookId == null || checkbookId.isEmpty || checkbookId.contains('*')) {
-          checkbookId = generateUniqueCheckbookId();
-          try {
-            await client.from('users').upsert({
-              'id': userId,
-              'checkbook_id': checkbookId,
-            }, onConflict: 'id');
-          } catch (e) {
-            try {
-              await client.from('user_profiles').upsert({
-                'user_id': userId,
-                'checkbook_id': checkbookId,
-                'updated_at': DateTime.now().toIso8601String(),
-              }, onConflict: 'user_id');
-            } catch (_) {}
-          }
+        // Ensure checkbook_id is synced across user_profiles, users, and auth metadata
+        try {
+          await client.from('user_profiles').upsert({
+            'user_id': userId,
+            'email': client.auth.currentUser?.email?.toLowerCase(),
+            'checkbook_id': checkbookId,
+            'updated_at': DateTime.now().toIso8601String(),
+          }, onConflict: 'user_id');
+          debugPrint('Successfully upserted checkbook_id to user_profiles table: $checkbookId');
+        } catch (e) {
+          debugPrint('Error upserting checkbook_id to user_profiles table: $e');
         }
 
-        // Ensure checkbook_id is synced to Supabase Auth metadata
+        try {
+          await client.from('users').upsert({
+            'id': userId,
+            'checkbook_id': checkbookId,
+          }, onConflict: 'id');
+        } catch (e) {
+          debugPrint('Error upserting checkbook_id to users table: $e');
+        }
+
         try {
           await client.auth.updateUser(UserAttributes(data: {'checkbook_id': checkbookId}));
-        } catch (_) {}
+          debugPrint('Successfully updated auth user metadata checkbook_id: $checkbookId');
+        } catch (e) {
+          debugPrint('Error updating auth user metadata checkbook_id: $e');
+        }
+
+        debugPrint('Active Mobile Checkbook ID Synced: $checkbookId');
 
         meta['checkbook_id'] = checkbookId;
         userMetadata.value = meta;

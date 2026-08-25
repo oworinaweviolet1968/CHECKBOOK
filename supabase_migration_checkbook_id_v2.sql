@@ -139,48 +139,56 @@ CREATE OR REPLACE FUNCTION public.rpc_lookup_user_by_checkbook_id(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, auth
 AS $$
 DECLARE
     v_formatted_id TEXT;
-    v_profile public.user_profiles%ROWTYPE;
+    v_raw_digits TEXT;
+    v_profile RECORD;
 BEGIN
     IF p_checkbook_id IS NULL OR TRIM(p_checkbook_id) = '' THEN
         RETURN jsonb_build_object('found', false, 'error', 'INVALID_INPUT', 'message', 'Please enter a valid Checkbook ID.');
     END IF;
 
-    -- Format input: uppercase and add 'CK-' prefix if missing
+    -- Format input: uppercase and generate both prefixed and raw digit variations
     v_formatted_id := UPPER(TRIM(p_checkbook_id));
     IF NOT (v_formatted_id LIKE 'CK-%') THEN
         v_formatted_id := 'CK-' || v_formatted_id;
     END IF;
+    v_raw_digits := REPLACE(v_formatted_id, 'CK-', '');
 
-    SELECT * INTO v_profile 
+    -- 1. Try public.user_profiles
+    SELECT user_id, email INTO v_profile 
     FROM public.user_profiles 
-    WHERE UPPER(checkbook_id) = v_formatted_id;
+    WHERE UPPER(checkbook_id) = v_formatted_id
+       OR UPPER(checkbook_id) = v_raw_digits
+       OR checkbook_id LIKE '%' || v_raw_digits || '%';
 
-    IF NOT FOUND THEN
-        -- Fallback: check auth.users metadata directly
-        SELECT u.id, u.email INTO v_profile.user_id, v_profile.email
-        FROM auth.users u
-        WHERE UPPER(u.raw_user_meta_data->>'checkbook_id') = v_formatted_id;
-        
-        IF NOT FOUND THEN
-            RETURN jsonb_build_object(
-                'found', false, 
-                'error', 'CHECKBOOK_ID_NOT_FOUND', 
-                'message', 'Checkbook ID not found. Please check your Mobile App under Settings > Checkbook ID.'
-            );
-        END IF;
+    -- 2. Fallback: check auth.users metadata directly
+    IF v_profile.email IS NULL THEN
+        SELECT id AS user_id, email INTO v_profile
+        FROM auth.users
+        WHERE UPPER(raw_user_meta_data->>'checkbook_id') = v_formatted_id
+           OR UPPER(raw_user_meta_data->>'checkbook_id') = v_raw_digits
+           OR (raw_user_meta_data->>'checkbook_id') LIKE '%' || v_raw_digits || '%';
     END IF;
 
-    RETURN jsonb_build_object(
-        'found', true,
-        'checkbook_id', v_formatted_id,
-        'user_id', v_profile.user_id,
-        'email', v_profile.email
-    );
+    IF v_profile.email IS NOT NULL THEN
+        RETURN jsonb_build_object(
+            'found', true,
+            'checkbook_id', v_formatted_id,
+            'user_id', v_profile.user_id,
+            'email', LOWER(v_profile.email)
+        );
+    ELSE
+        RETURN jsonb_build_object(
+            'found', false, 
+            'error', 'CHECKBOOK_ID_NOT_FOUND', 
+            'message', 'Checkbook ID not found. Please check your Mobile App under Settings > Checkbook ID.'
+        );
+    END IF;
 END;
 $$;
 
 -- Grant permissions for public API access
-GRANT EXECUTE ON FUNCTION public.rpc_lookup_user_by_checkbook_id TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION public.rpc_lookup_user_by_checkbook_id(TEXT) TO anon, authenticated, service_role;

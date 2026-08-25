@@ -75,8 +75,8 @@ jobs:
         with:
           repository: ${{ github.repository }}
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: v2.2
-          name: Release v2.2
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v2.2.{0}', github.run_number) }}
+          name: ${{ github.ref_type == 'tag' && github.ref_name || format('Release v2.2.{0}', github.run_number) }}
           draft: false
           prerelease: false
           files: |
@@ -86,16 +86,18 @@ jobs:
       # 8. Register Release in Supabase app_releases table
       - name: Register Release in Supabase
         run: |
+          TAG_NAME="${{ github.ref_type == 'tag' && github.ref_name || format('v2.2.{0}', github.run_number) }}"
           curl -X POST "https://jhucvkqwenhyiveqsmtf.supabase.co/rest/v1/app_releases" \
             -H "apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpodWN2a3F3ZW5oeWl2ZXFzbXRmIiwicm9sZCI6ImFub24iLCJpYXQiOjE3Njk5NzI5MjIsImV4cCI6MjA4NTU0ODkyMn0.yXju47Ly5ak8Gm4D0OI42O89qTsc0nYtkmAb7dGFCC8" \
             -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpodWN2a3F3ZW5oeWl2ZXFzbXRmIiwicm9sZCI6ImFub24iLCJpYXQiOjE3Njk5NzI5MjIsImV4cCI6MjA4NTU0ODkyMn0.yXju47Ly5ak8Gm4D0OI42O89qTsc0nYtkmAb7dGFCC8" \
             -H "Content-Type: application/json" \
             -H "Prefer: return=minimal" \
-            -d '{
-              "platform": "android",
-              "version": "2.2.0+${{ github.run_number }}",
-              "download_url": "https://github.com/${{ github.repository }}/releases/download/v2.2/CheckBook.apk",
-              "mandatory": false,
-              "release_notes": "Automated Android Build 2.2.0+${{ github.run_number }}"
-            }'
+            -d "{
+              \"platform\": \"android\",
+              \"version\": \"2.2.0+${{ github.run_number }}\",
+              \"download_url\": \"https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/CheckBook.apk\",
+              \"mandatory\": false,
+              \"release_notes\": \"Automated Android Build 2.2.0+${{ github.run_number }}\"
+            }"
+
 
