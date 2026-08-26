@@ -650,24 +650,42 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
     return _formatter.format(val);
   }
 
-  // Compact Multiplier Packaging Badge Widget (e.g. [ 📦 box*12 ], [ 📦 half doz ], [ 📦 1 pc ])
+  // Compact Multiplier Packaging Badge Widget (e.g. [ 8 • 📦 box*12 ], [ 8 • 📦 pcs ])
   Widget _buildUnitChipWidget(String qtyVal, String unitLabel) {
-    String text;
+    String formattedQty = '';
+    if (qtyVal.trim().isNotEmpty) {
+      double? val = double.tryParse(qtyVal.trim());
+      if (val != null) {
+        if (val == val.roundToDouble()) {
+          formattedQty = val.toInt().toString();
+        } else {
+          String s = val.toString();
+          if (s.contains('.')) {
+            s = s.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
+          }
+          formattedQty = s;
+        }
+      } else {
+        formattedQty = qtyVal.trim();
+      }
+    }
+
+    String unitText;
     String u = unitLabel.toLowerCase().replaceAll(' ', '');
 
     if (u.isEmpty || u == 'pcs' || u == 'pc') {
-      text = (qtyVal == '1' || qtyVal.isEmpty) ? '1 pc' : '$qtyVal pcs';
+      unitText = (formattedQty == '1') ? 'pc' : 'pcs';
     } else if (u.contains('halfdoz')) {
-      text = 'half doz';
+      unitText = 'half doz';
     } else if (u.contains('box*')) {
       final match = RegExp(r'box\*\d+').firstMatch(u);
       if (match != null) {
-        text = match.group(0)!;
+        unitText = match.group(0)!;
       } else {
-        text = unitLabel.toLowerCase();
+        unitText = unitLabel.toLowerCase();
       }
     } else {
-      text = unitLabel.toLowerCase();
+      unitText = unitLabel.toLowerCase();
     }
 
     return Container(
@@ -680,11 +698,21 @@ class _HistoryScreenState extends State<HistoryScreen> with SingleTickerProvider
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (formattedQty.isNotEmpty) ...[
+            Text(
+              '$formattedQty • ',
+              style: GoogleFonts.outfit(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: const Color(0xFF00A389),
+              ),
+            ),
+          ],
           const Icon(Icons.inventory_2_outlined, size: 13, color: Color(0xFF00A389)),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
-              text,
+              unitText,
               style: GoogleFonts.outfit(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
