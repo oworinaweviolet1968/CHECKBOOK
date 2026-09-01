@@ -22,7 +22,7 @@ public class WriteQueueManager {
                 "sync_id TEXT NOT NULL," +
                 "parent_sync_id TEXT," +
                 "payload TEXT NOT NULL," + // JSON payload
-                "status TEXT DEFAULT 'PENDING'," + // 'PENDING', 'PROCESSING', 'FAILED'
+                "status TEXT DEFAULT 'PENDING'," + // 'PENDING', 'PROCESSING', 'FAILED', 'DEAD_LETTER'
                 "retry_count INTEGER DEFAULT 0," +
                 "last_error TEXT," +
                 "created_at TEXT NOT NULL" +
@@ -67,7 +67,7 @@ public class WriteQueueManager {
         List<Map<String, String>> batch = new ArrayList<>();
         String sql = "SELECT seq_id, mutation_id, device_id, user_id, table_name, op_type, sync_id, parent_sync_id, payload, retry_count " +
                 "FROM sync_write_queue " +
-                "WHERE status = 'PENDING' " +
+                "WHERE status = 'PENDING' OR status = 'FAILED' " +
                 "ORDER BY seq_id ASC " +
                 "LIMIT ?";
 
@@ -111,11 +111,77 @@ public class WriteQueueManager {
 
     public static void markOperationFailed(Connection conn, String mutationId, String error) throws SQLException {
         String sql = "UPDATE sync_write_queue " +
-                "SET retry_count = retry_count + 1, last_error = ?, status = 'PENDING' " +
+                "SET retry_count = retry_count + 1, last_error = ?, status = 'FAILED' " +
                 "WHERE mutation_id = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setString(1, error);
             stmt.setString(2, mutationId);
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Move an operation to the dead-letter queue after exhausting retries.
+     * Dead-letter operations are preserved for debugging but no longer processed.
+     */
+    public static void markDeadLetter(Connection conn, String mutationId, String reason) throws SQLException {
+        String sql = "UPDATE sync_write_queue " +
+                "SET status = 'DEAD_LETTER', last_error = ? " +
+                "WHERE mutation_id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, reason);
+            stmt.setString(2, mutationId);
+            stmt.executeUpdate();
+        }
+    }
+
+    /**
+     * Fetch all dead-letter operations for admin review.
+     */
+    public static List<Map<String, String>> fetchDeadLetterQueue(Connection conn) throws SQLException {
+        List<Map<String, String>> items = new ArrayList<>();
+        String sql = "SELECT seq_id, mutation_id, device_id, user_id, table_name, op_type, sync_id, payload, retry_count, last_error, created_at " +
+                "FROM sync_write_queue WHERE status = 'DEAD_LETTER' ORDER BY seq_id DESC";
+        try (PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                Map<String, String> row = new HashMap<>();
+                row.put("seq_id", String.valueOf(rs.getInt("seq_id")));
+                row.put("mutation_id", rs.getString("mutation_id"));
+                row.put("device_id", rs.getString("device_id"));
+                row.put("user_id", rs.getString("user_id"));
+                row.put("table_name", rs.getString("table_name"));
+                row.put("op_type", rs.getString("op_type"));
+                row.put("sync_id", rs.getString("sync_id"));
+                row.put("payload", rs.getString("payload"));
+                row.put("retry_count", String.valueOf(rs.getInt("retry_count")));
+                row.put("last_error", rs.getString("last_error"));
+                row.put("created_at", rs.getString("created_at"));
+                items.add(row);
+            }
+        }
+        return items;
+    }
+
+    /**
+     * Count dead-letter operations for status display.
+     */
+    public static int getDeadLetterCount(Connection conn) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM sync_write_queue WHERE status = 'DEAD_LETTER'";
+        try (PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            if (rs.next()) return rs.getInt(1);
+        }
+        return 0;
+    }
+
+    /**
+     * Retry a dead-letter operation by resetting its status to PENDING.
+     */
+    public static void retryDeadLetter(Connection conn, String mutationId) throws SQLException {
+        String sql = "UPDATE sync_write_queue SET status = 'PENDING', retry_count = 0, last_error = NULL WHERE mutation_id = ? AND status = 'DEAD_LETTER'";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setString(1, mutationId);
             stmt.executeUpdate();
         }
     }

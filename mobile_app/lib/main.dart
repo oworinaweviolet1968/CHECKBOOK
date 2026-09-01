@@ -63,7 +63,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 // Credentials extracted from user's .env file
 const supabaseUrl = 'https://jhucvkqwenhyiveqsmtf.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpodWN2a3F3ZW5oeWl2ZXFzbXRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NzI5MjIsImV4cCI6MjA4NTU0ODkyMn0.yXju47Ly5ak8Gm4D0OI42O89qTsc0nYtkmAb7dGFCC8';
+const supabaseKey = 'sb_publishable_UrI33FTSf-D4iuMReiqK5g_v7qc1l_-';
 
 void main() {
   runZonedGuarded(() async {

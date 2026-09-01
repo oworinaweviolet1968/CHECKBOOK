@@ -69,6 +69,8 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
     )..repeat();
     SupasService.instance.syncStatus.addListener(_onSyncStatusChanged);
     _loadDebtData();
+    SupasService.instance.refreshUserMetadata();
+    SupasService.instance.checkDesktopPresence();
   }
 
   Future<void> _loadDebtData() async {
@@ -159,7 +161,7 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
 
   String _formatTimestamp(int? timestamp) {
     if (timestamp == null || timestamp == 0) return 'Never';
-    final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
+    final date = DateTime.fromMillisecondsSinceEpoch(timestamp, isUtc: true).toLocal();
     return DateFormat('dd-MMM-yyyy HH:mm').format(date);
   }
 
@@ -333,29 +335,33 @@ class _AccountScreenState extends State<AccountScreen> with SingleTickerProvider
               },
             ),
             const SizedBox(height: 12),
-            ValueListenableBuilder<DesktopStatus>(
-              valueListenable: SupasService.instance.desktopStatus,
-              builder: (context, status, child) {
-                int? safeParseInt(dynamic val) {
-                  if (val == null) return null;
-                  if (val is int) return val;
-                  if (val is num) return val.toInt();
-                  if (val is String) return int.tryParse(val);
-                  return null;
-                }
-                final meta = SupasService.instance.userMetadata.value;
-                final lastSeenTs = safeParseInt(meta?['desktop_last_seen']);
-                final subtitleText = status == DesktopStatus.online
-                    ? 'Currently Online'
-                    : _formatTimestamp(lastSeenTs);
-                final color = status == DesktopStatus.online ? AppColors.primaryGreen : Colors.grey;
-                return _buildInfoCard(
-                  title: 'DESKTOP LAST ONLINE',
-                  subtitle: subtitleText,
-                  icon: status == DesktopStatus.online ? Icons.desktop_windows_rounded : Icons.desktop_access_disabled_rounded,
-                  iconColor: color,
-                  onTap: () async {
-                    await SupasService.instance.checkDesktopPresence();
+            ValueListenableBuilder<Map<String, dynamic>?>(
+              valueListenable: SupasService.instance.userMetadata,
+              builder: (context, meta, child) {
+                return ValueListenableBuilder<DesktopStatus>(
+                  valueListenable: SupasService.instance.desktopStatus,
+                  builder: (context, status, child) {
+                    int? safeParseInt(dynamic val) {
+                      if (val == null) return null;
+                      if (val is int) return val;
+                      if (val is num) return val.toInt();
+                      if (val is String) return int.tryParse(val);
+                      return null;
+                    }
+                    final lastSeenTs = safeParseInt(meta?['desktop_last_seen']);
+                    final subtitleText = status == DesktopStatus.online
+                        ? 'Currently Online'
+                        : _formatTimestamp(lastSeenTs);
+                    final color = status == DesktopStatus.online ? AppColors.primaryGreen : Colors.grey;
+                    return _buildInfoCard(
+                      title: 'DESKTOP LAST ONLINE',
+                      subtitle: subtitleText,
+                      icon: status == DesktopStatus.online ? Icons.desktop_windows_rounded : Icons.desktop_access_disabled_rounded,
+                      iconColor: color,
+                      onTap: () async {
+                        await SupasService.instance.checkDesktopPresence();
+                      },
+                    );
                   },
                 );
               },

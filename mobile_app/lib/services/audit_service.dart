@@ -128,7 +128,11 @@ class AuditService {
         refresh();
       }
     } catch (e) {
-      debugPrint('AuditService: Cloud push deferred for offline log $logId: $e');
+      if (e.toString().contains('PGRST205') || e.toString().contains('PGRST204')) {
+        debugPrint('AuditService: public.audit_logs table not in Supabase schema (audit log preserved locally).');
+      } else {
+        debugPrint('AuditService: Cloud push deferred for offline log $logId: $e');
+      }
     }
 
     return auditItem;
@@ -170,7 +174,11 @@ class AuditService {
       await DatabaseHelper.instance.clearDirtyAuditLogs(syncedIds);
       await refresh();
     } catch (e) {
-      debugPrint('AuditService syncPendingAuditLogs error: $e');
+      if (e.toString().contains('PGRST205') || e.toString().contains('PGRST204')) {
+        debugPrint('AuditService: public.audit_logs table not in Supabase schema (audit logs preserved locally).');
+      } else {
+        debugPrint('AuditService syncPendingAuditLogs error: $e');
+      }
     }
   }
 

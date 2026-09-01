@@ -180,14 +180,30 @@ public class DataManager {
                             lastCloudSyncTime = now;
                             service.updateHeartbeat();
 
+                            // Use TokenManager for pre-emptive refresh instead of manual session restore
+                            com.meto.inventory.powersync.TokenManager tokenMgr =
+                                    com.meto.inventory.powersync.TokenManager.getInstance();
+
                             if (service.isSyncFailed()) {
-                                System.out.println("AutoSync: Connection restored. Retrying upload...");
-                                String savedToken = service.loadSession();
-                                if (savedToken != null) {
-                                    try { service.signInWithRefreshToken(savedToken); } 
-                                    catch (Exception ex) {}
+                                System.out.println("AutoSync: Connection restored. Checking token validity...");
+                                if (!tokenMgr.ensureTokenFresh()) {
+                                    System.err.println("AutoSync: Token refresh failed (circuit breaker may be open). Skipping sync cycle.");
+                                    if (tokenMgr.isCircuitBreakerOpen()) {
+                                        service.notifyStatus("Cloud: Auth Error (retrying in 5 min)");
+                                        javafx.application.Platform.runLater(() -> {
+                                            com.meto.inventory.utils.ToastService.showWarning(
+                                                "Authentication Issue",
+                                                "Unable to refresh session. Will retry automatically. If this persists, please sign out and sign in again."
+                                            );
+                                        });
+                                    }
+                                    return; // Skip this sync cycle
                                 }
+                            } else {
+                                // Pre-emptive refresh even on non-failed syncs
+                                tokenMgr.ensureTokenFresh();
                             }
+
                             // Always push local dirty changes first, then pull updates from cloud
                             service.uploadDatabase(getCurrentDbName(), true);
                             boolean downloaded = service.syncOnLogin(getCurrentDbName(), true, false);

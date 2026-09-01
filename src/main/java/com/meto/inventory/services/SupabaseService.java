@@ -31,7 +31,7 @@ public class SupabaseService {
 
     // private static final Dotenv dotenv = Dotenv.load();
     private static final String SUPABASE_URL = "https://jhucvkqwenhyiveqsmtf.supabase.co";
-    private static final String SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpodWN2a3F3ZW5oeWl2ZXFzbXRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5NzI5MjIsImV4cCI6MjA4NTU0ODkyMn0.yXju47Ly5ak8Gm4D0OI42O89qTsc0nYtkmAb7dGFCC8";
+    private static final String SUPABASE_KEY = "sb_publishable_UrI33FTSf-D4iuMReiqK5g_v7qc1l_-";
 
     // Derived Endpoints
     private static final String AUTH_URL = SUPABASE_URL + "/auth/v1";
@@ -206,6 +206,9 @@ public class SupabaseService {
                 if (response.statusCode() == 200) {
                     JsonObject res = JsonParser.parseString(response.body()).getAsJsonObject();
                     if (res.has("found") && res.get("found").getAsBoolean() && res.has("email") && !res.get("email").isJsonNull()) {
+                        if (res.has("user_id") && !res.get("user_id").isJsonNull()) {
+                            this.currentUserId = res.get("user_id").getAsString();
+                        }
                         return res.get("email").getAsString();
                     }
                 }
@@ -216,7 +219,7 @@ public class SupabaseService {
             // 2. Query public.users directly
             try {
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(REST_URL + "/users?checkbook_id=eq." + idToTry + "&select=email"))
+                        .uri(URI.create(REST_URL + "/users?checkbook_id=eq." + idToTry + "&select=id,email"))
                         .header("apikey", SUPABASE_KEY)
                         .header("Authorization", "Bearer " + SUPABASE_KEY)
                         .GET()
@@ -228,6 +231,9 @@ public class SupabaseService {
                     JsonArray arr = JsonParser.parseString(response.body()).getAsJsonArray();
                     if (arr.size() > 0) {
                         JsonObject obj = arr.get(0).getAsJsonObject();
+                        if (obj.has("id") && !obj.get("id").isJsonNull()) {
+                            this.currentUserId = obj.get("id").getAsString();
+                        }
                         if (obj.has("email") && !obj.get("email").isJsonNull()) {
                             return obj.get("email").getAsString();
                         }
@@ -240,7 +246,7 @@ public class SupabaseService {
             // 3. user_profiles fallback
             try {
                 HttpRequest queryRequest = HttpRequest.newBuilder()
-                        .uri(URI.create(REST_URL + "/user_profiles?checkbook_id=eq." + idToTry + "&select=email"))
+                        .uri(URI.create(REST_URL + "/user_profiles?checkbook_id=eq." + idToTry + "&select=user_id,email"))
                         .header("apikey", SUPABASE_KEY)
                         .header("Authorization", "Bearer " + SUPABASE_KEY)
                         .GET()
@@ -252,6 +258,9 @@ public class SupabaseService {
                     JsonArray arr = JsonParser.parseString(queryResponse.body()).getAsJsonArray();
                     if (arr.size() > 0) {
                         JsonObject obj = arr.get(0).getAsJsonObject();
+                        if (obj.has("user_id") && !obj.get("user_id").isJsonNull()) {
+                            this.currentUserId = obj.get("user_id").getAsString();
+                        }
                         if (obj.has("email") && !obj.get("email").isJsonNull()) {
                             return obj.get("email").getAsString();
                         }
@@ -487,6 +496,17 @@ public class SupabaseService {
 
             if (savedUserId != null && !savedUserId.trim().isEmpty()) {
                 this.currentUserId = savedUserId.trim();
+            }
+            if (this.currentUserId == null || this.currentUserId.trim().isEmpty()) {
+                try {
+                    Path activeUserPath = Path.of(resolvePath("active_user.txt"));
+                    if (Files.exists(activeUserPath)) {
+                        String uid = Files.readString(activeUserPath).trim();
+                        if (!uid.isEmpty() && uid.length() > 10) {
+                            this.currentUserId = uid;
+                        }
+                    }
+                } catch (Exception ignore) {}
             }
             if (token != null && !token.trim().isEmpty()) {
                 this.currentRefreshToken = token.trim();
@@ -780,9 +800,10 @@ public class SupabaseService {
             return true;
         } else {
             System.err.println("signInWithRefreshToken failed: Status " + response.statusCode() + " - " + response.body());
-            String body = response.body().toLowerCase();
-            if (response.statusCode() == 400 && (body.contains("invalid_grant") || body.contains("invalid refresh token") || body.contains("refresh_token_not_found") || body.contains("already used"))) {
-                System.err.println("Refresh token explicitly invalid. Clearing local session.");
+            if (response.statusCode() == 400 || response.statusCode() == 401) {
+                System.err.println("Refresh token invalid. Clearing expired access token and session.");
+                this.currentAccessToken = null;
+                this.currentRefreshToken = null;
                 clearSession();
             }
             return false;
@@ -819,6 +840,10 @@ public class SupabaseService {
         this.currentRefreshToken = null;
         this.currentUserId = null;
         clearSession();
+        // Notify TokenManager to reset circuit breaker
+        try {
+            com.meto.inventory.powersync.TokenManager.getInstance().onTokenCleared();
+        } catch (Exception ignored) {}
     }
 
     public static class SessionConflictInfo {
@@ -840,7 +865,7 @@ public class SupabaseService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(SUPABASE_URL + "/rest/v1/user_sessions?user_id=eq." + targetUserId + "&select=*"))
                     .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Authorization", getValidBearerToken())
                     .GET()
                     .build();
 
@@ -893,7 +918,7 @@ public class SupabaseService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(SUPABASE_URL + "/rest/v1/user_sessions"))
                     .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Authorization", getValidBearerToken())
                     .header("Content-Type", "application/json")
                     .header("Prefer", "resolution=merge-duplicates")
                     .POST(HttpRequest.BodyPublishers.ofString(payload.toString()))
@@ -913,7 +938,7 @@ public class SupabaseService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(SUPABASE_URL + "/rest/v1/user_sessions?user_id=eq." + currentUserId + "&select=active_desktop_device_id"))
                     .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Authorization", getValidBearerToken())
                     .GET()
                     .build();
 
@@ -960,6 +985,10 @@ public class SupabaseService {
             this.currentUserId = null;
             this.currentAccessToken = null;
             this.currentRefreshToken = null;
+            // Notify TokenManager to reset state
+            try {
+                com.meto.inventory.powersync.TokenManager.getInstance().onTokenCleared();
+            } catch (Exception ignored) {}
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -1043,6 +1072,12 @@ public class SupabaseService {
         if (json.has("user")) {
             this.currentUserId = json.getAsJsonObject("user").get("id").getAsString();
         }
+        // Notify TokenManager of new token for pre-emptive refresh tracking
+        if (this.currentAccessToken != null) {
+            try {
+                com.meto.inventory.powersync.TokenManager.getInstance().onTokenAcquired(this.currentAccessToken);
+            } catch (Exception ignored) {}
+        }
     }
 
     private void handleAuthError(HttpResponse<String> response) throws IOException {
@@ -1110,7 +1145,7 @@ public class SupabaseService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(REST_URL + "/users"))
                     .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Authorization", getValidBearerToken())
                     .header("Content-Type", "application/json")
                     .header("Prefer", "resolution=ignore-duplicates") // CHANGED: ignore if exists
                     .POST(HttpRequest.BodyPublishers.ofString(row.toString()))
@@ -1214,18 +1249,32 @@ public class SupabaseService {
                 json.addProperty(k, (Number) v);
         });
 
-        // PATCH /rest/v1/users?id=eq.UID
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(REST_URL + "/users?id=eq." + currentUserId))
+        // 1. Primary: PATCH /rest/v1/user_profiles?user_id=eq.UID
+        HttpRequest req1 = HttpRequest.newBuilder()
+                .uri(URI.create(REST_URL + "/user_profiles?user_id=eq." + currentUserId))
                 .header("apikey", SUPABASE_KEY)
-                .header("Authorization", "Bearer " + currentAccessToken)
+                .header("Authorization", getValidBearerToken())
                 .header("Content-Type", "application/json")
                 .method("PATCH", HttpRequest.BodyPublishers.ofString(json.toString()))
                 .build();
 
-        HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() > 299) {
-            throw new IOException("Update failed: " + response.statusCode());
+        HttpResponse<String> res1 = client.send(req1, HttpResponse.BodyHandlers.ofString());
+        if (res1.statusCode() >= 200 && res1.statusCode() < 300) {
+            return;
+        }
+
+        // 2. Fallback: PATCH /rest/v1/users?id=eq.UID
+        HttpRequest req2 = HttpRequest.newBuilder()
+                .uri(URI.create(REST_URL + "/users?id=eq." + currentUserId))
+                .header("apikey", SUPABASE_KEY)
+                .header("Authorization", getValidBearerToken())
+                .header("Content-Type", "application/json")
+                .method("PATCH", HttpRequest.BodyPublishers.ofString(json.toString()))
+                .build();
+
+        HttpResponse<String> res2 = client.send(req2, HttpResponse.BodyHandlers.ofString());
+        if (res2.statusCode() > 299) {
+            System.err.println("updateUserFields failed on both tables: " + res2.statusCode() + " " + res2.body());
         }
     }
 
@@ -1234,24 +1283,82 @@ public class SupabaseService {
      * Called every 10s by the AutoSync thread. Does NOT hold the sync lock.
      */
     public void updateHeartbeat() {
-        if (currentUserId == null || currentAccessToken == null) return;
+        sendHeartbeatPing();
+    }
+
+    public String getValidBearerToken() {
+        if (currentAccessToken != null && currentAccessToken.startsWith("eyJ") && currentAccessToken.split("\\.").length == 3) {
+            return "Bearer " + currentAccessToken;
+        }
+        return "Bearer " + SUPABASE_KEY;
+    }
+
+    /**
+     * Sends heartbeat ping and returns true if HTTP 2xx, false otherwise (e.g. 401 or network drop).
+     * Updates desktop_last_seen on user_profiles (primary) and users (fallback).
+     */
+    public boolean sendHeartbeatPing() {
+        if (currentUserId == null) return false;
         try {
             long now = System.currentTimeMillis();
+            
+            // 1. Try SECURITY DEFINER RPC first (bypasses RLS)
+            JsonObject rpcPayload = new JsonObject();
+            rpcPayload.addProperty("p_user_id", currentUserId);
+            rpcPayload.addProperty("p_timestamp", now);
+
+            HttpRequest rpcReq = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/rpc/rpc_update_desktop_presence"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + SUPABASE_KEY)
+                    .header("Content-Type", "application/json")
+                    .timeout(java.time.Duration.ofSeconds(5))
+                    .POST(HttpRequest.BodyPublishers.ofString(rpcPayload.toString()))
+                    .build();
+
+            HttpResponse<String> rpcRes = client.send(rpcReq, HttpResponse.BodyHandlers.ofString());
+            System.out.println("[HEARTBEAT TRACE] POST /rpc/rpc_update_desktop_presence (" + currentUserId + ", " + now + ") -> Status: " + rpcRes.statusCode() + ", Body: " + rpcRes.body());
+            if (rpcRes.statusCode() >= 200 && rpcRes.statusCode() < 300) {
+                return true;
+            }
+
+            // 2. Direct PATCH fallback
             JsonObject json = new JsonObject();
             json.addProperty("desktop_last_seen", now);
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(REST_URL + "/users?id=eq." + currentUserId))
+                    .uri(URI.create(REST_URL + "/user_profiles?user_id=eq." + currentUserId))
                     .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Authorization", getValidBearerToken())
                     .header("Content-Type", "application/json")
                     .timeout(java.time.Duration.ofSeconds(5))
                     .method("PATCH", HttpRequest.BodyPublishers.ofString(json.toString()))
                     .build();
 
-            client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            return response.statusCode() >= 200 && response.statusCode() < 300;
         } catch (Exception e) {
-            // Silent — heartbeat is best-effort
+            return false;
+        }
+    }
+
+    /**
+     * Lightweight API availability verification (HEAD request to /stock?limit=1).
+     */
+    public boolean verifyAPIAvailability() {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/stock?limit=1"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", getValidBearerToken())
+                    .timeout(java.time.Duration.ofSeconds(4))
+                    .method("HEAD", HttpRequest.BodyPublishers.noBody())
+                    .build();
+
+            HttpResponse<Void> response = client.send(request, HttpResponse.BodyHandlers.discarding());
+            return response.statusCode() == 200 || response.statusCode() == 206;
+        } catch (Exception e) {
+            return false;
         }
     }
 
@@ -1284,12 +1391,24 @@ public class SupabaseService {
             return pushPendingChangesInternal(db, isSilent);
         } catch (IOException e) {
             if (e.getMessage() != null && e.getMessage().contains("401")) {
-                System.out.println("SYNC: Token expired (401), attempting to refresh session in background...");
+                System.out.println("SYNC: Token expired (401), attempting to refresh session and retry...");
+                boolean refreshed = false;
                 try {
                     if (currentRefreshToken != null) {
-                        signInWithRefreshToken(currentRefreshToken);
+                        refreshed = signInWithRefreshToken(currentRefreshToken);
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception refreshEx) {
+                    System.err.println("SYNC: Token refresh failed: " + refreshEx.getMessage());
+                }
+                // Retry the failed operation once with the new token
+                if (refreshed) {
+                    try {
+                        com.meto.inventory.DatabaseHelper retryDb = com.meto.inventory.DataManager.getInstance().getDbHelper();
+                        return pushPendingChangesInternal(retryDb, isSilent);
+                    } catch (Exception retryEx) {
+                        System.err.println("SYNC: Retry after token refresh failed: " + retryEx.getMessage());
+                    }
+                }
             } else {
                 e.printStackTrace();
             }
@@ -1332,7 +1451,7 @@ public class SupabaseService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(STORAGE_URL + "/backups/" + storagePath))
                     .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Authorization", getValidBearerToken())
                     .header("Content-Type", "application/json")
                     .header("x-upsert", "true")
                     .POST(HttpRequest.BodyPublishers.ofByteArray(jsonBytes))
@@ -1369,7 +1488,7 @@ public class SupabaseService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(STORAGE_URL + "/backups/" + storagePath))
                     .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Authorization", getValidBearerToken())
                     .GET()
                     .build();
 
@@ -1441,25 +1560,41 @@ public class SupabaseService {
         }
         
         // --- 1. PUSH ---
-        // STOCK
+        // STOCK (Option A: Metadata updates only — quantity deltas are handled via DeltaStockManager)
         boolean stockUploadSuccess = true;
         if (dirtyStock.size() > 0) {
-            String nowIso = java.time.Instant.now().toString();
+            String nowIso = com.meto.inventory.powersync.ClockSync.getAdjustedTimestampIso();
+            JsonArray metadataStock = new JsonArray();
+
             for (JsonElement el : dirtyStock) {
                 JsonObject o = el.getAsJsonObject();
-                o.addProperty("user_id", currentUserId);
-                o.addProperty("updated_at", nowIso);
+                JsonObject metaObj = new JsonObject();
+                metaObj.addProperty("sync_id", o.get("sync_id").getAsString());
+                metaObj.addProperty("user_id", currentUserId);
+                metaObj.addProperty("updated_at", nowIso);
+                if (o.has("item")) metaObj.addProperty("item", o.get("item").getAsString());
+                if (o.has("unit")) metaObj.addProperty("unit", o.get("unit").getAsString());
+                if (o.has("price")) metaObj.addProperty("price", o.get("price").getAsString());
+                if (o.has("cost_price")) metaObj.addProperty("cost_price", o.get("cost_price").getAsDouble());
+                if (o.has("base_quantity")) metaObj.addProperty("base_quantity", o.get("base_quantity").getAsDouble());
+                if (o.has("device_source")) metaObj.addProperty("device_source", o.get("device_source").getAsString());
+                if (o.has("date")) metaObj.addProperty("date", o.get("date").getAsString());
+                metadataStock.add(metaObj);
             }
+
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(REST_URL + "/stock?on_conflict=sync_id"))
                     .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Authorization", getValidBearerToken())
                     .header("Content-Type", "application/json")
                     .header("Prefer", "resolution=merge-duplicates")
-                    .POST(HttpRequest.BodyPublishers.ofString(dirtyStock.toString()))
+                    .POST(HttpRequest.BodyPublishers.ofString(metadataStock.toString()))
                     .build();
             HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
-            System.out.println("STOCK UPLOAD RESPONSE: " + res.statusCode() + " " + res.body());
+            System.out.println("STOCK METADATA UPLOAD RESPONSE: " + res.statusCode() + " " + res.body());
+            if (res.statusCode() == 401) {
+                throw new IOException("SYNC: Stock upload returned 401 - token expired");
+            }
             if (res.statusCode() >= 300) {
                 stockUploadSuccess = false;
             }
@@ -1476,13 +1611,16 @@ public class SupabaseService {
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(REST_URL + "/sales?on_conflict=sync_id"))
                     .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Authorization", getValidBearerToken())
                     .header("Content-Type", "application/json")
                     .header("Prefer", "resolution=merge-duplicates")
                     .POST(HttpRequest.BodyPublishers.ofString(dirtySales.toString()))
                     .build();
             HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
             System.out.println("SALES UPLOAD RESPONSE: " + res.statusCode() + " " + res.body());
+            if (res.statusCode() == 401) {
+                throw new IOException("SYNC: Sales upload returned 401 - token expired");
+            }
             if (res.statusCode() >= 300) {
                 salesUploadSuccess = false;
             }
@@ -1500,7 +1638,7 @@ public class SupabaseService {
                     HttpRequest req = HttpRequest.newBuilder()
                             .uri(URI.create(REST_URL + "/stock?sync_id=eq." + java.net.URLEncoder.encode(syncId, java.nio.charset.StandardCharsets.UTF_8)))
                             .header("apikey", SUPABASE_KEY)
-                            .header("Authorization", "Bearer " + currentAccessToken)
+                            .header("Authorization", getValidBearerToken())
                             .DELETE().build();
                     client.send(req, HttpResponse.BodyHandlers.ofString());
                 }
@@ -1508,7 +1646,7 @@ public class SupabaseService {
                     HttpRequest req = HttpRequest.newBuilder()
                             .uri(URI.create(REST_URL + "/stock?item=eq." + java.net.URLEncoder.encode(item, java.nio.charset.StandardCharsets.UTF_8) + "&quantity=eq." + java.net.URLEncoder.encode(quantity, java.nio.charset.StandardCharsets.UTF_8)))
                             .header("apikey", SUPABASE_KEY)
-                            .header("Authorization", "Bearer " + currentAccessToken)
+                            .header("Authorization", getValidBearerToken())
                             .DELETE().build();
                     client.send(req, HttpResponse.BodyHandlers.ofString());
                 }
@@ -1528,7 +1666,7 @@ public class SupabaseService {
                     HttpRequest req = HttpRequest.newBuilder()
                             .uri(URI.create(REST_URL + "/sales?sync_id=eq." + java.net.URLEncoder.encode(syncId, java.nio.charset.StandardCharsets.UTF_8)))
                             .header("apikey", SUPABASE_KEY)
-                            .header("Authorization", "Bearer " + currentAccessToken)
+                            .header("Authorization", getValidBearerToken())
                             .DELETE().build();
                     client.send(req, HttpResponse.BodyHandlers.ofString());
                 }
@@ -1543,7 +1681,7 @@ public class SupabaseService {
                     HttpRequest req = HttpRequest.newBuilder()
                             .uri(URI.create(url))
                             .header("apikey", SUPABASE_KEY)
-                            .header("Authorization", "Bearer " + currentAccessToken)
+                            .header("Authorization", getValidBearerToken())
                             .DELETE().build();
                     client.send(req, HttpResponse.BodyHandlers.ofString());
                 }
@@ -1553,21 +1691,21 @@ public class SupabaseService {
         if (stockUploadSuccess && salesUploadSuccess) {
             db.clearDirtyFlags();
             lastSyncFailed = false;
+
+            // Only update backup timestamp on successful sync
+            long ts = System.currentTimeMillis();
+            Map<String, Object> updates = new HashMap<>();
+            updates.put("last_backup_timestamp", ts);
+            updateUserFields(updates);
+            db.saveSetting("last_backup_timestamp", String.valueOf(ts));
+            notifyStatus("Cloud: " + new java.util.Date(ts).toString());
         } else {
             lastSyncFailed = true;
             System.err.println("SYNC: Preserving dirty flags because cloud POST upload returned non-2xx status code.");
+            notifyStatus("Cloud: Sync Failed");
         }
-        lastSyncFailed = false;
 
-        // Update timestamp
-        long ts = System.currentTimeMillis();
-        Map<String, Object> updates = new HashMap<>();
-        updates.put("last_backup_timestamp", ts);
-        updateUserFields(updates);
-        db.saveSetting("last_backup_timestamp", String.valueOf(ts));
-        notifyStatus("Cloud: " + new java.util.Date(ts).toString());
-
-        return true;
+        return stockUploadSuccess && salesUploadSuccess;
     }
 
     public boolean syncOnLogin(String dbPath, boolean localHasData, boolean isManual) {
@@ -1604,7 +1742,7 @@ public class SupabaseService {
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(REST_URL + "/stock"))
                     .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Authorization", getValidBearerToken())
                     .GET().build();
             boolean stockPulled = false;
             HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString());
@@ -1622,7 +1760,7 @@ public class SupabaseService {
             req = HttpRequest.newBuilder()
                     .uri(URI.create(salesUrl))
                     .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Authorization", getValidBearerToken())
                     .GET().build();
             boolean salesPulled = false;
             res = client.send(req, HttpResponse.BodyHandlers.ofString());
@@ -1658,12 +1796,26 @@ public class SupabaseService {
             }
         } catch (IOException e) {
             if (e.getMessage() != null && e.getMessage().contains("401")) {
-                System.out.println("SYNC: Token expired (401), attempting to refresh session in background...");
+                System.out.println("SYNC: Token expired (401), attempting to refresh session and retry...");
+                boolean refreshed = false;
                 try {
                     if (currentRefreshToken != null) {
-                        signInWithRefreshToken(currentRefreshToken);
+                        refreshed = signInWithRefreshToken(currentRefreshToken);
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception refreshEx) {
+                    System.err.println("SYNC: Token refresh failed: " + refreshEx.getMessage());
+                }
+                // Retry the sync once with the new token
+                if (refreshed) {
+                    try {
+                        syncLock.unlock(); // Release before recursive call (it re-acquires)
+                        return syncOnLogin(dbPath, localHasData, isManual);
+                    } catch (Exception retryEx) {
+                        System.err.println("SYNC: Retry after token refresh failed: " + retryEx.getMessage());
+                        // Re-acquire lock so finally block can release it
+                        syncLock.tryLock();
+                    }
+                }
             } else {
                 e.printStackTrace();
             }
@@ -1689,7 +1841,7 @@ public class SupabaseService {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(REST_URL + "/users?select=*"))
                 .header("apikey", SUPABASE_KEY)
-                .header("Authorization", "Bearer " + currentAccessToken)
+                .header("Authorization", getValidBearerToken())
                 .GET()
                 .build();
 
@@ -1730,7 +1882,7 @@ public class SupabaseService {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(REST_URL + "/users?id=eq." + targetUid))
                 .header("apikey", SUPABASE_KEY)
-                .header("Authorization", "Bearer " + currentAccessToken)
+                .header("Authorization", getValidBearerToken())
                 .header("Content-Type", "application/json")
                 .method("PATCH", HttpRequest.BodyPublishers.ofString(json.toString()))
                 .build();
@@ -1740,6 +1892,10 @@ public class SupabaseService {
 
     public String getCurrentUserId() {
         return currentUserId;
+    }
+
+    public String getCurrentRefreshToken() {
+        return currentRefreshToken;
     }
 
     public boolean isLoggedIn() {
@@ -1840,9 +1996,22 @@ public class SupabaseService {
         return null;
     }
 
-    public boolean processPowerSyncBatchRPC(String deviceId, JsonArray operations) {
+    /**
+     * Result of a sync batch RPC call.
+     * Allows callers to distinguish auth failures from server errors.
+     */
+    public enum SyncResult {
+        SUCCESS,          // 200/201 — batch processed
+        AUTH_EXPIRED,     // 401 — token needs refresh
+        SERVER_ERROR,     // 5xx, 429, 408 — retryable with backoff
+        CLIENT_ERROR,     // 4xx (not 401) — likely permanent, needs human review
+        NETWORK_ERROR,    // IOException — connectivity issue
+        NOT_AUTHENTICATED // No tokens available
+    }
+
+    public SyncResult processPowerSyncBatchRPC(String deviceId, JsonArray operations) {
         if (currentUserId == null || currentAccessToken == null) {
-            return false;
+            return SyncResult.NOT_AUTHENTICATED;
         }
         try {
             JsonObject body = new JsonObject();
@@ -1853,7 +2022,7 @@ public class SupabaseService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(REST_URL + "/rpc/rpc_process_sync_batch"))
                     .header("apikey", SUPABASE_KEY)
-                    .header("Authorization", "Bearer " + currentAccessToken)
+                    .header("Authorization", getValidBearerToken())
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
                     .build();
@@ -1869,10 +2038,25 @@ public class SupabaseService {
                 } catch (Exception ignored) {}
             }
 
-            return response.statusCode() == 200 || response.statusCode() == 201;
+            int statusCode = response.statusCode();
+            if (statusCode == 200 || statusCode == 201) {
+                return SyncResult.SUCCESS;
+            } else if (statusCode == 401) {
+                System.err.println("PowerSync RPC: 401 - token expired");
+                return SyncResult.AUTH_EXPIRED;
+            } else if (statusCode >= 500 || statusCode == 429 || statusCode == 408) {
+                System.err.println("PowerSync RPC: Server error " + statusCode + " - " + response.body());
+                return SyncResult.SERVER_ERROR;
+            } else {
+                System.err.println("PowerSync RPC: Client error " + statusCode + " - " + response.body());
+                return SyncResult.CLIENT_ERROR;
+            }
+        } catch (java.io.IOException e) {
+            System.err.println("PowerSync RPC Network Error: " + e.getMessage());
+            return SyncResult.NETWORK_ERROR;
         } catch (Exception e) {
             System.err.println("PowerSync RPC Error: " + e.getMessage());
-            return false;
+            return SyncResult.NETWORK_ERROR;
         }
     }
 }

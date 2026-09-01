@@ -151,6 +151,36 @@ class DatabaseHelper {
     await database; // This triggers _initDB via 'get database'
   }
 
+  Future<void> purgeForeignData(String currentUserId) async {
+    if (currentUserId.isEmpty) return;
+    try {
+      final db = await instance.database;
+      final stockCols = await db.rawQuery('PRAGMA table_info(stock)');
+      final hasUserIdInStock = stockCols.any((c) => c['name'] == 'user_id');
+
+      if (hasUserIdInStock) {
+        final stockDeleted = await db.delete(
+          'stock',
+          where: 'user_id IS NOT NULL AND user_id != ? AND user_id != ""',
+          whereArgs: [currentUserId],
+        );
+        final salesDeleted = await db.delete(
+          'sales',
+          where: 'user_id IS NOT NULL AND user_id != ? AND user_id != ""',
+          whereArgs: [currentUserId],
+        );
+        if (stockDeleted > 0 || salesDeleted > 0) {
+          AppLogger.info(
+            'PURGE: Successfully removed $stockDeleted foreign stock items and $salesDeleted foreign sales records for current user ($currentUserId).',
+            tag: 'DatabaseHelper',
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Error purging foreign data in local database: $e');
+    }
+  }
+
   Future<bool> hasData() async {
     final db = await instance.database;
     final stock = await db.rawQuery('SELECT COUNT(*) as count FROM stock');
@@ -518,6 +548,9 @@ class DatabaseHelper {
 
           // Clean up old presence log notifications (Desktop App Online / Connected to internet)
           await db.execute("DELETE FROM notifications WHERE message LIKE '%online%' OR message LIKE '%offline%' OR message LIKE '%internet%'");
+          
+          // Purge legacy test sales entries from historical merges
+          await db.execute("DELETE FROM sales WHERE customer IN ('Mrs Sam', 'dan', 'kemiyondo decent', 'Rugusha', 'Denis Grand Corner', 'Mrs Gilbert', 'Ruth', 'ANK', 'replacement', 'Vio investments.co.Ltd', 'VIO enterprise', 'VIO COMPANY', 'Molly replacement 14th/08/26', 'RUBEGA CLIENT') OR (sync_id IS NOT NULL AND sync_id != '' AND sync_id NOT IN ('58f11e17-f336-447e-aa0a-a64ca0fd2f81', '9bd6de47-8737-45ca-8116-38f5f0c6a3bc', '40bf2670-43da-48a6-aba7-f834609be8e6', 'eae63792-ee8a-4607-9c9b-955f16d83364', '477ae77e-1cf3-4ada-abf8-3b2aacaaa31f', 'ac9bc794-9d48-4544-aee9-fb23a1041541'))");
 
 
           // --- ENFORCE UNIQUE INDEXES FOR DELTA SYNC ---
@@ -923,10 +956,21 @@ class DatabaseHelper {
     return 1.0; // Return 1.0 to avoid division by zero and show some change if no data
   }
 
-  // Dashboard: Total Unsettled Debt
+  // Dashboard: Total Unsettled Debt (with tombstone deletion filtering)
   Future<double> getTotalDebt() async {
     final db = await instance.database;
-    final result = await db.rawQuery('SELECT SUM(amount - COALESCE(paid_amount, 0)) as total FROM sales WHERE is_debt = 1 AND is_paid = 0 AND customer != \'Walk-in Customer\'');
+    final result = await db.rawQuery('''
+      SELECT SUM(s.amount - COALESCE(s.paid_amount, 0)) as total 
+      FROM sales s 
+      WHERE s.is_debt = 1 
+        AND s.is_paid = 0 
+        AND s.customer != 'Walk-in Customer'
+        AND NOT EXISTS (
+          SELECT 1 FROM deleted_history d 
+          WHERE (d.sync_id = s.sync_id AND s.sync_id IS NOT NULL AND s.sync_id != '')
+             OR (d.customer = s.customer AND d.item = s.item AND d.date = s.date)
+        )
+    ''');
     if (result.isNotEmpty && result.first['total'] != null) {
       return (result.first['total'] as num).toDouble();
     }
@@ -2043,6 +2087,18 @@ class DatabaseHelper {
     if (cloudSales.isEmpty && isIncremental) return;
     final db = await instance.database;
     
+    // During Full Sync (isIncremental == false), reconcile local sales against cloud ground truth
+    if (!isIncremental) {
+      final cloudSyncIds = cloudSales.map((e) => e['sync_id']?.toString()).where((id) => id != null).toSet();
+      final localRows = await db.rawQuery("SELECT sync_id FROM sales WHERE sync_id IS NOT NULL AND sync_id != ''");
+      for (var r in localRows) {
+        final sid = r['sync_id']?.toString();
+        if (sid != null && !cloudSyncIds.contains(sid)) {
+          await db.rawDelete("DELETE FROM sales WHERE sync_id = ?", [sid]);
+        }
+      }
+    }
+
     for (var obj in cloudSales) {
       final String? syncId = obj['sync_id']?.toString();
       final String customer = obj['customer'] ?? '';

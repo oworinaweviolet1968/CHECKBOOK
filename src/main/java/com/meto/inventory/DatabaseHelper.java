@@ -44,12 +44,12 @@ public class DatabaseHelper {
         return new java.io.File(rootDir, "METO_IMS_DATA").getAbsolutePath();
     }
 
-    public void initializeDatabase() {
+    public synchronized void initializeDatabase() {
         try {
             System.out.println("DEBUG: Connecting to DB URL: " + dbUrl);
             connection = DriverManager.getConnection(dbUrl);
             try (Statement pragmaStmt = connection.createStatement()) {
-                pragmaStmt.execute("PRAGMA busy_timeout = 10000;");
+                pragmaStmt.execute("PRAGMA busy_timeout = 30000;");
                 pragmaStmt.execute("PRAGMA journal_mode = WAL;");
             }
             createTables();
@@ -238,6 +238,7 @@ public class DatabaseHelper {
             boolean hasIsEdited = false;
             boolean hasCostPrice = false;
             boolean hasBaseQuantity = false;
+            boolean hasVersion = false;
             while (rs.next()) {
                 String col = rs.getString("name");
                 if ("available_pieces".equalsIgnoreCase(col))
@@ -250,6 +251,8 @@ public class DatabaseHelper {
                     hasCostPrice = true;
                 if ("base_quantity".equalsIgnoreCase(col))
                     hasBaseQuantity = true;
+                if ("version".equalsIgnoreCase(col))
+                    hasVersion = true;
             }
             if (!hasAvailablePieces)
                 stmt.execute("ALTER TABLE stock ADD COLUMN available_pieces REAL DEFAULT 0");
@@ -263,6 +266,8 @@ public class DatabaseHelper {
                 stmt.execute("ALTER TABLE stock ADD COLUMN cost_price REAL DEFAULT 0.0");
             if (!hasBaseQuantity)
                 stmt.execute("ALTER TABLE stock ADD COLUMN base_quantity REAL DEFAULT 1.0");
+            if (!hasVersion)
+                stmt.execute("ALTER TABLE stock ADD COLUMN version INTEGER DEFAULT 1");
         } catch (SQLException e) {
             System.err.println("Schema check failed for stock: " + e.getMessage());
         }
@@ -278,6 +283,7 @@ public class DatabaseHelper {
             boolean hasPaidAmount = false;
             boolean hasIsEdited = false;
             boolean hasReceiptId = false;
+            boolean hasVersion = false;
 
             while (rs.next()) {
                 String col = rs.getString("name");
@@ -297,6 +303,8 @@ public class DatabaseHelper {
                     hasIsEdited = true;
                 if ("receipt_id".equalsIgnoreCase(col))
                     hasReceiptId = true;
+                if ("version".equalsIgnoreCase(col))
+                    hasVersion = true;
             }
 
             if (!hasCostPrice)
@@ -317,6 +325,8 @@ public class DatabaseHelper {
             }
             if (!hasReceiptId)
                 stmt.execute("ALTER TABLE sales ADD COLUMN receipt_id TEXT");
+            if (!hasVersion)
+                stmt.execute("ALTER TABLE sales ADD COLUMN version INTEGER DEFAULT 1");
         } catch (SQLException e) {
             System.err.println("Schema check failed for sales: " + e.getMessage());
         }
@@ -2197,9 +2207,9 @@ public class DatabaseHelper {
         return count;
     }
 
-    public com.google.gson.JsonArray getDirtyStock() {
+    public synchronized com.google.gson.JsonArray getDirtyStock() {
         com.google.gson.JsonArray array = new com.google.gson.JsonArray();
-        String sql = "SELECT sync_id, item, quantity, unit, price, cost_price, base_quantity, available_pieces, device_source, date FROM stock WHERE is_edited = 1";
+        String sql = "SELECT sync_id, item, quantity, unit, price, cost_price, base_quantity, available_pieces, device_source, date, version FROM stock WHERE is_edited = 1";
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
                 com.google.gson.JsonObject obj = new com.google.gson.JsonObject();
@@ -2217,6 +2227,8 @@ public class DatabaseHelper {
                 obj.addProperty("available_pieces", rs.getDouble("available_pieces"));
                 obj.addProperty("device_source", rs.getString("device_source"));
                 obj.addProperty("date", rs.getString("date"));
+                int ver = rs.getInt("version");
+                obj.addProperty("version", ver > 0 ? ver : 1);
                 array.add(obj);
             }
         } catch (SQLException e) {
@@ -2225,7 +2237,7 @@ public class DatabaseHelper {
         return array;
     }
 
-    public com.google.gson.JsonArray getDirtySales() {
+    public synchronized com.google.gson.JsonArray getDirtySales() {
         com.google.gson.JsonArray array = new com.google.gson.JsonArray();
         String sql = "SELECT sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, receipt_id, device_source, created_at FROM sales WHERE is_edited = 1";
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
@@ -2260,7 +2272,7 @@ public class DatabaseHelper {
         return array;
     }
 
-    public com.google.gson.JsonArray getDirtyDeletedStock() {
+    public synchronized com.google.gson.JsonArray getDirtyDeletedStock() {
         com.google.gson.JsonArray array = new com.google.gson.JsonArray();
         String sql = "SELECT sync_id, item, quantity, deleted_at FROM deleted_stock WHERE sync_id IS NOT NULL";
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
@@ -2278,7 +2290,7 @@ public class DatabaseHelper {
         return array;
     }
 
-    public com.google.gson.JsonArray getDirtyDeletedHistory() {
+    public synchronized com.google.gson.JsonArray getDirtyDeletedHistory() {
         com.google.gson.JsonArray array = new com.google.gson.JsonArray();
         String sql = "SELECT sync_id, customer, item, amount, date, deleted_at FROM deleted_history";
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {

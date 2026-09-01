@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CheckBook Admin Portal - ManagementSYS</title>
+  <meta name="description" content="Localhost Web Admin Portal for CheckBook & ManagementSYS user management, Checkbook ID lookups, license control, and app releases." />
+  
+  <!-- Google Fonts Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Admin Login Screen (Shown when unauthenticated) -->
+    <div id="login-screen" class="login-container">
+      <div class="login-card">
+        <div class="login-brand">
+          <img src="./src/assets/logo.png" alt="Company Logo" class="brand-logo" style="width: 64px; height: 64px; object-fit: contain; margin-bottom: 10px;" />
+          <h2>CheckBook Admin Portal</h2>
+          <p>Localhost Management & License Console</p>
+        </div>
+        <form id="form-admin-login">
+          <div class="form-group">
+            <label for="login-email">Admin Email Address</label>
+            <input type="email" id="login-email" required placeholder="admin@gmail.com" value="admin@gmail.com" />
+          </div>
+          <div class="form-group">
+            <label for="login-password">Password</label>
+            <input type="password" id="login-password" required placeholder="Enter password" />
+          </div>
+          <div id="login-error" class="search-result-toast error hidden" style="margin-top: 10px;"></div>
+          <button type="submit" id="btn-admin-login" class="btn btn-primary btn-full" style="margin-top: 1rem;">
+            Sign In as Admin
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Admin Dashboard View (Shown when authenticated) -->
+    <div id="dashboard-view" class="hidden">
+      <!-- Header Navbar -->
+      <header class="navbar">
+        <div class="nav-brand">
+          <img src="./src/assets/logo.png" alt="Company Logo" class="brand-logo" style="width: 32px; height: 32px; object-fit: contain; margin-right: 12px;" />
+          <div class="brand-text">
+            <h1>CheckBook Admin Portal</h1>
+            <span class="badge-env">Localhost Admin Console</span>
+          </div>
+        </div>
+        <div class="nav-actions">
+          <span id="user-email-label" style="font-size: 0.85rem; color: var(--text-secondary); margin-right: 10px;"></span>
+          <button id="btn-refresh" class="btn btn-secondary">
+            <span class="icon">🔄</span> Refresh Data
+          </button>
+          <button id="btn-create-user-modal" class="btn btn-primary">
+            <span class="icon">➕</span> Provision User
+          </button>
+          <button id="btn-releases-modal" class="btn btn-accent">
+            <span class="icon">🚀</span> Manage Releases
+          </button>
+          <button id="btn-logout" class="btn btn-secondary">
+            <span class="icon">🚪</span> Logout
+          </button>
+        </div>
+      </header>
+
+      <!-- Main Container -->
+      <main class="main-content">
+        <!-- Executive Metrics Cards -->
+        <section class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon icon-users">👥</div>
+            <div class="stat-info">
+              <span class="stat-label">Total Users</span>
+              <h2 id="stat-total-users" class="stat-value">...</h2>
+              <span class="stat-desc">Registered accounts</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon icon-trials">⏳</div>
+            <div class="stat-info">
+              <span class="stat-label">Active 7-Day Trials</span>
+              <h2 id="stat-active-trials" class="stat-value">...</h2>
+              <span class="stat-desc">In trial period</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon icon-licenses">🛡️</div>
+            <div class="stat-info">
+              <span class="stat-label">Paid Ownership Licenses</span>
+              <h2 id="stat-paid-licenses" class="stat-value">...</h2>
+              <span class="stat-desc">Full license active</span>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-icon icon-backups">☁️</div>
+            <div class="stat-info">
+              <span class="stat-label">Cloud Backup Subscriptions</span>
+              <h2 id="stat-cloud-backups" class="stat-value">...</h2>
+              <span class="stat-desc">Monthly backup active</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Checkbook ID Quick Search Bar -->
+        <section class="search-section">
+          <div class="search-box">
+            <span class="search-icon">🔍</span>
+            <input 
+              type="text" 
+              id="input-checkbook-search" 
+              placeholder="Search by Checkbook ID (e.g. CK-197888) or Email address..."
+            />
+            <button id="btn-search-checkbook" class="btn btn-search">Search ID</button>
+          </div>
+          <div id="search-result-toast" class="search-result-toast hidden"></div>
+        </section>
+
+        <!-- User Accounts Table Section -->
+        <section class="table-section">
+          <div class="table-header">
+            <div class="table-title">
+              <h3>Registered User Accounts</h3>
+              <span id="user-count-badge" class="pill-badge">0 Users</span>
+            </div>
+            <div class="table-filters">
+              <select id="filter-license-status" class="select-filter">
+                <option value="ALL">All License Statuses</option>
+                <option value="TRIAL">Active Trial</option>
+                <option value="PAID">Paid License</option>
+                <option value="EXPIRED">Expired</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="table-wrapper">
+            <table class="user-table">
+              <thead>
+                <tr>
+                  <th>User / Email</th>
+                  <th>Checkbook ID</th>
+                  <th>Trial Status</th>
+                  <th>Ownership License</th>
+                  <th>Cloud Backup</th>
+                  <th>Created At</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="user-table-body">
+                <tr>
+                  <td colspan="7" class="loading-td">
+                    <div class="spinner"></div> Loading user profiles from Supabase...
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+
+      <!-- Modal 1: Create User Provisioning Modal -->
+      <div id="modal-create-user" class="modal-overlay hidden">
+        <div class="modal-card">
+          <div class="modal-header">
+            <h3>Provision New User Account</h3>
+            <button class="modal-close" id="btn-close-create-modal">&times;</button>
+          </div>
+          <form id="form-create-user">
+            <div class="form-group">
+              <label for="create-email">User Email Address</label>
+              <input type="email" id="create-email" required placeholder="user@example.com" />
+            </div>
+            <div class="form-group">
+              <label for="create-password">Initial Password</label>
+              <input type="password" id="create-password" required minlength="6" placeholder="At least 6 characters" />
+            </div>
+            <div class="form-group">
+              <label for="create-plan">Plan Tier</label>
+              <select id="create-plan">
+                <option value="OWNERSHIP_CLOUD">OWNERSHIP_CLOUD (Standard)</option>
+                <option value="ENTERPRISE">ENTERPRISE (Full Features)</option>
+              </select>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" id="btn-cancel-create">Cancel</button>
+              <button type="submit" class="btn btn-primary" id="btn-submit-create">Create Account</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Modal 2: App Releases Manager Modal -->
+      <div id="modal-releases" class="modal-overlay hidden">
+        <div class="modal-card modal-lg">
+          <div class="modal-header">
+            <h3>🚀 App Releases & OTA Deployments</h3>
+            <button class="modal-close" id="btn-close-releases-modal">&times;</button>
+          </div>
+          <div class="modal-body">
+            <form id="form-add-release" class="release-form">
+              <h4>Publish New Release</h4>
+              <div class="form-grid">
+                <div class="form-group">
+                  <label for="rel-platform">Target Platform</label>
+                  <select id="rel-platform">
+                    <option value="android">Android (.apk)</option>
+                    <option value="desktop">Desktop Windows (.msi / .exe)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="rel-version">Version String</label>
+                  <input type="text" id="rel-version" required placeholder="e.g. 2.3.0+73" />
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="rel-url">Download URL</label>
+                <input type="url" id="rel-url" required placeholder="https://github.com/..." />
+              </div>
+              <div class="form-group">
+                <label for="rel-notes">Release Notes</label>
+                <textarea id="rel-notes" rows="2" placeholder="Brief summary of changes in this release..."></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary">Publish Release Record</button>
+            </form>
+
+            <hr class="divider" />
+
+            <h4>Recent Published Releases</h4>
+            <div class="table-wrapper mini-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Platform</th>
+                    <th>Version</th>
+                    <th>Download URL</th>
+                    <th>Published Date</th>
+                  </tr>
+                </thead>
+                <tbody id="releases-table-body">
+                  <tr><td colspan="4" class="loading-td">Loading releases...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

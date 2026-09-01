@@ -224,6 +224,11 @@ BEGIN
         );
     END IF;
 
+    -- Check if account has active license or cloud backup before checking is_web_verified
+    IF v_profile.subscription_status = 'ACTIVE' OR v_profile.plan_tier IN ('OWNERSHIP_CLOUD', 'ENTERPRISE') THEN
+        RETURN jsonb_build_object('allowed', true, 'code', 'ACCESS_GRANTED', 'subscription_status', 'ACTIVE');
+    END IF;
+
     IF NOT v_profile.is_web_verified THEN
         RETURN jsonb_build_object(
             'allowed', false,

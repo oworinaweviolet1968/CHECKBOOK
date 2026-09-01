@@ -54,11 +54,11 @@ class MobileAuthService {
 
       // Grant instant access for any new account within 7 days or with active trial/paid status
       if ((isWithin7DaysOfSignup || isMetadataVerified) && !isTrialExpired) {
-        debugPrint('[MobileAuthService] 7-Day Free Trial Active for $email (Created: ${currentUser.createdAt})');
+        debugPrint('[MobileAuthService] Access Active for $email (Created: ${currentUser.createdAt})');
         return MobileAuthResult(
           isAllowed: true,
           code: 'ACCESS_GRANTED',
-          message: '7-Day Free Trial Active',
+          message: 'Access Granted via Auth Metadata',
           userData: {
             'userId': currentUser.id,
             'email': currentUser.email,
@@ -66,14 +66,8 @@ class MobileAuthService {
           },
         );
       }
-
-      if (isTrialExpired || (createdAt != null && DateTime.now().difference(createdAt).inHours >= (7 * 24) && !isMetadataVerified)) {
-        return MobileAuthResult(
-          isAllowed: false,
-          code: 'TRIAL_EXPIRED',
-          message: 'Your 7-day free trial has expired. Please subscribe on our web portal to continue using the app.',
-        );
-      }
+      // Note: If metadata is unverified or trial expired in metadata, proceed to Step 2 (Database Check)
+      // because an admin may have activated the user in user_profiles.
     }
 
     // 2. Safe Database Table Queries ('users' or 'user_profiles')
@@ -98,14 +92,19 @@ class MobileAuthService {
         }
 
         if (userRow != null) {
+          final String planTier = (userRow['plan_tier'] ?? '').toString();
+          final String subStatus = (userRow['subscription_status'] ?? '').toString();
+
           final bool dbVerified = userRow['is_web_verified'] == true ||
-              userRow['subscription_status'] == 'ACTIVE' ||
-              userRow['subscription_status'] == 'TRIAL_ACTIVE' ||
-              userRow['ownership_payment'] == true;
+              subStatus == 'ACTIVE' ||
+              subStatus == 'TRIAL_ACTIVE' ||
+              userRow['ownership_payment'] == true ||
+              planTier == 'OWNERSHIP_CLOUD' ||
+              planTier == 'ENTERPRISE';
 
           final String? expStr = userRow['trial_expires_at']?.toString();
           bool dbExpired = false;
-          if (expStr != null) {
+          if (expStr != null && subStatus != 'ACTIVE' && planTier != 'OWNERSHIP_CLOUD' && planTier != 'ENTERPRISE') {
             final exp = DateTime.tryParse(expStr);
             if (exp != null && DateTime.now().isAfter(exp)) {
               dbExpired = true;

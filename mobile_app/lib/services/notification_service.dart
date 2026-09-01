@@ -153,7 +153,11 @@ class NotificationService {
         refresh();
       }
     } catch (e) {
-      debugPrint('NotificationService: Deferred cloud push for $notifId: $e');
+      if (e.toString().contains('PGRST205') || e.toString().contains('PGRST204')) {
+        debugPrint('NotificationService: public.notifications table not in Supabase schema (notification preserved locally).');
+      } else {
+        debugPrint('NotificationService: Deferred cloud push for $notifId: $e');
+      }
     }
 
     return item;
@@ -178,7 +182,11 @@ class NotificationService {
             .eq('id', id);
       }
     } catch (e) {
-      debugPrint('Error updating cloud read status for $id: $e');
+      if (e.toString().contains('PGRST205') || e.toString().contains('PGRST204')) {
+        // public.notifications table not in schema cache
+      } else {
+        debugPrint('Error updating cloud read status for $id: $e');
+      }
     }
   }
 
@@ -195,7 +203,11 @@ class NotificationService {
             .eq('user_id', SupasService.instance.userId!);
       }
     } catch (e) {
-      debugPrint('Error clearing cloud notifications: $e');
+      if (e.toString().contains('PGRST205') || e.toString().contains('PGRST204')) {
+        // public.notifications table not in schema cache
+      } else {
+        debugPrint('Error clearing cloud notifications: $e');
+      }
     }
   }
 
@@ -226,7 +238,11 @@ class NotificationService {
       await DatabaseHelper.instance.clearDirtyNotifications(syncedIds);
       await refresh();
     } catch (e) {
-      debugPrint('NotificationService syncPendingNotifications error: $e');
+      if (e.toString().contains('PGRST205') || e.toString().contains('PGRST204')) {
+        debugPrint('NotificationService: public.notifications table not in Supabase schema (notifications preserved locally).');
+      } else {
+        debugPrint('NotificationService syncPendingNotifications error: $e');
+      }
     }
   }
 

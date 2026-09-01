@@ -220,6 +220,7 @@ class SupasService {
       syncStatus.value = SyncStatus.syncing;
       AppLogger.info('SYNC: Starting Delta Sync for user $userId', tag: 'SupasService');
       
+      await DatabaseHelper.instance.purgeForeignData(userId!);
       await DatabaseHelper.instance.checkAutoResyncMigration();
 
       initializeRealtime();
@@ -252,10 +253,10 @@ class SupasService {
             final String? quantity = item['quantity']?.toString();
 
             if (syncId != null && syncId.isNotEmpty) {
-              await client.from('stock').delete().eq('sync_id', syncId);
+              await client.from('stock').delete().eq('sync_id', syncId).eq('user_id', userId!);
             }
             if (itemName != null && itemName.isNotEmpty && quantity != null && quantity.isNotEmpty) {
-              await client.from('stock').delete().eq('item', itemName).eq('quantity', quantity);
+              await client.from('stock').delete().eq('item', itemName).eq('quantity', quantity).eq('user_id', userId!);
             }
           }
       }
@@ -271,10 +272,10 @@ class SupasService {
             final String? date = item['date']?.toString();
 
             if (syncId != null && syncId.isNotEmpty) {
-              await client.from('sales').delete().eq('sync_id', syncId);
+              await client.from('sales').delete().eq('sync_id', syncId).eq('user_id', userId!);
             }
             if (itemName != null && itemName.isNotEmpty && date != null && date.isNotEmpty) {
-              var query = client.from('sales').delete().eq('item', itemName).eq('date', date);
+              var query = client.from('sales').delete().eq('item', itemName).eq('date', date).eq('user_id', userId!);
               if (customer != null && customer.isNotEmpty && customer != 'Walk-in Customer') {
                 query = query.eq('customer', customer);
               }
@@ -299,8 +300,8 @@ class SupasService {
       final isoTs = DateTime.fromMillisecondsSinceEpoch(queryTs).toUtc().toIso8601String();
       AppLogger.info('SYNC: PULLING remote changes since $isoTs (original TS: $localVersionTs)', tag: 'SupasService');
 
-      // Pull stock
-      var stockQuery = client.from('stock').select();
+      // Pull stock (Enforce strict user_id isolation)
+      var stockQuery = client.from('stock').select().eq('user_id', userId!);
       if (localVersionTs > 0 && !isManual) {
           stockQuery = stockQuery.gt('updated_at', isoTs);
       }
@@ -311,10 +312,13 @@ class SupasService {
       bool acceptPieces = isManual || localVersionTs == 0;
       await DatabaseHelper.instance.upsertCloudStock(cloudStock, forceAcceptPieces: acceptPieces);
 
-      // Pull sales (Full Sync for sales to reconcile deletions across all devices)
-      final cloudSales = await client.from('sales').select();
+      // Pull sales (Enforce strict user_id isolation)
+      final cloudSales = await client.from('sales').select().eq('user_id', userId!);
       AppLogger.info('SYNC: PULLED remote sales: ${cloudSales.length} items', tag: 'SupasService');
       await DatabaseHelper.instance.upsertCloudSales(cloudSales, false); // false = Full Sync
+
+      // Reconcile and purge any lingering foreign items (e.g., cocacola, uhuru) from local database
+      await reconcileForeignData(userId!);
 
       // Pull cloud audit logs
       try {
@@ -339,7 +343,17 @@ class SupasService {
       
       final ts = DateTime.now().millisecondsSinceEpoch;
       await DatabaseHelper.instance.saveSetting('last_backup_timestamp', ts.toString());
-      await client.from('users').update({'last_backup_timestamp': ts}).eq('id', userId!);
+      try {
+        await client.from('user_profiles').update({'last_backup_timestamp': ts}).eq('user_id', userId!);
+      } catch (e) {
+        debugPrint('Error updating last_backup_timestamp on user_profiles: $e');
+      }
+
+      if (userMetadata.value != null) {
+        final updatedMeta = Map<String, dynamic>.from(userMetadata.value!);
+        updatedMeta['last_backup_timestamp'] = ts;
+        userMetadata.value = updatedMeta;
+      }
 
       // Push local receipt settings to cloud (ensures settings saved before this update get synced)
       final shopName = await DatabaseHelper.instance.getSetting('receipt_shop_name');
@@ -491,7 +505,15 @@ class SupasService {
   Future<Map<String, dynamic>?> refreshUserMetadata() async {
       if (userId == null) return null;
       try {
-        final meta = await client.from('users').select().eq('id', userId!).maybeSingle() ?? <String, dynamic>{};
+        Map<String, dynamic> meta = {};
+        try {
+          meta = await client.from('user_profiles').select().eq('user_id', userId!).maybeSingle() ?? {};
+        } catch (_) {}
+        if (meta.isEmpty) {
+          try {
+            meta = await client.from('users').select().eq('id', userId!).maybeSingle() ?? {};
+          } catch (_) {}
+        }
         
         String? checkbookId = client.auth.currentUser?.userMetadata?['checkbook_id'] as String?;
         if (checkbookId == null || checkbookId.isEmpty || checkbookId.contains('*')) {
@@ -522,7 +544,11 @@ class SupasService {
             'checkbook_id': checkbookId,
           }, onConflict: 'id');
         } catch (e) {
-          debugPrint('Error upserting checkbook_id to users table: $e');
+          if (e.toString().contains('PGRST204') || e.toString().contains('PGRST205')) {
+            // users table or checkbook_id column not present in REST schema cache; checkbook_id is already in user_profiles and auth metadata.
+          } else {
+            debugPrint('Error upserting checkbook_id to users table: $e');
+          }
         }
 
         try {
@@ -535,6 +561,24 @@ class SupasService {
         debugPrint('Active Mobile Checkbook ID Synced: $checkbookId');
 
         meta['checkbook_id'] = checkbookId;
+
+        // Ensure last_backup_timestamp fallback from local storage if cloud is 0/null
+        int? safeParseInt(dynamic val) {
+          if (val == null) return null;
+          if (val is int) return val;
+          if (val is num) return val.toInt();
+          if (val is String) return int.tryParse(val);
+          return null;
+        }
+        final cloudBackupTs = safeParseInt(meta['last_backup_timestamp']);
+        if (cloudBackupTs == null || cloudBackupTs == 0) {
+          final localBackupStr = await DatabaseHelper.instance.getSetting('last_backup_timestamp');
+          final localBackupTs = int.tryParse(localBackupStr ?? '0') ?? 0;
+          if (localBackupTs > 0) {
+            meta['last_backup_timestamp'] = localBackupTs;
+          }
+        }
+
         userMetadata.value = meta;
         return meta;
       } catch (e, stack) {
@@ -637,7 +681,15 @@ class SupasService {
           })
           .toList();
     } catch (e) {
-      debugPrint('LOGIN POLL ERROR: $e');
+      final errStr = e.toString();
+      if (errStr.contains('SocketException') || 
+          errStr.contains('Failed host lookup') || 
+          errStr.contains('errno = -3')) {
+        // Offline or DNS name resolution blip - silent debug log
+        debugPrint('LOGIN POLL: Network connection offline or host lookup pending.');
+      } else {
+        debugPrint('LOGIN POLL ERROR: $e');
+      }
       return [];
     }
   }
@@ -681,7 +733,7 @@ class SupasService {
     if (userId == null) return false;
 
     try {
-      final meta = await client.from('users').select('last_backup_timestamp').eq('id', userId!).maybeSingle();
+      final meta = await client.from('user_profiles').select('last_backup_timestamp').eq('user_id', userId!).maybeSingle();
       if (meta == null) return false;
 
       final val = meta['last_backup_timestamp'];
@@ -717,17 +769,34 @@ class SupasService {
   /// local notifications on state transitions.
   ///
   /// Thresholds:
+  /// Thresholds:
   ///   - `desktop_last_seen` null/0  → [DesktopStatus.unknown]
-  ///   - last seen ≤ 30 seconds ago  → [DesktopStatus.online]
-  ///   - last seen > 30 seconds ago  → [DesktopStatus.offline]
+  ///   - last seen ≤ 60 seconds ago  → [DesktopStatus.online] (accounts for 30s heartbeat interval + network drift)
+  ///   - last seen > 60 seconds ago  → [DesktopStatus.offline]
   Future<DesktopStatus> checkDesktopPresence() async {
-    if (userId == null) return DesktopStatus.unknown;
+    if (userId == null) {
+      desktopStatus.value = DesktopStatus.unknown;
+      return DesktopStatus.unknown;
+    }
     try {
-      final row = await client
-          .from('users')
-          .select('desktop_last_seen')
-          .eq('id', userId!)
-          .maybeSingle();
+      dynamic row;
+      try {
+        row = await client
+            .from('user_profiles')
+            .select('desktop_last_seen, last_backup_timestamp')
+            .eq('user_id', userId!)
+            .maybeSingle();
+      } catch (_) {}
+
+      if (row == null) {
+        try {
+          row = await client
+              .from('users')
+              .select('desktop_last_seen, last_backup_timestamp')
+              .eq('id', userId!)
+              .maybeSingle();
+        } catch (_) {}
+      }
 
       if (row == null) {
         desktopStatus.value = DesktopStatus.unknown;
@@ -735,22 +804,36 @@ class SupasService {
       }
 
       final lastSeen = row['desktop_last_seen'];
+      final lastBackup = row['last_backup_timestamp'];
+
+      if (userMetadata.value != null) {
+        final updatedMeta = Map<String, dynamic>.from(userMetadata.value!);
+        if (lastSeen != null) updatedMeta['desktop_last_seen'] = lastSeen;
+        if (lastBackup != null && (lastBackup is num && lastBackup > 0)) {
+          updatedMeta['last_backup_timestamp'] = lastBackup;
+        }
+        userMetadata.value = updatedMeta;
+      }
+
       if (lastSeen == null || (lastSeen is num && lastSeen == 0)) {
         desktopStatus.value = DesktopStatus.unknown;
         return DesktopStatus.unknown;
       }
 
-      final lastSeenMs = (lastSeen as num).toInt();
-      final nowMs = DateTime.now().millisecondsSinceEpoch;
-      final staleMs = nowMs - lastSeenMs;
+      final int lastSeenMs = (lastSeen as num).toInt();
+      final int nowUtcMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+      final int diffMs = (nowUtcMs - lastSeenMs).abs();
+      debugPrint("DEBUG: Raw desktop_last_seen = $lastSeenMs, Current UTC = $nowUtcMs, Diff = ${diffMs}ms");
 
-      // Online if heartbeat within 30 seconds
-      final newStatus = staleMs <= 30000 ? DesktopStatus.online : DesktopStatus.offline;
+      // Online if heartbeat ping is within 2 minutes (120,000 ms)
+      final newStatus = diffMs <= 120000 ? DesktopStatus.online : DesktopStatus.offline;
       desktopStatus.value = newStatus;
       return newStatus;
     } catch (e, stack) {
       AppLogger.error('DESKTOP PRESENCE ERROR: $e', tag: 'SupasService', error: e, stackTrace: stack);
-      // Don't change status on network error — keep last known value
+      if (desktopStatus.value == DesktopStatus.checking) {
+        desktopStatus.value = DesktopStatus.unknown;
+      }
       return desktopStatus.value;
     }
   }
@@ -892,5 +975,89 @@ class SupasService {
     } catch (_) {}
 
     return false;
+  }
+
+  /// Reconciles local items against cloud sync_ids owned by currentUserId and purges foreign records (e.g. cocacola, uhuru)
+  Future<void> reconcileForeignData(String currentUserId) async {
+    if (currentUserId.isEmpty) return;
+    try {
+      final cloudStockRows = await client
+          .from('stock')
+          .select('sync_id')
+          .eq('user_id', currentUserId);
+
+      final cloudSalesRows = await client
+          .from('sales')
+          .select('sync_id')
+          .eq('user_id', currentUserId);
+
+      final Set<String> validStockSyncIds = cloudStockRows
+          .map((e) => e['sync_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+
+      final Set<String> validSalesSyncIds = cloudSalesRows
+          .map((e) => e['sync_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet();
+
+      final db = await DatabaseHelper.instance.database;
+
+      // Clean foreign stock items
+      final localStock = await db.query('stock', columns: ['id', 'sync_id', 'is_edited']);
+      final List<int> stockIdsToDelete = [];
+
+      for (var row in localStock) {
+        final String? syncId = row['sync_id']?.toString();
+        final int isEdited = (row['is_edited'] as int? ?? 0);
+        if (syncId != null && syncId.isNotEmpty && isEdited == 0) {
+          if (!validStockSyncIds.contains(syncId)) {
+            stockIdsToDelete.add(row['id'] as int);
+          }
+        }
+      }
+
+      if (stockIdsToDelete.isNotEmpty) {
+        final placeholders = List.filled(stockIdsToDelete.length, '?').join(',');
+        final deletedCount = await db.delete(
+          'stock',
+          where: 'id IN ($placeholders)',
+          whereArgs: stockIdsToDelete,
+        );
+        AppLogger.info(
+          'RECONCILE: Successfully purged $deletedCount foreign stock items (e.g. cocacola, uhuru) from local DB.',
+          tag: 'SupasService',
+        );
+      }
+
+      // Clean foreign sales items
+      final localSales = await db.query('sales', columns: ['id', 'sync_id', 'is_edited']);
+      final List<int> salesIdsToDelete = [];
+
+      for (var row in localSales) {
+        final String? syncId = row['sync_id']?.toString();
+        final int isEdited = (row['is_edited'] as int? ?? 0);
+        if (syncId != null && syncId.isNotEmpty && isEdited == 0) {
+          if (!validSalesSyncIds.contains(syncId)) {
+            salesIdsToDelete.add(row['id'] as int);
+          }
+        }
+      }
+
+      if (salesIdsToDelete.isNotEmpty) {
+        final placeholders = List.filled(salesIdsToDelete.length, '?').join(',');
+        final deletedCount = await db.delete(
+          'sales',
+          where: 'id IN ($placeholders)',
+          whereArgs: salesIdsToDelete,
+        );
+        AppLogger.info(
+          'RECONCILE: Successfully purged $deletedCount foreign sales records from local DB.',
+          tag: 'SupasService',
+        );
+      }
+    } catch (e) {
+      debugPrint('Error in reconcileForeignData: $e');
+    }
   }
 }
