@@ -45,37 +45,7 @@ jobs:
           if [ -n "$GOOGLE_SERVICES_SECRET" ]; then
             echo "$GOOGLE_SERVICES_SECRET" > mobile_app/android/app/google-services.json
           else
-            cat << 'EOF' > mobile_app/android/app/google-services.json
-{
-  "project_info": {
-    "project_number": "770719873707",
-    "project_id": "checkbook-cc7d7",
-    "storage_bucket": "checkbook-cc7d7.firebasestorage.app"
-  },
-  "client": [
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:770719873707:android:200ff47cfd2d0d2cb055ee",
-        "android_client_info": {
-          "package_name": "com.example.mobile_app"
-        }
-      },
-      "oauth_client": [],
-      "api_key": [
-        {
-          "current_key": "AIzaSyDkpegrDv-ggJv4_inRXSk3aAKY6qz6n6A"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": []
-        }
-      }
-    }
-  ],
-  "configuration_version": "1"
-}
-EOF
+            echo "eyJwcm9qZWN0X2luZm8iOiB7InByb2plY3RfbnVtYmVyIjogIjc3MDcxOTg3MzcwNyIsICJwcm9qZWN0X2lkIjogImNoZWNrYm9vay1jYzdkNyIsICJzdG9yYWdlX2J1Y2tldCI6ICJjaGVja2Jvb2stY2M3ZDcuZmlyZWJhc2VzdG9yYWdlLmFwcCJ9LCAiY2xpZW50IjogW3siY2xpZW50X2luZm8iOiB7Im1vYmlsZXNka19hcHBfaWQiOiAiMTo3NzA3MTk4NzM3MDc6YW5kcm9pZDoyMDBmZjQ3Y2ZkMmQwZDJjYjA1NWVlIiwgImFuZHJvaWRfY2xpZW50X2luZm8iOiB7InBhY2thZ2VfbmFtZSI6ICJjb20uZXhhbXBsZS5tb2JpbGVfYXBwIn19LCAib2F1dGhfY2xpZW50IjogW10sICJhcGlfa2V5IjogW3siY3VycmVudF9rZXkiOiAiQUl6YVN5RGtwZWdyRHYtZ2dKdjRfaW5SWFNrM2FBS1k2cXo2bjZBIn1dLCAic2VydmljZXMiOiB7ImFwcGludml0ZV9zZXJ2aWNlIjogeyJvdGhlcl9wbGF0Zm9ybV9vYXV0aF9jbGllbnQiOiBbXX19fV0sICJjb25maWd1cmF0aW9uX3ZlcnNpb24iOiAiMSJ9" | base64 -d > mobile_app/android/app/google-services.json
           fi
 
       # 5. Get dependencies
