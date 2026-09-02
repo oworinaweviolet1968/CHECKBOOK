@@ -40,6 +40,8 @@ build/
 user_session.txt
 .env
 firebase-service-account.json
+google-services.json
+GoogleService-Info.plist
 *.db
 *.class
 test_persistence.db
