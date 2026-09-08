@@ -34,6 +34,8 @@ public class LoginController {
     @FXML
     private javafx.scene.control.ProgressBar syncProgressBar;
 
+    private volatile boolean isLoginInProgress = false;
+
     @FXML
     public void initialize() {
         loginButton.setOnAction(e -> handleLogin());
@@ -81,6 +83,10 @@ public class LoginController {
     }
 
     private void handleLogin() {
+        if (isLoginInProgress) {
+            return;
+        }
+
         String inputId = checkbookIdField.getText().trim();
 
         if (inputId.isEmpty()) {
@@ -88,6 +94,7 @@ public class LoginController {
             return;
         }
 
+        isLoginInProgress = true;
         setLoading(true);
 
         new Thread(() -> {
@@ -103,6 +110,7 @@ public class LoginController {
                 if (initRes == null || !initRes.has("success") || !initRes.get("success").getAsBoolean()) {
                     String errMsg = (initRes != null && initRes.has("message")) ? initRes.get("message").getAsString() : "Checkbook ID not found. Find your ID inside your Mobile App under Settings > Checkbook ID.";
                     Platform.runLater(() -> {
+                        isLoginInProgress = false;
                         setLoading(false);
                         statusLabel.setText(errMsg);
                         statusLabel.setStyle("-fx-text-fill: red;");
@@ -113,9 +121,14 @@ public class LoginController {
                 String sessionId = initRes.get("session_id").getAsString();
                 String targetEmail = initRes.has("email") ? initRes.get("email").getAsString() : "";
                 String targetUserId = initRes.has("user_id") ? initRes.get("user_id").getAsString() : "";
+                boolean alreadyPending = initRes.has("already_pending") && initRes.get("already_pending").getAsBoolean();
 
                 Platform.runLater(() -> {
-                    statusLabel.setText("Approval request sent to your mobile device. Please tap Accept to authorize this desktop.");
+                    if (alreadyPending) {
+                        statusLabel.setText("An approval request is already pending on your mobile device. Please tap Accept to authorize this desktop.");
+                    } else {
+                        statusLabel.setText("Approval request sent to your mobile device. Please tap Accept to authorize this desktop.");
+                    }
                     statusLabel.setStyle("-fx-text-fill: #0284C7;");
                 });
 
@@ -143,6 +156,7 @@ public class LoginController {
                             break;
                         } else if ("REJECTED".equalsIgnoreCase(st)) {
                             Platform.runLater(() -> {
+                                isLoginInProgress = false;
                                 setLoading(false);
                                 statusLabel.setText("Login request was declined on your mobile device.");
                                 statusLabel.setStyle("-fx-text-fill: red;");
@@ -162,6 +176,7 @@ public class LoginController {
 
                 if (!approved) {
                     Platform.runLater(() -> {
+                        isLoginInProgress = false;
                         setLoading(false);
                         statusLabel.setText("Connection request timed out. Please tap Login to try again.");
                         statusLabel.setStyle("-fx-text-fill: red;");
@@ -186,6 +201,7 @@ public class LoginController {
                         if (!finalOwnershipPaid) {
                             // Purge any local session file/tokens
                             service.clearSession();
+                            isLoginInProgress = false;
                             setLoading(false);
                             statusLabel.setText("Access Denied: 7-Day Free Trial Expired. License Required.");
                             statusLabel.setStyle("-fx-text-fill: red;");
@@ -210,6 +226,7 @@ public class LoginController {
                 } catch (Exception ex) {
                     service.clearSession();
                     Platform.runLater(() -> {
+                        isLoginInProgress = false;
                         setLoading(false);
                         statusLabel.setText("Error verifying account license. Please try again.");
                         statusLabel.setStyle("-fx-text-fill: red;");
@@ -218,6 +235,7 @@ public class LoginController {
 
             } catch (Exception e) {
                 Platform.runLater(() -> {
+                    isLoginInProgress = false;
                     setLoading(false);
                     statusLabel.setText("Error: " + e.getMessage());
                     statusLabel.setStyle("-fx-text-fill: red;");
@@ -480,6 +498,9 @@ public class LoginController {
 
     private void setLoading(boolean loading) {
         loginButton.setDisable(loading);
+        if (mobileLoginButton != null) {
+            mobileLoginButton.setDisable(loading);
+        }
         checkbookIdField.setDisable(loading);
         if (passwordField != null) {
             passwordField.setDisable(loading);
@@ -515,6 +536,13 @@ public class LoginController {
     }
 
     private void handleMobileLogin() {
+        if (isLoginInProgress) {
+            return;
+        }
+
+        isLoginInProgress = true;
+        setLoading(true);
+
         String email = checkbookIdField.getText().trim();
         Stage ownerStage = (Stage) mobileLoginButton.getScene().getWindow();
 
@@ -524,7 +552,6 @@ public class LoginController {
             new com.meto.inventory.components.MobileLoginModal.LoginCallback() {
                 @Override
                 public void onSuccess(String refreshToken, String userEmail) {
-                    setLoading(true);
                     statusLabel.setText("Login approved! Syncing...");
                     statusLabel.setStyle("-fx-text-fill: green;");
 
@@ -548,6 +575,7 @@ public class LoginController {
                             } else {
                                 Platform.runLater(() -> {
                                     statusLabel.setText("Login failed after approval (invalid session token).");
+                                    isLoginInProgress = false;
                                     setLoading(false);
                                 });
                             }
@@ -555,6 +583,7 @@ public class LoginController {
                             ex.printStackTrace();
                             Platform.runLater(() -> {
                                 statusLabel.setText("Error signing in: " + ex.getMessage());
+                                isLoginInProgress = false;
                                 setLoading(false);
                             });
                         }
@@ -565,6 +594,8 @@ public class LoginController {
                 public void onError(String message) {
                     statusLabel.setText(message);
                     statusLabel.setStyle("-fx-text-fill: red;");
+                    isLoginInProgress = false;
+                    setLoading(false);
                 }
             }
         );

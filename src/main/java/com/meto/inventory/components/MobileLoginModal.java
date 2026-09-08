@@ -226,12 +226,17 @@ public class MobileLoginModal {
     }
 
     private void startAuthorizationFlow() {
+        if (isPollingActive.get()) {
+            return;
+        }
+
         String email = emailInput.getText().trim();
         if (email.isEmpty() || !email.contains("@")) {
             showError("Please enter a valid registered email address.");
             return;
         }
 
+        isPollingActive.set(true);
         hideError();
         setWaitingState(true);
 
@@ -253,8 +258,6 @@ public class MobileLoginModal {
         }));
         countdownTimeline.setCycleCount(60);
         countdownTimeline.play();
-
-        isPollingActive.set(true);
 
         new Thread(() -> {
             try {
@@ -332,10 +335,14 @@ public class MobileLoginModal {
     }
 
     private void closeAndCleanup() {
+        boolean wasPolling = isPollingActive.get();
         isPollingActive.set(false);
         stopCountdown();
         cleanupRequest();
         dialogStage.close();
+        if (wasPolling && callback != null) {
+            callback.onError("Login request cancelled.");
+        }
     }
 
     private void setWaitingState(boolean waiting) {

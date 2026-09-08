@@ -377,7 +377,37 @@ public class SupabaseService {
             this.currentUserId = targetUserId.trim();
         }
 
-        // Purge existing pending login requests for this target identifier first
+        // Check if there is ALREADY an active/recent pending request for this target email
+        try {
+            String encodedTarget = java.net.URLEncoder.encode(targetEmail, java.nio.charset.StandardCharsets.UTF_8);
+            HttpRequest checkExisting = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/login_requests?email=eq." + encodedTarget + "&status=eq.pending&select=*"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + SUPABASE_KEY)
+                    .GET()
+                    .build();
+            HttpResponse<String> checkResp = client.send(checkExisting, HttpResponse.BodyHandlers.ofString());
+            if (checkResp.statusCode() == 200) {
+                JsonArray arr = JsonParser.parseString(checkResp.body()).getAsJsonArray();
+                for (int i = 0; i < arr.size(); i++) {
+                    JsonObject existingObj = arr.get(i).getAsJsonObject();
+                    if (isRecentRequest(existingObj)) {
+                        String sessionId = existingObj.get("id").getAsString();
+                        JsonObject ret = new JsonObject();
+                        ret.addProperty("success", true);
+                        ret.addProperty("session_id", sessionId);
+                        ret.addProperty("email", targetEmail);
+                        ret.addProperty("already_pending", true);
+                        if (targetUserId != null && !targetUserId.isEmpty()) {
+                            ret.addProperty("user_id", targetUserId);
+                        }
+                        return ret;
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
+        // Purge stale pending login requests for this target identifier first
         try {
             String encodedTarget = java.net.URLEncoder.encode(targetEmail, java.nio.charset.StandardCharsets.UTF_8);
             HttpRequest deleteOld = HttpRequest.newBuilder()
@@ -1902,9 +1932,44 @@ public class SupabaseService {
         return currentUserId != null;
     }
 
-    // --- PUSH-TO-LOGIN ---
+    private boolean isRecentRequest(JsonObject row) {
+        if (row == null || !row.has("created_at") || row.get("created_at").isJsonNull()) {
+            return true;
+        }
+        try {
+            String createdStr = row.get("created_at").getAsString();
+            long createdMs = parseIsoTimestamp(createdStr);
+            if (createdMs <= 0) return true;
+            long now = System.currentTimeMillis();
+            long ageMs = now - createdMs;
+            return ageMs >= -10000 && ageMs < 120000;
+        } catch (Exception e) {
+            return true;
+        }
+    }
 
     public String createLoginRequest(String email) throws IOException, InterruptedException {
+        // Check if there is ALREADY an active/recent pending request for this email first
+        try {
+            String encodedEmail = java.net.URLEncoder.encode(email, java.nio.charset.StandardCharsets.UTF_8);
+            HttpRequest checkExisting = HttpRequest.newBuilder()
+                    .uri(URI.create(REST_URL + "/login_requests?email=eq." + encodedEmail + "&status=eq.pending&select=*"))
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer " + SUPABASE_KEY)
+                    .GET()
+                    .build();
+            HttpResponse<String> checkResp = client.send(checkExisting, HttpResponse.BodyHandlers.ofString());
+            if (checkResp.statusCode() == 200) {
+                JsonArray arr = JsonParser.parseString(checkResp.body()).getAsJsonArray();
+                for (int i = 0; i < arr.size(); i++) {
+                    JsonObject existingObj = arr.get(i).getAsJsonObject();
+                    if (isRecentRequest(existingObj)) {
+                        return existingObj.get("id").getAsString();
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
         // Purge any stale pending login requests for this email first
         try {
             String encodedEmail = java.net.URLEncoder.encode(email, java.nio.charset.StandardCharsets.UTF_8);

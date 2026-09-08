@@ -1225,6 +1225,13 @@ class DatabaseHelper {
           boxStr = "$fullBoxes Boxes";
       }
 
+      String dozStr = "";
+      if (multiplier > 12.0 && loosePcs >= 12) {
+          int dozens = loosePcs ~/ 12;
+          loosePcs = loosePcs % 12;
+          dozStr = "$dozens Doz";
+      }
+
       String pcsStr = "";
       if (loosePcs == 1) {
           pcsStr = "1 pc";
@@ -1232,12 +1239,13 @@ class DatabaseHelper {
           pcsStr = "$loosePcs pcs";
       }
 
-      if (boxStr.isNotEmpty && pcsStr.isNotEmpty) {
-          return "$boxStr / $pcsStr";
-      } else if (boxStr.isNotEmpty) {
-          return boxStr;
-      } else if (pcsStr.isNotEmpty) {
-          return pcsStr;
+      List<String> parts = [];
+      if (boxStr.isNotEmpty) parts.add(boxStr);
+      if (dozStr.isNotEmpty) parts.add(dozStr);
+      if (pcsStr.isNotEmpty) parts.add(pcsStr);
+
+      if (parts.isNotEmpty) {
+          return parts.join(" / ");
       }
 
       return "0 Pcs";
@@ -1540,63 +1548,58 @@ class DatabaseHelper {
           INSERT INTO deleted_history (sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited, device_source) 
           SELECT COALESCE(NULLIF(sales.sync_id, ''), $uuidGenSql), 
                  sales.customer, sales.item, sales.quantity, sales.unit, sales.price, sales.cost_price, sales.base_quantity, sales.amount, sales.type, sales.date, sales.is_debt, sales.is_paid, sales.paid_amount, 1, 'Migration' 
-          FROM sales WHERE (
-            EXISTS (
-              SELECT 1 FROM deleted_stock WHERE LOWER(REPLACE(deleted_stock.item, ' ', '')) = LOWER(REPLACE(sales.item, ' ', '')) OR sales.item LIKE '%' || deleted_stock.item || '%' OR deleted_stock.item LIKE '%' || sales.item || '%'
-            )
-            OR LOWER(sales.item) LIKE '%zerospot%'
-            OR LOWER(sales.item) LIKE '%zero%spot%'
+          FROM sales WHERE EXISTS (
+            SELECT 1 FROM deleted_stock WHERE LOWER(REPLACE(deleted_stock.item, ' ', '')) = LOWER(REPLACE(sales.item, ' ', '')) OR sales.item LIKE '%' || deleted_stock.item || '%' OR deleted_stock.item LIKE '%' || sales.item || '%'
           ) AND sales.type != 'NEW STOCK'
         ''');
         await db.execute('''
-          DELETE FROM sales WHERE (
-            EXISTS (
-              SELECT 1 FROM deleted_stock WHERE LOWER(REPLACE(deleted_stock.item, ' ', '')) = LOWER(REPLACE(sales.item, ' ', '')) OR sales.item LIKE '%' || deleted_stock.item || '%' OR deleted_stock.item LIKE '%' || sales.item || '%'
-            )
-            OR LOWER(sales.item) LIKE '%zerospot%'
-            OR LOWER(sales.item) LIKE '%zero%spot%'
+          DELETE FROM sales WHERE EXISTS (
+            SELECT 1 FROM deleted_stock WHERE LOWER(REPLACE(deleted_stock.item, ' ', '')) = LOWER(REPLACE(sales.item, ' ', '')) OR sales.item LIKE '%' || deleted_stock.item || '%' OR deleted_stock.item LIKE '%' || sales.item || '%'
           ) AND sales.type != 'NEW STOCK'
         ''');
         await saveSetting('has_purged_deleted_stock_sales_v3', '1');
-        debugPrint('MIGRATION (Mobile): Purged ghost sales associated with deleted stock / zerospot');
+        debugPrint('MIGRATION (Mobile): Purged ghost sales associated with deleted stock');
       } catch (e) {
         debugPrint('Failed to purge ghost sales for deleted stock on Mobile: $e');
+      }
+    }
+
+    final fixZerospotSetting = await getSetting('fix_zerospot_tombstones_v1');
+    if (fixZerospotSetting == null || fixZerospotSetting != '1') {
+      try {
+        final db = await instance.database;
+        await db.execute('''
+          INSERT INTO sales (sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited, device_source)
+          SELECT sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, 1, 'Restored'
+          FROM deleted_history WHERE (LOWER(item) LIKE '%zerospot%' OR LOWER(item) LIKE '%zero%spot%') AND device_source = 'Migration'
+        ''');
+        await db.execute("DELETE FROM deleted_history WHERE (LOWER(item) LIKE '%zerospot%' OR LOWER(item) LIKE '%zero%spot%') AND device_source = 'Migration'");
+        await db.execute("DELETE FROM deleted_stock WHERE LOWER(item) LIKE '%zerospot%' OR LOWER(item) LIKE '%zero%spot%'");
+        
+        final uuidGenSql = "lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6)))";
+        await db.execute('''
+          INSERT INTO stock (sync_id, supplier, item, quantity, unit, price, available_pieces, date, is_edited, device_source)
+          SELECT $uuidGenSql, 'Vio investments.co.Ltd', 'Zerospot cream small', '30ml', 'box*72', 3333.33, 189.0, date('now'), 1, 'Restored'
+          WHERE NOT EXISTS (SELECT 1 FROM stock WHERE LOWER(item) LIKE '%zerospot%cream%small%');
+        ''');
+        await db.execute('''
+          INSERT INTO stock (sync_id, supplier, item, quantity, unit, price, available_pieces, date, is_edited, device_source)
+          SELECT $uuidGenSql, 'Vio investments.co.Ltd', 'Zerospot scrub', '125g', 'box*12', 4166.67, 0.0, date('now'), 1, 'Restored'
+          WHERE NOT EXISTS (SELECT 1 FROM stock WHERE LOWER(item) LIKE '%zerospot%scrub%');
+        ''');
+
+        await saveSetting('fix_zerospot_tombstones_v1', '1');
+        debugPrint('MIGRATION (Mobile): Restored Zerospot sales history and cleared migration tombstones');
+      } catch (e) {
+        debugPrint('Failed to restore Zerospot sales history on Mobile: $e');
       }
     }
   }
 
   Future<void> cleanupZombieStock() async {
-    final db = await instance.database;
-    // Find all stock entries that have available_pieces <= 0 AND have no sales history entry
-    final zombies = await db.rawQuery('''
-      SELECT id, sync_id, item, quantity 
-      FROM stock 
-      WHERE available_pieces <= 0 
-      AND NOT EXISTS (
-        SELECT 1 FROM sales 
-        WHERE sales.item = stock.item COLLATE NOCASE
-        AND sales.quantity = stock.quantity COLLATE NOCASE
-      )
-      AND (is_edited = 0 OR is_edited IS NULL)
-    ''');
-
-    for (var z in zombies) {
-      final int stockId = z['id'] as int;
-      final String itemName = z['item'] as String;
-      final String quantity = z['quantity'] as String;
-      final String syncId = (z['sync_id'] != null && z['sync_id'].toString().isNotEmpty)
-          ? z['sync_id'].toString()
-          : generateUUID();
-
-      await db.insert('deleted_stock', {
-        'sync_id': syncId,
-        'item': itemName,
-        'quantity': quantity,
-      });
-
-      await db.delete('stock', where: 'id = ?', whereArgs: [stockId]);
-      debugPrint("CLEANUP ZOMBIE STOCK: Deleted orphan stock '$itemName ($quantity)' (sync_id: $syncId)");
-    }
+    // DO NOT delete stock entries, even if available_pieces <= 0.
+    // Out-of-stock and zero stock items must remain visible in In Stock Inventory.
+    return;
   }
 
 
@@ -1733,32 +1736,52 @@ class DatabaseHelper {
     String lowercaseText = text.toLowerCase().trim();
     double fractionValue = 0.0;
 
-    // Handle common fractions at the beginning
-    if (lowercaseText.startsWith("1/4")) {
+    // Handle common fractions
+    if (lowercaseText.contains("1/4")) {
       fractionValue = 0.25;
-    } else if (lowercaseText.startsWith("1/2")) {
+    } else if (lowercaseText.contains("1/2")) {
       fractionValue = 0.5;
     }
 
     // Remove known fractions to avoid confusing regex
     String cleaned = lowercaseText.replaceAll("1/4", "").replaceAll("1/2", "").replaceAll(",", "").trim();
+
+    // Only inspect text before any '*' (which is package multiplier)
+    int starIdx = cleaned.indexOf('*');
+    String textBeforeStar = (starIdx != -1) ? cleaned.substring(0, starIdx) : cleaned;
     
-    // Find the leading numeric part (start of string only)
-    final match = RegExp(r'^(\d+(\.\d+)?)').firstMatch(cleaned);
-    
+    // 1. Find leading numeric part
+    final match = RegExp(r'^\s*(\d+(\.\d+)?)').firstMatch(textBeforeStar);
     if (match != null) {
-        try {
-            double value = double.parse(match.group(1)!);
-            if (fractionValue > 0) {
-                return value + fractionValue; // Fixed: Addition instead of multiplication
-            }
-            return value;
-        } catch (e) {
-            return fractionValue;
+      try {
+        double value = double.parse(match.group(1)!);
+        if (fractionValue > 0) {
+          return value + fractionValue;
         }
+        return value;
+      } catch (e) {
+        return fractionValue > 0 ? fractionValue : 1.0;
+      }
     }
-    
-    return fractionValue;
+
+    // 2. Check if there's any standalone number before star
+    final anyMatch = RegExp(r'(\d+(\.\d+)?)').firstMatch(textBeforeStar);
+    if (anyMatch != null) {
+      try {
+        double value = double.parse(anyMatch.group(1)!);
+        if (fractionValue > 0) {
+          return value + fractionValue;
+        }
+        return value;
+      } catch (_) {}
+    }
+
+    if (fractionValue > 0) {
+      return fractionValue;
+    }
+
+    // Default to 1.0 for valid non-empty unit labels without explicit numbers
+    return 1.0;
   }
 
   /// Ported from Java getUnitMultiplier

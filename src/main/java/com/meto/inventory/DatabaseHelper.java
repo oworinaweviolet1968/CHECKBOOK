@@ -1307,27 +1307,44 @@ public class DatabaseHelper {
         else if (lowercaseText.contains("1/2"))
             fractionValue = 0.5;
 
-        // 2. Extract the FIRST whole number
-        // We strip known fractions first to avoid confusing the regex
+        // 2. Strip known fractions first
         String cleaned = lowercaseText.replace("1/4", "").replace("1/2", "");
-        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("(\\d+\\.?\\d*)");
-        java.util.regex.Matcher matcher = pattern.matcher(cleaned);
+        
+        // 3. Inspect only text before any '*' (which is package multiplier)
+        int starIdx = cleaned.indexOf('*');
+        String textBeforeStar = (starIdx != -1) ? cleaned.substring(0, starIdx) : cleaned;
+
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("^\\s*(\\d+\\.?\\d*)");
+        java.util.regex.Matcher matcher = pattern.matcher(textBeforeStar);
 
         if (matcher.find()) {
             try {
                 double value = Double.parseDouble(matcher.group(1));
-                // If it's something like "2 1/2", we should probably ADD them,
-                // but the user says "only numbers" (no decimals).
-                // However, internal logic still supports fractions for weight.
                 if (fractionValue > 0) {
-                    return value + fractionValue; // Changed from * to + for correct composite values like "2 1/2"
+                    return value + fractionValue;
                 }
                 return value;
             } catch (NumberFormatException e) {
-                return fractionValue;
+                return fractionValue > 0 ? fractionValue : 1.0;
             }
         }
-        return fractionValue;
+
+        java.util.regex.Pattern anyPattern = java.util.regex.Pattern.compile("(\\d+\\.?\\d*)");
+        java.util.regex.Matcher anyMatcher = anyPattern.matcher(textBeforeStar);
+        if (anyMatcher.find()) {
+            try {
+                double value = Double.parseDouble(anyMatcher.group(1));
+                if (fractionValue > 0) return value + fractionValue;
+                return value;
+            } catch (NumberFormatException ignored) {}
+        }
+
+        if (fractionValue > 0) {
+            return fractionValue;
+        }
+
+        // Default to 1.0 for valid non-empty unit labels without explicit numbers
+        return 1.0;
     }
 
     public double getExistingPrice(String item, String size) {
@@ -1874,7 +1891,23 @@ public class DatabaseHelper {
             if (fixZerospot == null || !"1".equals(fixZerospot)) {
                 try (Statement stmt = connection.createStatement()) {
                     stmt.execute(
+                            "INSERT INTO sales (sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, is_edited, device_source) " +
+                            "SELECT sync_id, customer, item, quantity, unit, price, cost_price, base_quantity, amount, type, date, is_debt, is_paid, paid_amount, 1, 'Restored' " +
+                            "FROM deleted_history WHERE (LOWER(item) LIKE '%zerospot%' OR LOWER(item) LIKE '%zero%spot%') AND device_source = 'Migration'");
+                    stmt.execute(
                             "DELETE FROM deleted_history WHERE (LOWER(item) LIKE '%zerospot%' OR LOWER(item) LIKE '%zero%spot%') AND device_source = 'Migration'");
+                    stmt.execute(
+                            "DELETE FROM deleted_stock WHERE LOWER(item) LIKE '%zerospot%' OR LOWER(item) LIKE '%zero%spot%'");
+                    stmt.execute(
+                            "INSERT INTO stock (sync_id, supplier, item, quantity, unit, price, available_pieces, date, is_edited, device_source) " +
+                            "SELECT lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), " +
+                            "'Vio investments.co.Ltd', 'Zerospot cream small', '30ml', 'box*72', 3333.33, 189.0, date('now'), 1, 'Restored' " +
+                            "WHERE NOT EXISTS (SELECT 1 FROM stock WHERE LOWER(item) LIKE '%zerospot%cream%small%')");
+                    stmt.execute(
+                            "INSERT INTO stock (sync_id, supplier, item, quantity, unit, price, available_pieces, date, is_edited, device_source) " +
+                            "SELECT lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))),2) || '-a' || substr(lower(hex(randomblob(2))),2) || '-' || lower(hex(randomblob(6))), " +
+                            "'Vio investments.co.Ltd', 'Zerospot scrub', '125g', 'box*12', 4166.67, 0.0, date('now'), 1, 'Restored' " +
+                            "WHERE NOT EXISTS (SELECT 1 FROM stock WHERE LOWER(item) LIKE '%zerospot%scrub%')");
                     saveSetting("fix_zerospot_tombstones_v1", "1");
                     System.out.println("MIGRATION (Desktop): Cleared invalid migration tombstones for zerospot.");
                 } catch (Exception e) {
@@ -1890,39 +1923,9 @@ public class DatabaseHelper {
     }
 
     public void cleanupZombieStock() {
-        // Find all stock entries that have available_pieces <= 0 AND have no sales history entry
-        String sql = "SELECT id, item, quantity, sync_id FROM stock WHERE available_pieces <= 0 AND NOT EXISTS (SELECT 1 FROM sales WHERE sales.item = stock.item COLLATE NOCASE AND sales.quantity = stock.quantity COLLATE NOCASE) AND (is_edited = 0 OR is_edited IS NULL)";
-        try (Statement stmt = connection.createStatement();
-                ResultSet rs = stmt.executeQuery(sql)) {
-            List<Map<String, String>> zombies = new ArrayList<>();
-            while (rs.next()) {
-                Map<String, String> z = new HashMap<>();
-                z.put("id", String.valueOf(rs.getInt("id")));
-                z.put("item", rs.getString("item"));
-                z.put("quantity", rs.getString("quantity"));
-                String syncId = rs.getString("sync_id");
-                z.put("sync_id",
-                        (syncId != null && !syncId.isEmpty()) ? syncId : java.util.UUID.randomUUID().toString());
-                zombies.add(z);
-            }
-            try (PreparedStatement ins = connection
-                    .prepareStatement("INSERT INTO deleted_stock (sync_id, item, quantity) VALUES (?, ?, ?)");
-                    PreparedStatement del = connection.prepareStatement("DELETE FROM stock WHERE id = ?")) {
-                for (Map<String, String> z : zombies) {
-                    ins.setString(1, z.get("sync_id"));
-                    ins.setString(2, z.get("item"));
-                    ins.setString(3, z.get("quantity"));
-                    ins.executeUpdate();
-
-                    del.setInt(1, Integer.parseInt(z.get("id")));
-                    del.executeUpdate();
-                    System.out.println("CLEANUP ZOMBIE STOCK (Desktop): Deleted orphan stock '" + z.get("item") + " ("
-                            + z.get("quantity") + ")'");
-                }
-            }
-        } catch (SQLException e) {
-            System.err.println("Error cleaning up zombie stock: " + e.getMessage());
-        }
+        // DO NOT delete stock entries, even if available_pieces <= 0.
+        // Out-of-stock and zero stock items must remain visible in In Stock Inventory.
+        return;
     }
 
     public Connection getConnection() {
@@ -2186,6 +2189,26 @@ public class DatabaseHelper {
             stmt.execute("DELETE FROM deleted_stock");
             stmt.execute("DELETE FROM deleted_history");
         } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public synchronized void clearAllData() {
+        if (connection == null) return;
+        try (Statement stmt = connection.createStatement()) {
+            stmt.executeUpdate("DELETE FROM sales");
+            stmt.executeUpdate("DELETE FROM stock");
+            stmt.executeUpdate("DELETE FROM deleted_history");
+            stmt.executeUpdate("DELETE FROM deleted_stock");
+            stmt.executeUpdate("DELETE FROM debt_payments");
+            stmt.executeUpdate("DELETE FROM yearly_summaries");
+            try { stmt.executeUpdate("DELETE FROM audit_logs"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("DELETE FROM notifications"); } catch (SQLException ignored) {}
+            try { stmt.executeUpdate("UPDATE settings SET value = '0' WHERE key = 'last_backup_timestamp'"); } catch (SQLException ignored) {}
+            try { stmt.execute("PRAGMA wal_checkpoint(TRUNCATE);"); } catch (SQLException ignored) {}
+            System.out.println("DATABASE: All local data cleared from " + currentDbName);
+        } catch (SQLException e) {
+            System.err.println("Failed to clear local database: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -2495,25 +2518,26 @@ public class DatabaseHelper {
                     com.google.gson.JsonObject o = el.getAsJsonObject();
                     if (o.has("sync_id") && !o.get("sync_id").isJsonNull())
                         cloudSyncIds.add(o.get("sync_id").getAsString());
-                    String item = o.has("item") && !o.get("item").isJsonNull() ? o.get("item").getAsString() : "";
+                    String item = o.has("item") && !o.get("item").isJsonNull() ? o.get("item").getAsString().trim().toLowerCase() : "";
                     String quantity = o.has("quantity") && !o.get("quantity").isJsonNull()
-                            ? o.get("quantity").getAsString()
+                            ? o.get("quantity").getAsString().trim().toLowerCase()
                             : "";
                     cloudItemKeys.add(item + "____" + quantity);
                 }
 
                 try (Statement stmt = connection.createStatement();
-                        ResultSet rs = stmt.executeQuery("SELECT id, sync_id, item, quantity, is_edited FROM stock")) {
+                        ResultSet rs = stmt.executeQuery("SELECT id, sync_id, item, quantity FROM stock")) {
                     List<Integer> idsToDelete = new ArrayList<>();
                     while (rs.next()) {
                         int id = rs.getInt("id");
                         String syncId = rs.getString("sync_id");
-                        String itemKey = rs.getString("item") + "____" + rs.getString("quantity");
-                        boolean isEdited = rs.getInt("is_edited") == 1;
+                        String localItem = rs.getString("item") != null ? rs.getString("item").trim().toLowerCase() : "";
+                        String localQuantity = rs.getString("quantity") != null ? rs.getString("quantity").trim().toLowerCase() : "";
+                        String itemKey = localItem + "____" + localQuantity;
 
                         boolean inCloud = (syncId != null && cloudSyncIds.contains(syncId))
                                 || cloudItemKeys.contains(itemKey);
-                        if (!inCloud && !isEdited) {
+                        if (!inCloud) {
                             idsToDelete.add(id);
                         }
                     }

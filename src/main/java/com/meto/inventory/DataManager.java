@@ -38,6 +38,11 @@ public class DataManager {
         notifyDataChanged();
     }
 
+    public void clearLocalDatabase() {
+        dbHelper.clearAllData();
+        notifyDataChanged(false); // refresh UI listeners without triggering backup
+    }
+
     public void switchDatabaseOnly(String userId) {
         if (userId == null || userId.trim().isEmpty() || "unknown_user".equalsIgnoreCase(userId.trim())) {
             System.out.println("GUARD: Refusing to switch database to empty/unauthenticated userId.");

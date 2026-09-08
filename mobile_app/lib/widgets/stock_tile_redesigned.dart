@@ -120,7 +120,7 @@ class StockTileRedesigned extends StatelessWidget {
 
           // Right: Total Quantity Badge + Status Pill Badge
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 130),
+            constraints: const BoxConstraints(maxWidth: 180),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisSize: MainAxisSize.min,
@@ -129,11 +129,11 @@ class StockTileRedesigned extends StatelessWidget {
                   quantity,
                   style: GoogleFonts.outfit(
                     fontWeight: FontWeight.bold,
-                    fontSize: 15,
+                    fontSize: 14,
                     color: const Color(0xFF000000),
                   ),
                   overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
+                  maxLines: 2,
                   textAlign: TextAlign.end,
                 ),
                 const SizedBox(height: 4),

@@ -48,5 +48,15 @@ void main() {
       expect(DatabaseHelper.instance.getUnitMultiplier('box*12', ''), equals(12.0));
       expect(DatabaseHelper.instance.getUnitMultiplier('box*24', ''), equals(24.0));
     });
+
+    test('Verify extractNumericValue unit quantity extraction', () {
+      expect(DatabaseHelper.instance.extractNumericValue('pcs'), equals(1.0));
+      expect(DatabaseHelper.instance.extractNumericValue('5 pcs'), equals(5.0));
+      expect(DatabaseHelper.instance.extractNumericValue('box*36'), equals(1.0));
+      expect(DatabaseHelper.instance.extractNumericValue('2 box*36'), equals(2.0));
+      expect(DatabaseHelper.instance.extractNumericValue('1/2 doz'), equals(0.5));
+      expect(DatabaseHelper.instance.extractNumericValue('2 1/2 kg'), equals(2.5));
+      expect(DatabaseHelper.instance.extractNumericValue(''), equals(0.0));
+    });
   });
 }

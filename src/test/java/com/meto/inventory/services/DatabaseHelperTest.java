@@ -93,18 +93,11 @@ public class DatabaseHelperTest {
 
         dbHelper.cleanupZombieStock();
 
-        // Verify removed from stock
+        // Verify preserved in stock
         try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM stock WHERE item = 'Orphan Item'")) {
             ResultSet rs = stmt.executeQuery();
             assertTrue(rs.next());
-            assertEquals(0, rs.getInt(1), "Orphan stock with available_pieces <= 0 should be deleted from stock");
-        }
-
-        // Verify inserted into deleted_stock
-        try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM deleted_stock WHERE item = 'Orphan Item'")) {
-            ResultSet rs = stmt.executeQuery();
-            assertTrue(rs.next());
-            assertEquals(1, rs.getInt(1), "Cleaned zombie stock should be logged in deleted_stock");
+            assertEquals(1, rs.getInt(1), "Stock with available_pieces <= 0 should be preserved in stock table");
         }
     }
 
@@ -174,7 +167,7 @@ public class DatabaseHelperTest {
         try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM stock WHERE item = 'Negative Stock Item'")) {
             ResultSet rs = stmt.executeQuery();
             assertTrue(rs.next());
-            assertEquals(0, rs.getInt(1), "Negative orphan stock without sales history should be cleaned up");
+            assertEquals(1, rs.getInt(1), "Negative stock item should be preserved in stock table");
         }
     }
 
@@ -253,11 +246,11 @@ public class DatabaseHelperTest {
 
         dbHelper.cleanupZombieStock();
 
-        // Verify special character orphan was cleaned up without SQL errors
+        // Verify special character orphan was preserved without SQL errors
         try (PreparedStatement stmt = conn.prepareStatement("SELECT COUNT(*) FROM stock WHERE item = 'Nut & Bolt (5/8\")'")) {
             ResultSet rs = stmt.executeQuery();
             assertTrue(rs.next());
-            assertEquals(0, rs.getInt(1), "Special character orphan stock should be cleaned up cleanly");
+            assertEquals(1, rs.getInt(1), "Special character stock should be preserved");
         }
 
         // Verify case-insensitive matching preserved the stock item

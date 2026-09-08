@@ -97,13 +97,9 @@ class NotificationRouteInfo {
       type = NotificationTargetType.sale;
       final colonIdx = message.indexOf(':');
       if (colonIdx != -1) {
-        String customerPart = message.substring(18, colonIdx).trim();
         String itemsPart = message.substring(colonIdx + 1).trim();
-        if (customerPart.toLowerCase() == 'walk-in customer' || customerPart.isEmpty) {
-          query = itemsPart.split(',').first.trim();
-        } else {
-          query = customerPart;
-        }
+        final parenIdx = itemsPart.indexOf('(');
+        query = (parenIdx != -1) ? itemsPart.substring(0, parenIdx).trim() : itemsPart.split(',').first.trim();
       } else {
         query = message.substring(18).trim();
       }
@@ -111,13 +107,9 @@ class NotificationRouteInfo {
       type = NotificationTargetType.sale;
       final colonIdx = message.indexOf(':');
       if (colonIdx != -1) {
-        String customerPart = message.substring(14, colonIdx).trim();
         String itemsPart = message.substring(colonIdx + 1).trim();
-        if (customerPart.toLowerCase() == 'walk-in customer' || customerPart.isEmpty) {
-          query = itemsPart.split(',').first.trim();
-        } else {
-          query = customerPart;
-        }
+        final parenIdx = itemsPart.indexOf('(');
+        query = (parenIdx != -1) ? itemsPart.substring(0, parenIdx).trim() : itemsPart.split(',').first.trim();
       } else {
         query = message.substring(14).trim();
       }
@@ -125,13 +117,9 @@ class NotificationRouteInfo {
       type = NotificationTargetType.debt;
       final colonIdx = message.indexOf(':');
       if (colonIdx != -1) {
-        String customerPart = message.substring(18, colonIdx).trim();
         String itemsPart = message.substring(colonIdx + 1).trim();
-        if (customerPart.toLowerCase() == 'walk-in customer' || customerPart.isEmpty) {
-          query = itemsPart.split(',').first.trim();
-        } else {
-          query = customerPart;
-        }
+        final parenIdx = itemsPart.indexOf('(');
+        query = (parenIdx != -1) ? itemsPart.substring(0, parenIdx).trim() : itemsPart.split(',').first.trim();
       } else {
         query = message.substring(18).trim();
       }
