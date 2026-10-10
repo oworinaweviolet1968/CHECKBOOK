@@ -19,7 +19,7 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
-          token: ${{ secrets.CROSS_REPO_PAT || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       # 2. Set up Flutter
       - name: Setup Flutter
@@ -28,69 +28,29 @@ jobs:
           channel: 'stable'
           cache: true
 
-      # 3. Install Apple Certificate & Provisioning Profile (optional)
-      #    Secrets needed for signed builds:
-      #      BUILD_CERTIFICATE_BASE64          - base64 of your .p12 signing cert
-      #      P12_PASSWORD                      - password for the .p12 cert
-      #      BUILD_PROVISION_PROFILE_BASE64    - base64 of your .mobileprovision
-      #      KEYCHAIN_PASSWORD                 - any temp password for the build keychain
-      - name: Install Apple Certificate
-        if: ${{ secrets.BUILD_CERTIFICATE_BASE64 != '' }}
-        env:
-          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
-          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
-          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-
-          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
-          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
-
-          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
-
-          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
-
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles
-
-      # 4. Get Flutter dependencies
+      # 3. Get Flutter dependencies
       - name: Get Flutter dependencies
         working-directory: mobile_app
         run: flutter pub get
 
-      # 5. Build IPA (signed or unsigned depending on available secrets)
-      - name: Build IPA
+      # 4. Build unsigned IPA (xtool will re-sign on device)
+      - name: Build IPA (unsigned)
         working-directory: mobile_app
         run: |
-          if [ -n "${{ secrets.BUILD_CERTIFICATE_BASE64 }}" ]; then
-            echo "Building signed IPA with ExportOptions..."
-            flutter build ipa \
-              --release \
-              --build-name=2.2.0 \
-              --build-number=${{ github.run_number }} \
-              --export-options-plist=ios/ExportOptions.plist
-          else
-            echo "Building unsigned IPA (no signing secrets provided)..."
-            flutter build ipa \
-              --release \
-              --build-name=2.2.0 \
-              --build-number=${{ github.run_number }} \
-              --no-codesign
-          fi
+          flutter build ipa \
+            --release \
+            --build-name=2.2.0 \
+            --build-number=${{ github.run_number }} \
+            --no-codesign
 
-      # 6. Locate and rename IPA
+      # 5. Locate and rename IPA
       - name: Locate and rename IPA
         working-directory: mobile_app
         run: |
           mkdir -p build/ios/ipa
           IPA_PATH=$(find build/ios/ipa -name "*.ipa" 2>/dev/null | head -1)
           if [ -z "$IPA_PATH" ]; then
+            # Fallback: package .app into IPA manually
             APP_PATH=$(find build/ios/Release-iphoneos -name "*.app" 2>/dev/null | head -1)
             if [ -n "$APP_PATH" ]; then
               mkdir -p build/ios/ipa/Payload
@@ -98,13 +58,18 @@ jobs:
               cd build/ios/ipa
               zip -r CheckBook.ipa Payload/
               cd -
+              echo "Packaged IPA from .app"
+            else
+              echo "ERROR: No .ipa or .app found!"
+              find build/ios -type f | head -30
+              exit 1
             fi
           else
             cp "$IPA_PATH" build/ios/ipa/CheckBook.ipa
           fi
           ls -lh build/ios/ipa/
 
-      # 7. Upload IPA as workflow artifact (available for 30 days)
+      # 6. Upload IPA as workflow artifact (available for 30 days)
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -112,22 +77,14 @@ jobs:
           path: mobile_app/build/ios/ipa/CheckBook.ipa
           retention-days: 30
 
-      # 8. Create GitHub Release with IPA
+      # 7. Create GitHub Release with IPA
       - name: Create iOS Release
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v2.2.{0}-ios', github.run_number) }}
-          name: ${{ github.ref_type == 'tag' && github.ref_name || format('iOS Release v2.2.{0}', github.run_number) }}
+          tag_name: "v2.2.${{ github.run_number }}-ios"
+          name: "iOS Release v2.2.${{ github.run_number }}"
           draft: false
           prerelease: true
           files: |
             mobile_app/build/ios/ipa/CheckBook.ipa
-          overwrite_files: true
-
-      # 9. Cleanup keychain
-      - name: Clean up keychain and provisioning profile
-        if: always()
-        run: |
-          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db 2>/dev/null || true
-          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/build_pp.mobileprovision 2>/dev/null || true
