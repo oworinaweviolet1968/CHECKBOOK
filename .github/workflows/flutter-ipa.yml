@@ -48,26 +48,31 @@ jobs:
         working-directory: mobile_app
         run: |
           mkdir -p build/ios/ipa
-          IPA_PATH=$(find build/ios/ipa -name "*.ipa" 2>/dev/null | head -1)
+          IPA_PATH=$(find build/ios -name "*.ipa" 2>/dev/null | head -1)
           if [ -z "$IPA_PATH" ]; then
-            # Fallback: package .app into IPA manually
-            APP_PATH=$(find build/ios/Release-iphoneos -name "*.app" 2>/dev/null | head -1)
+            # Package .app into IPA from archive or build directory
+            APP_PATH=$(find build/ios -name "*.app" -type d 2>/dev/null | head -1)
             if [ -n "$APP_PATH" ]; then
+              echo "Found app bundle at: $APP_PATH"
+              rm -rf build/ios/ipa/Payload
               mkdir -p build/ios/ipa/Payload
-              cp -r "$APP_PATH" build/ios/ipa/Payload/
+              cp -R "$APP_PATH" build/ios/ipa/Payload/
               cd build/ios/ipa
-              zip -r CheckBook.ipa Payload/
+              zip -qr CheckBook.ipa Payload
+              rm -rf Payload
               cd -
-              echo "Packaged IPA from .app"
+              echo "Successfully packaged CheckBook.ipa from .app"
             else
               echo "ERROR: No .ipa or .app found!"
               find build/ios -type f | head -30
               exit 1
             fi
           else
+            echo "Found existing IPA at: $IPA_PATH"
             cp "$IPA_PATH" build/ios/ipa/CheckBook.ipa
           fi
           ls -lh build/ios/ipa/
+
 
       # 6. Upload IPA as workflow artifact (available for 30 days)
       - name: Upload IPA Artifact
